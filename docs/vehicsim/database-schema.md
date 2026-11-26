@@ -1,4 +1,4 @@
-# Từ điển dữ liệu VehicSim (MySQL, 30 bảng)
+# Từ điển dữ liệu VehicSim (MySQL, 34 bảng)
 
 Tài liệu giải thích **từng bảng, từng cột** của database VehicSim: nghĩa nghiệp vụ, ràng buộc, ai
 ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệu nhóm 06/10/2026).
@@ -23,10 +23,10 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
 
 | | Số lượng |
 |---|---|
-| Bảng | 30 |
-| Cột | 397 |
-| Khoá ngoại | 82 (nhiều khoá ghép) |
-| CHECK | 30 |
+| Bảng | 34 (schema source; DB đang dùng cần kiểm migration riêng) |
+| Cột | 445 |
+| Khoá ngoại | 86 (nhiều khoá ghép) |
+| CHECK | 37 |
 | Engine / charset | InnoDB · `utf8mb4` / `utf8mb4_0900_ai_ci` · MySQL ≥ 8.0.16 (cần CHECK) |
 
 | # | Nhóm | Bảng | Code đang dùng |
@@ -36,7 +36,7 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
 | 3 | Project & xe | `projects`, `project_members`, `carla_vehicle_models`, `sensors` | Có, trừ `project_members`, `sensors` |
 | 4 | AEB | `aeb_parameters`, `aeb_versions`, `aeb_parameter_values` | Có |
 | 5 | Kịch bản | `scenarios`, `scenario_versions` | Có |
-| 6 | Tối ưu & regression | `optimization_runs`, `optimization_trials`, `regression_tests` | `regression_tests` |
+| 6 | Tối ưu & regression | `optimization_runs`, `optimization_trials`, `regression_tests` | Có: MOBO/trial/Pareto và regression; handoff FA chưa nối tự động |
 | 7 | Mô phỏng, đánh giá, lỗi | `simulation_runs`, `simulation_artifacts`, `collision_events`, `failures`, `root_causes` | Có |
 | 8 | Phân tích, kết quả regression, khuyến nghị | `analysis_results`, `regression_test_items`, `engineering_recommendations` | Có; analysis_results mới dùng BASELINE_DATASET |
 | 9 | Tri thức kỹ thuật | `tech_references` | Có: Admin list/detail/create/update, bật/tắt |
@@ -50,7 +50,7 @@ Bảng chưa có code là thiết kế trước theo FE (0 dòng); màn hình / 
 | ADMIN | Quản trị user / role, tạo workspace và gán Manager (ADR-038), quản lý `tech_references` |
 | MANAGER | Quản lý workspace được Admin gán: xem mọi thành viên, thêm tài khoản Experiencer và cấp role Engineer / Reviewer cho người đó (ADR-045), giao task, duyệt báo cáo của các project. Không làm kỹ thuật, không tạo project, không duyệt khuyến nghị |
 | ENGINEER | Toàn bộ quy trình kỹ thuật trong project của workspace (xe, kịch bản, mô phỏng, tối ưu, regression) |
-| REVIEWER | Xem kết quả, Accept / Reject khuyến nghị — quyết định cuối, không cần Manager (ADR-037). Không chạy mô phỏng |
+| REVIEWER | Xem kết quả, chạy regression trong workspace mình và Accept / Reject khuyến nghị (ADR-049); không chạy baseline kỹ thuật |
 | EXPERIENCER | Người tự đăng ký: project cá nhân, chạy tới tối ưu + regression; **không có** khuyến nghị / duyệt. Được thêm vào workspace thì thành Engineer / Reviewer, rời workspace cuối cùng thì trở lại Experiencer (ADR-045) |
 
 Quyền xem thành viên (kiểm ở API, ADR-038): Manager xem mọi thành viên workspace mình quản lý; trong project chỉ
@@ -122,6 +122,9 @@ CARLA 0.9.15 với 0.9.16, hay `vehicsim-kinematic-1.0` với `1.1` ([ADR-027](.
 
 `simulation_runs.aeb_mode` (`ON` | `OFF`, migration 015, 13/11/2026): run `OFF` chạy cùng kịch bản với AEB tắt — perception/quyết định vẫn
 ghi lại nhưng không phanh — làm mốc tham chiếu cho baseline. Regression và tối ưu chỉ lấy run `ON` làm baseline.
+
+`simulation_runs.repetition` và `simulation_runs.attempt` (migration 019, 24/11/2026, [ADR-065](../adr/ADR-065-khoi-dataset-trong-result-json.md)): lần lặp
+của cùng một cấu hình và số lần worker nhận run; ghi vào `dataset.identity` của `result.json`.
 
 ### 3.5 Khớp với CARLA 0.9.16
 
@@ -440,7 +443,7 @@ run CARLA của 3 xe tạo trước đó dùng mô-men cũ, không ghép với r
 xe = min(phanh xe thật, phanh 100% đo trên CARLA): e-tron 9,13 (CARLA, chưa có số xe thật), Model 3 9,10, Patrol 8,80, Sprinter 8,50 (xe thật),
 HGV 1,77 (CARLA). Bộ động học / AEB dùng min(`MAX_DECELERATION`, giới hạn xe, μ·g), nên với `MAX_DECELERATION` mặc định 8 chỉ HGV đổi kết quả. **Code dùng:**
 `Queries.vehicleById`, `RunService.carlaVehicle` (→ khối `vehicle.carla` của bundle), `VehicleCatalogService` (màn
-"Phương tiện", chỉ đọc).
+"Phương tiện", chỉ đọc; mọi role xem được kể cả khi chưa có project — khi đó `in_use` = false, `run_count` = 0).
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -698,6 +701,8 @@ Một lần chạy một biến thể × xe × AEB version × seed × bộ mô p
 | `carla_vehicle_model_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sr_replay`; FK → `carla_vehicle_models`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,carla_vehicle_model_id)`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)` | Xe đã chạy (danh mục chung). Run REGRESSION phải cùng xe với run baseline và với regression test. |
 | `aeb_version_id` | BIGINT UNSIGNED | ✓ |  | FK → `aeb_versions(project_id,id)`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)`; FK → `optimization_trials(id,candidate_aeb_version_id)`; FK → `analysis_results(project_id,id,aeb_version_id)` | AEB version — cùng project (FK ghép). |
 | `aeb_mode` | ENUM | ✓ | `ON` |  | Chế độ AEB của run (migration 015, 13/11/2026): `OFF` = AEB tắt — perception/quyết định vẫn ghi lại nhưng không phanh; mốc tham chiếu của baseline, không bao giờ là baseline regression/tối ưu. Giá trị: 'ON', 'OFF'. |
+| `repetition` | SMALLINT UNSIGNED | ✓ | `1` |  | Lần lặp thứ mấy của cùng cấu hình (biến thể + AEB + `aeb_mode` + xe + simulator + seed), tính lúc tạo run (migration 019, 24/11/2026, ADR-065). Run đầu là 1. Đếm theo các run đang có nên xóa run cũ thì số lặp quay về; không có ràng buộc duy nhất. |
+| `attempt` | SMALLINT UNSIGNED | ✓ | `0` |  | Số lần worker nhận run (tăng ở bước `PENDING → RUNNING`; migration 019). 0 = chưa chạy; 2 = run bị khôi phục sau khi backend chết giữa chừng. Run cũ: 1 nếu đã có `started_at`. |
 | `simulator_type` | ENUM | ✓ |  |  | `KINEMATIC` / `CARLA` — nhóm để lọc; khớp `simulator_version` (`ck_sr_simulator`). Giá trị: 'KINEMATIC', 'CARLA'. |
 | `simulator_version` | VARCHAR(30) | ✓ |  | UQ `uq_sr_replay`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,carla_vehicle_model_id)`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)` | Danh tính bộ mô phỏng: vehicsim-kinematic-1.0 | carla-0.9.16; đổi logic động học thì đổi tên |
 | `map_name` | VARCHAR(100) |  |  |  | Map CARLA thực nạp (world.get_map().name); NULL với động học |
@@ -984,7 +989,7 @@ Từ 21/10/2026 `pass_criteria_json.scenario_set` có thêm `mode` (`old_critica
 - **Trạng thái code cần đối chiếu theo module:** `tech_references` đã có API/màn Admin như §6.9;
   cộng tác có `WorkspaceController`, notifications và chat (không còn chỉ là schema).
   `sensors` chưa có luồng quản trị riêng; không suy ra triển khai thuật toán từ bảng tối ưu hoặc `analysis_results`.
-  [Bàn giao ngày 17/11](admin-analysis-handover.md) ghi phạm vi Admin/Analysis đã kiểm;
+  [Bàn giao ngày 17/11](../failure-analysis-v3/README.md) ghi phạm vi Admin/Analysis đã kiểm;
   các mô tả tối ưu/cộng tác lịch sử khác trong tài liệu này cần đối chiếu code trước khi nhận việc.
 - **Phanh CARLA còn giới hạn (TD-17):** ADR-051 đã nối `max_brake_torque_nm` qua bundle/`.xosc` v5
   vào physics bánh xe và hiệu chuẩn e-tron; `carla_full_brake_decel_mps2` đi qua `vs_full_brake_decel_mps2`
@@ -1019,6 +1024,14 @@ Cùng một PR (luật mềm ở `AGENTS.md`):
 | `007_2026-10-15_rut-scope-4-tham-so-aeb-7-category.sql` | Rút scope: 4 tham số AEB, 3 mục tiêu MOBO, 7 category kịch bản (ADR-040), vẫn 29 bảng |
 | `008_2026-10-15_buildup-5-20-va-dinh-nghia-muc-tieu.sql` | `BRAKE_BUILDUP_RATE` biên [5, 20]; tính lại `rms_jerk_mps3` / `stopping_distance_m` cho run cũ (ADR-040 §6–7) |
 | `011_2026-10-26_them-mau-xe-carla.sql` | `ck_cvm_wheels` nhận 6 bánh; thêm 4 mẫu xe CARLA (Model 3, Patrol, Sprinter, xe tải chỉ để xem), không sửa e-tron |
+| `019_2026-11-24_bo-sung-tech-references-toan-dien.sql` | Bổ sung nội dung tham khảo; độc lập migration 019 về run |
+| `019_2026-11-24_lan-lap-va-lan-thu-cua-run.sql` | Thêm `repetition` / `attempt`; cần trước backend hiện tại |
+| `020_2026-11-24_bo-sung-tech-references-chuyen-sau.sql` | Thêm kiến thức chuyên sâu; độc lập migration 020 về FA |
+| `020_2026-11-25_failure_analysis_json.sql` | Thêm bốn bảng `fa_json_*` |
+| `021_2026-11-24_chuan-hoa-url-tech-references.sql` | Cập nhật URL/DOI tham khảo |
+| `022_2026-11-24_bo-sung-4-tham-so-aeb-tech-references.sql` | Bổ sung tài liệu và mô tả bốn tham số AEB |
+
+Hai nhánh có migration trùng số **019 và 020**. Xác định bằng **tên file đầy đủ**, không bỏ một file vì số đã có. DB đang ở mốc 018 cần cả sáu file 019–022 ở trên; DB mới từ schema hiện tại đã chứa chúng. Không tự chạy lại migration ALTER TABLE trên DB đã nâng. Kiểm chứng MySQL 8.4 cô lập ngày 26/11/2026 cho thấy tạo mới và nâng từ schema cũ có cùng 445 cột, 86 FK, 37 CHECK, 48 UNIQUE và 44 mã tham khảo.
 
 Luôn sao lưu trước (`mysqldump --single-transaction`), không `docker compose down -v` trên máy người khác.
 
@@ -1045,3 +1058,88 @@ Quyền Reviewer: header `X-VehicSim-Project` chọn project trong workspace cò
 `security/ProjectAccess` là bean request scope: đọc principal/header, resolve project một lần và dùng cùng ID cho kiểm quyền cùng các view/service. `ReviewerScope` chỉ truy vấn project theo membership, không có canSee kiểm lần hai. `Queries.defaultProject` là truy vấn tường minh, không đọc HTTP/security; job nền tiếp tục nhận project ID qua tham số, không gọi ProjectAccess ngoài request.
 
 Context chấp nhận project chưa chọn xe và trả `vehicle=null`. Frontend chờ context, chốt ID trả về rồi mới tải màn; JSON, POST quyết định và tải file dùng cùng header. Đổi mật khẩu giữ project; đăng nhập mới/đăng xuất xóa lựa chọn. Refresh lỗi giữ nguyên lựa chọn, khóa duyệt và báo lỗi; role khác giữ context tốt gần nhất. Nút Chọn lại project chỉ hiện cho Reviewer khi `GET /api/v1/vehicsim/reviewer/projects` còn trả project thuộc membership; route này độc lập lựa chọn đang lỗi. POST quyết định thiếu header project bị 400, tránh dùng mặc định đã đổi giữa các request (ADR-048, UC-62/UC-63).
+
+
+## BE-R1 — kho JSON Failure Analysis (migration 020 ngày 25/11)
+
+Chỉ INSERT và SELECT qua FailureAnalysisStore. Không cập nhật dữ liệu mô phỏng/đánh giá cũ.
+Payload source tối đa 1 MiB; tài nguyên dẫn xuất 8 MiB, metadata 256 KiB. FK ON DELETE RESTRICT.
+Execution và toàn bộ report/handoff commit trong một transaction; tính toán core nằm ngoài transaction.
+Rollback triển khai: tắt caller V3; giữ bảng/bytes để bảo toàn lịch sử; chỉ drop sau khi đã export và được phê duyệt.
+
+#### `fa_json_sources`
+
+JSON gốc và manifest; UNIQUE(project_id,dedupe_key).
+
+| Cột | Kiểu | Ý nghĩa |
+|---|---|---|
+| `id` | CHAR(36) | UUID bất biến của resource. |
+| `project_id` | BIGINT UNSIGNED | Project đã xác thực; FK, luôn nằm trong predicate truy cập. |
+| `source_id` | CHAR(36), nullable chỉ ở source | FK source trong cùng project; NULL cho source. |
+| `execution_id` | CHAR(36), nullable cho source/execution | Report/handoff tham chiếu execution trong cùng project và source. |
+| `dedupe_key` | CHAR/VARCHAR(64) | Nguồn: SHA bytes; execution: SHA toàn bộ determinants; report: execution + ordinal; handoff: execution. |
+| `identity_digest` | CHAR(64), NULL | SHA identity khai báo nếu đủ; dùng phát hiện bản khác bytes, không phải quyền truy cập. |
+| `payload_bytes` | MEDIUMBLOB, handoff có thể NULL | Bytes gốc / report / summary / handoff, không normalize original JSON; NULL handoff khi bị chặn. |
+| `payload_sha256` | CHAR(64), handoff có thể NULL | SHA-256 chính xác payload bytes; độc lập content digest trong JSON. |
+| `metadata_bytes` | MEDIUMBLOB | Envelope JSON UTF-8 bất biến, schema/version/identity/status/time; tối đa 256 KiB. |
+| `metadata_sha256` | CHAR(64) | SHA metadata bytes; GET kiểm tra trước parse. |
+| `created_at` | TIMESTAMP(6) | Thời gian UTC ghi DB (cấu hình timezone DB phải UTC); envelope có created_at_utc ISO instant. |
+
+#### `fa_json_executions`
+
+Một execution cho source + core bytecode + context policy; UNIQUE(project_id,dedupe_key).
+
+| Cột | Kiểu | Ý nghĩa |
+|---|---|---|
+| `id` | CHAR(36) | UUID bất biến của resource. |
+| `project_id` | BIGINT UNSIGNED | Project đã xác thực; FK, luôn nằm trong predicate truy cập. |
+| `source_id` | CHAR(36), nullable chỉ ở source | FK source trong cùng project; NULL cho source. |
+| `execution_id` | CHAR(36), nullable cho source/execution | Report/handoff tham chiếu execution trong cùng project và source. |
+| `dedupe_key` | CHAR/VARCHAR(64) | Nguồn: SHA bytes; execution: SHA toàn bộ determinants; report: execution + ordinal; handoff: execution. |
+| `identity_digest` | CHAR(64), NULL | SHA identity khai báo nếu đủ; dùng phát hiện bản khác bytes, không phải quyền truy cập. |
+| `payload_bytes` | MEDIUMBLOB, handoff có thể NULL | Bytes gốc / report / summary / handoff, không normalize original JSON; NULL handoff khi bị chặn. |
+| `payload_sha256` | CHAR(64), handoff có thể NULL | SHA-256 chính xác payload bytes; độc lập content digest trong JSON. |
+| `metadata_bytes` | MEDIUMBLOB | Envelope JSON UTF-8 bất biến, schema/version/identity/status/time; tối đa 256 KiB. |
+| `metadata_sha256` | CHAR(64) | SHA metadata bytes; GET kiểm tra trước parse. |
+| `created_at` | TIMESTAMP(6) | Thời gian UTC ghi DB (cấu hình timezone DB phải UTC); envelope có created_at_utc ISO instant. |
+
+#### `fa_json_reports`
+
+Một report cho member ordinal; không gộp repetition/attempt.
+
+| Cột | Kiểu | Ý nghĩa |
+|---|---|---|
+| `id` | CHAR(36) | UUID bất biến của resource. |
+| `project_id` | BIGINT UNSIGNED | Project đã xác thực; FK, luôn nằm trong predicate truy cập. |
+| `source_id` | CHAR(36), nullable chỉ ở source | FK source trong cùng project; NULL cho source. |
+| `execution_id` | CHAR(36), nullable cho source/execution | Report/handoff tham chiếu execution trong cùng project và source. |
+| `dedupe_key` | CHAR/VARCHAR(64) | Nguồn: SHA bytes; execution: SHA toàn bộ determinants; report: execution + ordinal; handoff: execution. |
+| `identity_digest` | CHAR(64), NULL | SHA identity khai báo nếu đủ; dùng phát hiện bản khác bytes, không phải quyền truy cập. |
+| `payload_bytes` | MEDIUMBLOB, handoff có thể NULL | Bytes gốc / report / summary / handoff, không normalize original JSON; NULL handoff khi bị chặn. |
+| `payload_sha256` | CHAR(64), handoff có thể NULL | SHA-256 chính xác payload bytes; độc lập content digest trong JSON. |
+| `metadata_bytes` | MEDIUMBLOB | Envelope JSON UTF-8 bất biến, schema/version/identity/status/time; tối đa 256 KiB. |
+| `metadata_sha256` | CHAR(64) | SHA metadata bytes; GET kiểm tra trước parse. |
+| `created_at` | TIMESTAMP(6) | Thời gian UTC ghi DB (cấu hình timezone DB phải UTC); envelope có created_at_utc ISO instant. |
+
+#### `fa_json_handoffs`
+
+Một output/status resource cho execution; không mang quyền dispatch optimizer.
+
+| Cột | Kiểu | Ý nghĩa |
+|---|---|---|
+| `id` | CHAR(36) | UUID bất biến của resource. |
+| `project_id` | BIGINT UNSIGNED | Project đã xác thực; FK, luôn nằm trong predicate truy cập. |
+| `source_id` | CHAR(36), nullable chỉ ở source | FK source trong cùng project; NULL cho source. |
+| `execution_id` | CHAR(36), nullable cho source/execution | Report/handoff tham chiếu execution trong cùng project và source. |
+| `dedupe_key` | CHAR/VARCHAR(64) | Nguồn: SHA bytes; execution: SHA toàn bộ determinants; report: execution + ordinal; handoff: execution. |
+| `identity_digest` | CHAR(64), NULL | SHA identity khai báo nếu đủ; dùng phát hiện bản khác bytes, không phải quyền truy cập. |
+| `payload_bytes` | MEDIUMBLOB, handoff có thể NULL | Bytes gốc / report / summary / handoff, không normalize original JSON; NULL handoff khi bị chặn. |
+| `payload_sha256` | CHAR(64), handoff có thể NULL | SHA-256 chính xác payload bytes; độc lập content digest trong JSON. |
+| `metadata_bytes` | MEDIUMBLOB | Envelope JSON UTF-8 bất biến, schema/version/identity/status/time; tối đa 256 KiB. |
+| `metadata_sha256` | CHAR(64) | SHA metadata bytes; GET kiểm tra trước parse. |
+| `created_at` | TIMESTAMP(6) | Thời gian UTC ghi DB (cấu hình timezone DB phải UTC); envelope có created_at_utc ISO instant. |
+
+
+## BE-R1 verification
+
+Migration 020 ngày 25/11 đã được kiểm trên database MySQL cô lập; chưa suy ra trạng thái DB đang dùng của nhóm. Hợp đồng nằm ở [hướng dẫn Failure Analysis](../failure-analysis-v3/README.md), kết quả ở [báo cáo kiểm chứng](../LOGIC_AUDIT_REPORT.md).

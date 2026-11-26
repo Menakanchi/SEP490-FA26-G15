@@ -119,6 +119,19 @@ class RegressionPairingTest {
     }
 
     @Test
+    void everyNewRunRecordsWhichRepetitionOfItsConfigurationItIs() {
+        List<Object[]> inserts = new ArrayList<>();
+        RunService runs = runServiceConfiguredFor(RunService.KINEMATIC_SIMULATOR, inserts);
+
+        runs.createRuns(PROJECT, SCENARIO, variant(101L), VEHICLE, CANDIDATE, USER, "EVALUATION", null, null);
+        assertThat(arg(inserts.get(0), "repetition")).as("chưa có run nào cùng cấu hình").isEqualTo(1L);
+
+        when(db.scalar(startsWith("SELECT COUNT(*) FROM simulation_runs WHERE scenario_version_id"), any(Object[].class))).thenReturn(2L);
+        runs.createRuns(PROJECT, SCENARIO, variant(101L), VEHICLE, CANDIDATE, USER, "EVALUATION", null, null);
+        assertThat(arg(inserts.get(1), "repetition")).as("đã có hai run cùng cấu hình").isEqualTo(3L);
+    }
+
+    @Test
     void aKinematicBaselineIsNeverPairedWithACarlaRunEvenWhenCarlaIsConfigured() {
         List<Object[]> inserts = new ArrayList<>();
         RunService runs = runServiceConfiguredFor(CARLA, inserts);
@@ -384,7 +397,7 @@ class RegressionPairingTest {
         ScenarioSet scenarioSet = storedScenarioSet(inserts.get(0));
         assertThat(scenarioSet.mode()).isEqualTo("old_critical");
         assertThat(scenarioSet.variantCount()).isEqualTo(1);
-        assertThat(scenarioSet.variantIds()).isNull();
+        assertThat(scenarioSet.variantIds()).containsExactly(101L);
     }
 
     @Test

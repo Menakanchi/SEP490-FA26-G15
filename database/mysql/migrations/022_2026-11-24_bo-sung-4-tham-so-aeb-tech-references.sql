@@ -13,7 +13,7 @@ INSERT INTO tech_references (
 (
     'PARAM_TTC_THRESHOLD', 'DEFINITION', 'AEB Parameter: Time-to-Collision Threshold (TTC_THRESHOLD)',
     NULL, 's',
-    'Tham số quyết định kích hoạt phanh khẩn cấp tự động: khi giá trị Time-to-Collision (TTC) dự đoán nhỏ hơn hoặc bằng ngưỡng này, hệ thống AEB lập tức phát lệnh phanh khẩn cấp. Công thức: TTC = Range / Range_Rate (hoặc X_rel / V_ego với kịch bản người đi bộ cắt ngang CP_CROSSING). Khoảng tối ưu: [0.5, 3.5] s (mặc định 1.5 - 1.8 s). Đánh đổi: TTC lớn phanh sớm giúp tránh va chạm nhưng tăng nguy cơ phanh oan (false positive); TTC nhỏ giảm phanh oan nhưng xe không đủ quãng đường dừng gây va chạm.',
+    'Tham số quyết định kích hoạt phanh khẩn cấp tự động: khi giá trị Time-to-Collision (TTC) dự đoán nhỏ hơn hoặc bằng ngưỡng này, hệ thống AEB lập tức phát lệnh phanh khẩn cấp. Công thức: TTC = Range / Range_Rate (hoặc X_rel / V_ego với kịch bản người đi bộ cắt ngang CP_CROSSING). Khoảng tối ưu: [0.5, 4.0] s (mặc định 1.5 - 1.8 s). Đánh đổi: TTC lớn phanh sớm giúp tránh va chạm nhưng tăng nguy cơ phanh oan (false positive); TTC nhỏ giảm phanh oan nhưng xe không đủ quãng đường dừng gây va chạm.',
     'STANDARD', 'ISO 15623:2013 Transport systems - Forward vehicle collision warning systems',
     'ISO Technical Committee ISO/TC 204', 'International Organization for Standardization (ISO)', 2013,
     'Clause 5.3: Collision Warning & Braking Timing', 'https://www.iso.org/standard/54483.html', 'ISO-15623:2013', 1
@@ -60,7 +60,7 @@ ON DUPLICATE KEY UPDATE
 
 -- 2. Cập nhật bảng aeb_parameters với mô tả đầy đủ công thức và đánh đổi
 UPDATE aeb_parameters SET
-    description = 'Ngưỡng Time-to-Collision kích hoạt phanh AEB (TTC = Range / Range_Rate). Khoảng tối ưu [0.5, 3.5] s; đánh đổi giữa tránh va chạm và tỷ lệ phanh oan (ISO 15623:2013).'
+    description = 'Ngưỡng Time-to-Collision kích hoạt phanh AEB (TTC = Range / Range_Rate). Khoảng tối ưu [0.5, 4.0] s; đánh đổi giữa tránh va chạm và tỷ lệ phanh oan (ISO 15623:2013).'
 WHERE code = 'TTC_THRESHOLD';
 
 UPDATE aeb_parameters SET

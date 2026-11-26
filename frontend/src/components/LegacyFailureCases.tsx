@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
@@ -11,7 +11,7 @@ import { positiveId } from "@/components/analysis/analysisFailurePresentation";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { FailureFilters, FailureList } from "@/types/vehicsim";
 
-export function LegacyFailureCases({ initialScenario, navigation }: { initialScenario?: number; navigation?: ReactNode }) {
+export function LegacyFailureCases({ initialScenario, navigation, embedded = false }: { initialScenario?: number; navigation?: ReactNode; embedded?: boolean }) {
   const { ctx } = useVehicSimContext();
   const router = useRouter(), params = useSearchParams();
   const page = positiveId(params.get("f_page"), 1);
@@ -29,6 +29,8 @@ export function LegacyFailureCases({ initialScenario, navigation }: { initialSce
   const requestKey = `${filterKey}:${page}:${size}:${refresh}`;
   const [result, setResult] = useState<{ key: string; data: FailureList | null; error: string | null } | null>(null);
   const [exportError, setExportError] = useState<{ scope: string; message: string } | null>(null);
+  const exportLock = useRef(false), alive = useRef(false);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const [exporting, setExporting] = useState(false);
   const data = result?.key === requestKey ? result.data : null;
   const loading = result?.key !== requestKey;
@@ -55,17 +57,20 @@ export function LegacyFailureCases({ initialScenario, navigation }: { initialSce
     return () => { active = false; };
   }, [filterKey, page, size, requestKey, router]);
   async function exportCsv() {
-    if (exporting || loading || !data || error) return;
-    setExporting(true); setExportError(null);
+    if (exportLock.current || loading || !data || error) return;
+    exportLock.current = true; setExporting(true); setExportError(null);
     try { await vehicsimApi.exportFailures(filters); }
-    catch (err) { setExportError({ scope: filterKey, message: analysisError(err) }); }
-    finally { setExporting(false); }
+    catch (err) { if (alive.current) setExportError({ scope: filterKey, message: analysisError(err) }); }
+    finally { exportLock.current = false; if (alive.current) setExporting(false); }
   }
-  return <VehicSimPage step={3} crumbs={[{ label: "Phân tích" }, { label: "Ca lỗi" }]}
-    actions={<PillButton disabled={exporting || loading || !data || Boolean(error)} onClick={() => void exportCsv()}>{exporting ? "Đang xuất…" : "Xuất CSV"}</PillButton>}>
+  const exportButton = <PillButton disabled={exporting || loading || !data || Boolean(error)} onClick={() => void exportCsv()}>{exporting ? "Đang xuất…" : "Xuất CSV lỗi"}</PillButton>;
+  const content = <>
+    {embedded && <div className="analysis-toolbar"><h2>Tra cứu ca lỗi</h2>{exportButton}</div>}
     {navigation}<ErrorNote message={error ?? (exportError?.scope === filterKey ? exportError.message : null)} />
     {error && <div><button className="analysis-button" onClick={() => setRefresh(value => value + 1)}>Thử tải lại</button></div>}
     <AnalysisFailureExplorer data={data} loading={loading} hasError={Boolean(error)} filters={filters} page={page} size={size}
       search={params.get("f_q") ?? ""} returnTo={`/analysis/failures?${params}`} families={ctx?.families ?? []} versions={ctx?.versions ?? []} onUpdate={update} />
-  </VehicSimPage>;
+  </>;
+  return embedded ? content : <VehicSimPage step={3} crumbs={[{ label: "Phân tích" }, { label: "Ca lỗi" }]} title="Tra cứu ca lỗi"
+    subtitle="Đọc nhận định theo luật, đối chiếu số đo và mở bằng chứng của từng lượt chạy." actions={exportButton}>{content}</VehicSimPage>;
 }

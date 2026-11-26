@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { Card, CardTitle, EmptyState, ErrorNote, StatCard, Tag, fmt, simulatorLabel } from "@/components/VehicSimUi";
 import { decel, dimensions, withUnit } from "@/components/vehicleFormat";
+import { VehicleModelViewer } from "@/components/VehicleModelViewer";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { VehicleDetail } from "@/types/vehicsim";
 
@@ -58,14 +59,18 @@ export default function VehicleDetailPage() {
 
       {v && (
         <>
-          <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-3">
+          {/* 4 thẻ: 2 × 2 khi hẹp, 1 hàng 4 thẻ từ xl — không để thẻ lẻ một mình ở hàng sau. */}
+          <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
             <StatCard label="Khối lượng" value={withUnit(v.mass_kg, 0, "kg")} note={`${v.num_wheels} bánh`} />
-            <StatCard label="Phanh động học" value={decel(v.max_brake_decel_mps2)} tone="info" note="giới hạn bộ động học dùng" />
+            {/* Giới hạn = min(phanh xe thật, phanh 100% đo trên CARLA) theo migration 017, nên có thể thấp hơn số CARLA. */}
+            <StatCard label="Phanh động học" value={decel(v.max_brake_decel_mps2)} tone="info" note="giới hạn AEB = min(xe thật, CARLA)" />
+            {/* Xe hỗ trợ mô phỏng đều đã hiệu chuẩn mô-men phanh (e-tron: migration 014; Model 3 / Patrol / Sprinter: migration 016).
+                Xe chỉ để xem (xe tải HGV) chưa hiệu chuẩn được: CARLA không phanh được như xe thật. */}
             <StatCard
               label="Phanh đo trên CARLA"
               value={decel(v.carla_full_brake_decel_mps2)}
-              tone="warn"
-              note={v.carla_full_brake_decel_mps2 === null ? "chưa đo" : "phanh 100%, chưa hiệu chuẩn"}
+              tone={v.carla_full_brake_decel_mps2 === null || !v.is_supported ? "warn" : "ok"}
+              note={v.carla_full_brake_decel_mps2 === null ? "chưa đo" : v.is_supported ? "phanh 100%, đã hiệu chuẩn" : "phanh 100%, chưa hiệu chuẩn được"}
             />
             <StatCard label="Lượt chạy" value={v.run_count} note="trong project hiện tại" />
           </div>
@@ -75,6 +80,8 @@ export default function VehicleDetailPage() {
               Mẫu xe này chỉ để xem, chưa dùng cho mô phỏng: giới hạn phanh của bộ động học chưa phù hợp với loại xe này.
             </p>
           )}
+
+          <VehicleModelViewer blueprintId={v.carla_blueprint_id} name={v.name} />
 
           <div className="grid grid-cols-2 gap-4">
             <Card className="flex flex-col gap-3 p-5">

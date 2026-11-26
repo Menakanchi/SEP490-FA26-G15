@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
@@ -32,6 +32,7 @@ export default function AebMoboNewPage() {
   const [simulatorType, setSimulatorType] = useState<"KINEMATIC" | "CARLA">("KINEMATIC");
   const [carlaStatus, setCarlaStatus] = useState<CarlaStatus | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const submissionLock = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,10 +41,17 @@ export default function AebMoboNewPage() {
 
   const handleStartOptimization = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!scenarioId) {
+    if (!canWrite || submissionLock.current) return;
+    if (!scenarioId || !ctx?.families.some(family => family.id === scenarioId)) {
       setError("Vui lòng chọn kịch bản kiểm thử");
       return;
     }
+    if (!Number.isInteger(maxTrials) || maxTrials < 2 || maxTrials > 50
+        || !Number.isInteger(nInitialPoints) || nInitialPoints < 2 || nInitialPoints > Math.min(15, maxTrials)) {
+      setError("Chọn 2–50 lượt thử và 2–15 điểm khởi tạo; điểm khởi tạo không được vượt số lượt thử.");
+      return;
+    }
+    submissionLock.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -58,6 +66,7 @@ export default function AebMoboNewPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Khởi tạo đợt tối ưu thất bại");
       setSubmitting(false);
+      submissionLock.current = false;
     }
   };
 
@@ -119,7 +128,7 @@ export default function AebMoboNewPage() {
               <span className="text-[13px] font-bold text-vehicsim-ink">Số lượt thử nghiệm</span>
               <input
                 type="number"
-                min={3}
+                min={2}
                 max={50}
                 value={maxTrials}
                 onChange={(e) => setMaxTrials(Number(e.target.value))}
@@ -132,7 +141,7 @@ export default function AebMoboNewPage() {
               <input
                 type="number"
                 min={2}
-                max={15}
+                max={Math.min(15, maxTrials)}
                 value={nInitialPoints}
                 onChange={(e) => setNInitialPoints(Number(e.target.value))}
                 className="h-[44px] rounded-xl border border-solid border-vehicsim-line-strong px-3.5 text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-primary"

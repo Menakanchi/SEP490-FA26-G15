@@ -6,7 +6,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { MotionTelemetryChart, MOTION_SIGNALS, type MotionSignal } from "@/components/MotionTelemetryChart";
 import { ErrorNote, PillButton, runCode } from "@/components/VehicSimUi";
-import { AnalysisBadge, AnalysisLoading, analysisError, analysisOrigin, analysisReturn, analysisRunId } from "@/components/analysisUi";
+import { AnalysisScope, AnalysisBadge, AnalysisLoading, analysisError, analysisOrigin, analysisReturn, analysisRunId } from "@/components/analysisUi";
 import { PlaybackScene, PlaybackFacts } from "@/components/analysis/AnalysisPlaybackScene";
 import { PlaybackTimeline, PlaybackEvents } from "@/components/analysis/AnalysisPlaybackTimeline";
 import { PLAYBACK_LAYERS, eventName, eventColor, playbackPresentation, type PlaybackLayer } from "@/components/analysis/playbackPresentation";
@@ -30,6 +30,11 @@ const compareQuery = (compareId: number | null) => (compareId === null ? "" : `&
 type Result = { key: string; data: Playback | null; view: ReturnType<typeof playbackPresentation> | null; error: string | null };
 
 export default function PlaybackPage() {
+  const { runId } = useParams<{ runId: string }>();
+  return <AnalysisScope><PlaybackContent key={runId} /></AnalysisScope>;
+}
+
+function PlaybackContent() {
   const { runId } = useParams<{ runId: string }>();
   const validId = analysisRunId(runId);
   const params = useSearchParams();

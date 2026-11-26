@@ -52,7 +52,7 @@ class CarlaLeadVehicleTest {
         Path xosc = dir.resolve("scenario.xosc");
         Files.writeString(xosc, XoscExport.export(spec(c)), StandardCharsets.UTF_8);
         Path out = dir.resolve("out");
-        CarlaSession session = CarlaSession.open(xosc, out, "carla-0.9.16-xosc15", null);
+        CarlaSession session = CarlaSession.open(xosc, out, "carla-0.9.16" + Xosc.SIMULATOR_SUFFIX, null);
         assertThat(session.leadVehicle()).isTrue();
         double offset = c.lateralOffsetM(VehicleSpec.DEFAULT.widthM());
         double leadCenter = c.initialDistanceM() + 2.3; // xe CARLA dài 4,6 m, gốc actor ở tâm

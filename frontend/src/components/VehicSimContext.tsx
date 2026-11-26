@@ -61,6 +61,8 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
   const role = user?.roleCode;
   const isExperiencer = role === "EXPERIENCER";
   const isReviewer = role === "REVIEWER";
+  // ADR-064: Kỹ sư và Người duyệt cùng chọn project trong các workspace mình thuộc về (header X-VehicSim-Project).
+  const isTeamMember = isReviewer || role === "ENGINEER";
   const adminPage = usePathname().startsWith("/admin");
   const canWrite = WRITE_ROLES.includes(role ?? "");
   const canDecide = isReviewer && !error && ready && ctx?.reviewer_can_decide === true;
@@ -74,13 +76,13 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
       setError(null);
       return;
     }
-    // Project cá nhân của EXPERIENCER không thuộc phạm vi Reviewer: Reviewer chỉ gửi project đã chốt của mình.
-    if (isReviewer) setSelectedProjectId(null);
+    // Project cá nhân của EXPERIENCER không thuộc phạm vi Reviewer / Kỹ sư: họ chỉ gửi project đã chốt của mình.
+    if (isTeamMember) setSelectedProjectId(null);
     try {
       const loaded = await vehicsimApi.context();
       if (call !== latest.current) return;
       // Chốt đúng ID vừa hiển thị trước khi cho các màn con tải dữ liệu hoặc gửi quyết định.
-      if (isReviewer) selectReviewerProject(loaded.project.id);
+      if (isTeamMember) selectReviewerProject(loaded.project.id);
       setCtx(loaded);
       setChoosing(false);
       setError(null);
@@ -95,10 +97,10 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
         return;
       }
       // Giữ lựa chọn cũ khi lỗi: không âm thầm đổi project trong lúc người dùng đang duyệt.
-      if (isReviewer) setCtx(null);
+      if (isTeamMember) setCtx(null);
       setCanResetProject(false);
       setError(err instanceof Error ? err.message : "Không tải được ngữ cảnh VehicSim");
-      if (isReviewer && err instanceof ApiError && err.status === 404) {
+      if (isTeamMember && err instanceof ApiError && err.status === 404) {
         try {
           const available = await vehicsimApi.reviewerProjects();
           if (call === latest.current) setCanResetProject(available.length > 0);
@@ -107,7 +109,7 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
     } finally {
       if (call === latest.current) setReady(true);
     }
-  }, [isExperiencer, isReviewer]);
+  }, [isExperiencer, isTeamMember]);
 
   const openProject = useCallback(
     (id: number | null, target?: string) => {
@@ -139,8 +141,8 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
     if (role && !adminPage) void refresh();
   }, [refresh, role, adminPage]);
 
-  // Reviewer chờ project được chốt rồi mới mount màn con; role khác giữ hành vi cũ (màn con tự xử lý ctx = null).
-  const waiting = isReviewer && !adminPage && !ready;
+  // Reviewer / Kỹ sư chờ project được chốt rồi mới mount màn con; role khác giữ hành vi cũ (màn con tự xử lý ctx = null).
+  const waiting = isTeamMember && !adminPage && !ready;
 
   return (
     <VehicSimCtx.Provider

@@ -62,9 +62,6 @@ public class BootstrapService {
         seedCatalogsIfMissing();
         Row existing = db.first("SELECT id, workspace_id FROM projects WHERE workspace_id IS NOT NULL ORDER BY id LIMIT 1");
         if (existing != null) {
-            db.update("INSERT IGNORE INTO workspace_members (workspace_id, user_id, added_by_user_id, granted_role) "
-                    + "SELECT ?, u.id, ?, r.code FROM users u JOIN roles r ON u.role_id = r.id WHERE r.code IN ('ENGINEER', 'REVIEWER')",
-                    existing.lng("workspace_id"), ownerUserId);
             return Json.obj("project_id", existing.lng("id"), "created", false);
         }
         // Admin tạo workspace và gán Manager (ADR-038); seed dùng người chạy cho cả hai vai.
@@ -80,10 +77,6 @@ public class BootstrapService {
             values.add(new Object[]{versionId, p.lng("id"), BASELINE_OVERRIDES.getOrDefault(p.str("code"), p.dbl("default_value"))});
         }
         db.batchInsert("INSERT INTO aeb_parameter_values (aeb_version_id, parameter_id, param_value) VALUES (?,?,?)", values);
-
-        db.update("INSERT IGNORE INTO workspace_members (workspace_id, user_id, added_by_user_id, granted_role) "
-                + "SELECT ?, u.id, ?, r.code FROM users u JOIN roles r ON u.role_id = r.id WHERE r.code IN ('ENGINEER', 'REVIEWER')",
-                workspaceId, ownerUserId);
 
         return Json.obj("project_id", projectId, "created", true);
     }

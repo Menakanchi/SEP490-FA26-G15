@@ -17,7 +17,9 @@ type Props = {
   sort: string;
   returnTo: string;
   selectionCount: number;
+  selecting: boolean;
   activeFilters: { key: string; label: string }[];
+  onResetFilters: () => void;
   onRemoveFilter: (key: string) => void;
   onSearch: (value: string) => void;
   onSort: (value: string) => void;
@@ -37,7 +39,7 @@ function descendingMetric(a: number | null, b: number | null) {
 }
 
 export function AnalysisRunExplorer({ data, loading, hasError, page, size, search, sort, returnTo,
-  selectionCount, activeFilters, onRemoveFilter, onSearch, onSort, onPage, onSize,
+  selectionCount, selecting, activeFilters, onResetFilters, onRemoveFilter, onSearch, onSort, onPage, onSize,
   onOpenDataset, renderSelection, isSelected }: Props) {
   const query = search.trim().toLocaleLowerCase("vi");
   const rows = (data?.items ?? []).filter(run =>
@@ -52,8 +54,8 @@ export function AnalysisRunExplorer({ data, loading, hasError, page, size, searc
   const href = (id: number, playback = false) => `/analysis/failures/${id}${playback ? "/playback" : ""}?returnTo=${encodeURIComponent(returnTo)}`;
   return <section className={`analysis-panel ${styles.explorer}`} aria-label="Khám phá lượt chạy baseline">
     <div className="analysis-toolbar">
-      <div><h2>Lượt chạy baseline</h2><p className="analysis-caption">Đọc kết quả, mở bằng chứng và chọn run cho tập bàn giao.</p></div>
-      <button className="analysis-button" onClick={onOpenDataset}>Rà soát lựa chọn ({selectionCount}) →</button>
+      <div><h2 id="analysis-runs-title" tabIndex={-1}>Lượt chạy baseline</h2></div>
+      <button id="analysis-prepare-trigger" className="analysis-button" onClick={onOpenDataset}>{selecting ? `Rà soát lựa chọn (${selectionCount}) →` : "Chuẩn bị bàn giao"}</button>
     </div>
     {activeFilters.length > 0 && <div className={styles.filters} aria-label="Bộ lọc đang áp dụng">
       <span>Đang lọc toàn danh sách</span>
@@ -83,29 +85,31 @@ export function AnalysisRunExplorer({ data, loading, hasError, page, size, searc
         <table className={`analysis-table ${styles.table}`}>
           <caption className="sr-only">Lượt chạy baseline, seed, cấu hình, trạng thái, chỉ số từ API và thao tác</caption>
           <thead><tr>
-            <th scope="col">Run / biến thể</th><th scope="col">Nguồn / cấu hình</th><th scope="col">Trạng thái / kết quả AEB</th>
+            <th scope="col">Run / biến thể</th><th scope="col">Trạng thái / kết quả đã lưu</th>
             <th scope="col" className={styles.metricHeading}>RMS jerk<small>m/s³</small></th>
             <th scope="col" className={styles.metricHeading}>Tốc độ va chạm<small>m/s</small></th>
             <th scope="col" className={styles.metricHeading}>Quãng phanh<small>m</small></th>
-            <th scope="col">Tập dữ liệu</th><th scope="col">Thao tác</th>
+            {selecting && <th scope="col">Tập dữ liệu</th>}<th scope="col">Thao tác</th>
           </tr></thead>
           <tbody>{rows.map(run => <tr key={run.run_id} data-run-id={run.run_id} data-selected={isSelected(run)}>
-            <td className={styles.identity}><Link href={href(run.run_id)}>#{run.run_id} · {run.variant}</Link><small>{run.family}</small><span className={styles.seed}>Seed {run.seed}</span></td>
-            <td className={styles.source}><strong>{run.simulator}</strong><small>dt {run.dt} s · baseline #{run.baseline_id} · xe #{run.vehicle_id}</small><small>{analysisLabel(run.weather)} · {analysisLabel(run.time_of_day)}</small></td>
-            <td className={styles.result}><div className={styles.badges}><div><span className={styles.badgeLabel}>Chạy</span><AnalysisBadge value={run.status} /></div><div><span className={styles.badgeLabel}>AEB</span><AnalysisBadge value={run.outcome} /></div></div>
-              <small>{run.trace_available ? "Có telemetry" : "Thiếu telemetry"}{run.failure_class ? ` · ${analysisLabel(run.failure_class)}` : ""}</small>
+            <td className={styles.identity}><Link href={href(run.run_id)}>#{run.run_id} · {run.variant}</Link><small>{run.family}</small><span className={styles.seed}>Seed {run.seed}</span><details><summary>Nguồn / cấu hình</summary><strong>{run.simulator}</strong><small>dt {run.dt} s · baseline #{run.baseline_id} · xe #{run.vehicle_id}</small><small>{analysisLabel(run.weather)} · {analysisLabel(run.time_of_day)}</small></details></td>
+
+            <td className={styles.result}><div className={styles.badges}><div><span className={styles.badgeLabel}>Chạy</span><AnalysisBadge value={run.status} /></div><div><span className={styles.badgeLabel}>Theo luật</span><AnalysisBadge value={run.outcome} /></div></div>
+              <small>{run.trace_available === true ? "Có telemetry" : run.trace_available === false ? "Thiếu telemetry" : "Chưa xác định telemetry"}{run.failure_class ? ` · ${analysisLabel(run.failure_class)}` : ""}</small>
               {run.error && <small className={styles.error} title={run.error}>{run.error}</small>}
             </td>
             <td className="numeric">{formatObjective(run.metrics.rms_jerk_mps3)}</td><td className="numeric">{formatRunImpact(run.metrics.impact_speed_mps, run)}</td><td className="numeric">{formatObjective(run.metrics.stopping_distance_m)}</td>
-            <td>{renderSelection(run)}</td>
-            <td><div className={styles.actions}><Link href={href(run.run_id)} aria-label={`Chi tiết run ${run.run_id}`}>Chi tiết →</Link>
-              {run.trace_available ? <Link href={href(run.run_id, true)} aria-label={`Playback run ${run.run_id}`}>Playback ↗</Link> : <span title="API chưa có telemetry để phát lại">Chưa có playback</span>}
+            {selecting && <td>{renderSelection(run)}</td>}
+            <td><div className={styles.actions}><Link href={href(run.run_id)} aria-label={`Chi tiết run ${run.run_id}`}>Xem kết quả →</Link>
+              {run.status === "COMPLETED" && run.trace_available ? <Link href={href(run.run_id, true)} aria-label={`Playback run ${run.run_id}`}>Playback ↗</Link> : <span title="API chưa có telemetry để phát lại">Chưa có playback</span>}
             </div></td>
           </tr>)}</tbody>
         </table>
       </AnalysisTableRegion> : <div className="analysis-state">
-        <strong>{data.total === 0 ? "Chưa có run baseline phù hợp." : "Không có kết quả tìm trong trang này."}</strong>
-        <p>{data.total === 0 ? "Thử bỏ bộ lọc hoặc chạy baseline ở màn Kịch bản." : "Thử từ khóa khác hoặc chuyển trang. Bộ lọc toàn danh sách nằm phía trên."}</p>
+        <strong>{data.total === 0 ? activeFilters.length ? "Không có run khớp bộ lọc." : "Chưa có run baseline để hiển thị." : "Không có kết quả tìm trong trang này."}</strong>
+        <p>{data.total === 0 ? activeFilters.length ? "Bớt hoặc xóa bộ lọc để xem các run khác." : "Phạm vi này chỉ gồm baseline AEB bật của dự án đang mở. Có thể xem hoặc chạy baseline ở màn Kịch bản." : "Thử từ khóa khác hoặc chuyển trang. Bộ lọc toàn danh sách nằm phía trên."}</p>
+        {data.total === 0 && activeFilters.length > 0 && <button className="analysis-button" onClick={onResetFilters}>Xóa bộ lọc danh sách</button>}
+        {data.total === 0 && <Link href="/scenarios" className="analysis-button">Mở kịch bản</Link>}
         {search && <button className="analysis-button" onClick={() => onSearch("")}>Hiện toàn bộ trang này</button>}
       </div>}
       {rows.length > 0 && <p className="analysis-caption">Cuộn ngang bảng để xem thêm chỉ số và tập dữ liệu.</p>}

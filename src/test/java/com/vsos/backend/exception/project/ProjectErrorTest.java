@@ -34,20 +34,22 @@ class ProjectErrorTest {
 
     @Test
     void roleAndOwnershipProblemsAreForbidden() {
-        assertThat(withStatus(HttpStatus.FORBIDDEN)).containsExactlyInAnyOrder(EXPERIENCER_ONLY, PROJECT_NOT_YOURS);
+        assertThat(withStatus(HttpStatus.FORBIDDEN)).containsExactlyInAnyOrder(EXPERIENCER_ONLY, CREATE_ROLE_NOT_ALLOWED,
+                WORKSPACE_NOT_MEMBER, PROJECT_NOT_YOURS);
     }
 
     @Test
     void wrongInputIsABadRequest() {
         assertThat(withStatus(HttpStatus.BAD_REQUEST)).containsExactlyInAnyOrder(NAME_REQUIRED, NAME_TOO_LONG, NAME_INVALID,
-                DESCRIPTION_TOO_LONG, VEHICLE_NOT_FOUND, CONFIRM_NAME_MISMATCH, REASON_REQUIRED, REASON_TOO_LONG, CONFIRM_REQUIRED);
+                DESCRIPTION_TOO_LONG, VEHICLE_NOT_FOUND, CONFIRM_NAME_MISMATCH, REASON_REQUIRED, REASON_TOO_LONG, CONFIRM_REQUIRED,
+                WORKSPACE_REQUIRED, PERSONAL_HAS_NO_WORKSPACE);
     }
 
     @Test
     void everyOtherErrorIsAStateConflict() {
         assertThat(withStatus(HttpStatus.CONFLICT)).containsExactlyInAnyOrder(NO_PROJECT_OPEN, PROJECT_ARCHIVED, PROJECT_BUSY,
-                ALREADY_ARCHIVED, NOT_ARCHIVED, NAME_DUPLICATE, VEHICLE_LOCKED, TEST_NOT_FINISHED, TEST_NOT_PASSED,
-                CANDIDATE_ALREADY_DECIDED, BASELINE_CHANGED);
+                ALREADY_ARCHIVED, NOT_ARCHIVED, NAME_DUPLICATE, NAME_DUPLICATE_WORKSPACE, VEHICLE_LOCKED, TEST_NOT_FINISHED, TEST_NOT_PASSED,
+                TEST_EVIDENCE_INCOMPLETE, CANDIDATE_ALREADY_DECIDED, BASELINE_CHANGED);
         assertThat(values()).allSatisfy(e -> assertThat(e.getStatus()).isIn(HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN,
                 HttpStatus.BAD_REQUEST, HttpStatus.CONFLICT));
     }

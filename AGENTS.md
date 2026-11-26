@@ -17,17 +17,17 @@ chỉ từ tên màn hình, bảng DB hoặc tài liệu kế hoạch.
 
 VehicSim / VSOS (SEP490-FA26-G15) hỗ trợ kỹ sư kiểm thử, hiệu chỉnh AEB/FCW:
 tạo tình huống giả lập phanh, phân tích lỗi, tạo candidate và kiểm chứng bằng regression.
-Stack hiện tại: **Spring Boot Java 21 + Next.js 16 + MySQL (30 bảng, ADR-047 Proposed) + Redis + adapter CARLA Python**.
+Stack hiện tại: **Spring Boot Java 21 + Next.js 16 + MySQL (34 bảng: ADR-047 Proposed, 4 bảng `fa_json_*` của ADR-067 / migration 020) + Redis + adapter CARLA Python**.
 Java xử lý REST/nghiệp vụ/DB và lõi AEB, mô phỏng, chấm điểm (`com.vsos.core`, ADR-042);
 Python `worker/` chỉ gọi API CARLA và nói chuyện với lõi Java qua cầu nối stdio `vsos-bridge/1`.
 Backend FastAPI và Scenario Forge đã gỡ; không khôi phục kiến trúc cũ khi làm tính năng mới.
 
 Luồng mục tiêu 5 màn: **Thiết kế kịch bản → Baseline → Phân tích → Tối ưu AEB → Regression/Reviewer**.
-Code đã có mô tả, sinh biến thể, baseline, phân tích, candidate thủ công và regression;
-**MOBO/Pareto/Sensitivity/Robustness chưa triển khai** (TD-39, TD-06).
-CARLA web đã có `.xosc` + ScenarioRunner 0.9.16, RGB/sensor; **chưa có API/nút hủy** (TD-37).
+Code đã có mô tả, sinh biến thể, baseline, phân tích, candidate thủ công, MOBO/Pareto và regression;
+Sensitivity/Robustness và nối snapshot FA vào campaign còn thiếu (TD-39, TD-06).
+CARLA web đã có `.xosc` + ScenarioRunner 0.9.16, RGB/sensor và API hủy run/họ/regression/campaign; còn cần kiểm vòng đời CARLA thật (TD-37).
 Schema có 7 category; bộ động học và `.xosc`/CARLA chạy `CP_CROSSING` và CCRs/CCRm/CCRb (ADR-050); còn 3 nhóm (TD-42).
-AEB của ca người đi bộ trên CARLA nhận perception từ radar từ `.xosc` v9 (ADR-043, ADR-055; hiện hành v15 / `-xosc15`: + bù pha tăng lực ADR-056/061, + hành lang theo xe ADR-057, + phanh đúng mốc ADR-058, + bàn đạp 3 xe ADR-059, + người tăng tốc dần ADR-062; động học `1.4`); xe phía trước vẫn dùng ground truth (TD-01).
+AEB của ca người đi bộ trên CARLA nhận perception từ radar từ `.xosc` v9 (ADR-043, ADR-055; hiện hành v16 / `-xosc16`, xác nhận va chạm cảm biến ADR-066; các thay đổi v15: bù pha tăng lực ADR-056/061/063, hành lang theo xe ADR-057, phanh đúng mốc ADR-058, bàn đạp 3 xe ADR-059, người tăng tốc dần ADR-062; động học `1.4`); xe phía trước vẫn dùng ground truth (TD-01).
 Chỉ số chốt 13/11 (ADR-055): vận tốc va chạm tương đối (động học `1.1`), RMS jerk CARLA lọc Euro NCAP từ T_AEB, run `aeb_mode = OFF` chỉ để đối chiếu.
 Phanh CARLA đã hiệu chuẩn mô-men cho e-tron (ADR-051), kẹp ở μ·g khi đường ướt (ADR-052) và thay cú dừng gấp dưới 6 m/s (ADR-053); v8 thêm bảng bàn đạp e-tron và bù người đi bộ khởi động chậm (ADR-054, Accepted 22/11); còn lệch (TD-17).
 Hướng đi ngang đã sửa ở xosc2; người "dừng ở lề" đứng lại ở lề từ xosc4 (23/10/2026, kiểm CARLA thật).
@@ -43,7 +43,7 @@ Chi tiết chức năng và nghiệm thu: [phân chia 5 thành viên](docs/vehic
 | 1. Thiết kế kịch bản | `/scenarios/new` | `DescribeService`, `FamilyService`, `ScenarioRules`, `LlmService` | Họ kịch bản + biến thể hợp lệ |
 | 2. Chạy baseline | `/scenarios`, `/analysis/carla` | `RunService`, `core/xosc/XoscExport`; `worker/run_xosc.py`, `sensor_recorder.py` | Run + seed + xe/AEB/simulator + kết quả/artifact |
 | 3. Phân tích lỗi | `/analysis/failures/**` | `AnalysisService`, `AnalysisViewService`, `core/evaluation/AnalysisMetrics` | Dataset v2: tập tối ưu/xác minh + baseline/seed + chỉ số/nguyên nhân |
-| 4. Tối ưu AEB | `/aeb` | `AebService` hiện chỉ tạo candidate thủ công; service/worker tối ưu cần bổ sung | Candidate + campaign/trial + mục tiêu/ràng buộc |
+| 4. Tối ưu AEB | `/aeb`, `/aeb/mobo/**` | `AebService`, `OptimizationService`, `core/mobo/MoboEngine` | Candidate + campaign/trial + mục tiêu/ràng buộc; FA snapshot chưa nối vào campaign |
 | 5. Regression và phê duyệt | `/validation/**` | `RegressionController`, `RegressionService`, `ReviewDecisionService`, `RegressionRepository` | Kết quả xác minh + quyết định; baseline mới nếu Accept |
 
 Code ở [src/main/java/com/vsos/backend/](src/main/java/com/vsos/backend/), chia `<tầng>/<chức năng>` theo
@@ -102,8 +102,8 @@ chạy `.\mvnw.cmd clean` rồi build lại. Mô phỏng mặc định qua threa
 2. Java, kể cả lõi `com.vsos.core`, không import `carla`; lời gọi API CARLA chỉ ở adapter trong `worker/`.
 3. Mọi route `/api/v1/vehicsim/*` cần đăng nhập. Mỗi tài khoản một role:
    ADMIN/ENGINEER/EXPERIENCER được ghi; MANAGER chỉ đọc; REVIEWER được chạy regression và Accept/Reject theo [ADR-049](docs/adr/ADR-049-reviewer-chay-regression-de-kiem-tra.md).
-   Header `X-VehicSim-Project` chọn project (`ProjectAccess`): EXPERIENCER trong project cá nhân (`ProjectScope`), Reviewer trong project
-   thuộc workspace mình là thành viên (`ReviewerScope`); role khác vẫn chung project nhóm (TD-30).
+   Header `X-VehicSim-Project` chọn project (`ProjectAccess`): EXPERIENCER trong project cá nhân (`ProjectScope`), Reviewer và Kỹ sư trong project
+   của workspace mình thuộc về (`ReviewerScope`, [ADR-064](docs/adr/ADR-064-ky-su-tao-project-cua-workspace.md)); ADMIN/MANAGER chung project nhóm (TD-30).
 4. Cùng biến thể + seed phải tái lập được; candidate chạy đúng seed baseline.
    So sánh phải cùng xe, biến thể và phiên bản simulator.
    Không đổi tham số kịch bản và tham số AEB cùng lúc trong một lần so sánh.

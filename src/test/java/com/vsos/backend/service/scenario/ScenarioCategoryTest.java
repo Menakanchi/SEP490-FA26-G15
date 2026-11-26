@@ -102,4 +102,20 @@ class ScenarioCategoryTest {
         assertThatThrownBy(() -> service.describe("Xe máy cắt vào làn ngay trước đầu xe ô tô đang chạy"))
                 .isInstanceOf(InvalidRequestException.class).hasMessageContaining("CUT_IN").hasMessageContaining("chưa có bộ mô phỏng");
     }
+
+    @Test
+    void describeCheckRejectsInvalidLeadVehicleSpeedCombinations() {
+        assertThat(DescribeService.check(DescribeService.validate(
+                Map.of("category", "CCRM", "is_pedestrian_crossing", false, "ego_speed_kmh", 40, "target_speed_kmh", 45), new java.util.ArrayList<>())))
+                .anySatisfy(issue -> assertThat(issue).contains("CCRM"));
+        assertThat(DescribeService.check(DescribeService.validate(
+                Map.of("category", "CCRB", "is_pedestrian_crossing", false, "ego_speed_kmh", 50, "target_speed_kmh", 0, "target_decel_mps2", -6), new java.util.ArrayList<>())))
+                .anySatisfy(issue -> assertThat(issue).contains("CCRB"));
+        assertThat(DescribeService.check(DescribeService.validate(
+                Map.of("category", "CCRS", "is_pedestrian_crossing", false, "ego_speed_kmh", 50, "target_speed_kmh", 10), new java.util.ArrayList<>())))
+                .anySatisfy(issue -> assertThat(issue).contains("CCRS"));
+        assertThat(DescribeService.check(DescribeService.validate(
+                Map.of("category", "CCRM", "is_pedestrian_crossing", false, "ego_speed_kmh", 60, "target_speed_kmh", 30, "target_decel_mps2", -4), new java.util.ArrayList<>())))
+                .anySatisfy(issue -> assertThat(issue).contains("target_decel_mps2"));
+    }
 }

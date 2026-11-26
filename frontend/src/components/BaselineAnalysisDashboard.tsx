@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { VehicSimPage } from "@/components/VehicSimPage";
@@ -9,11 +9,15 @@ import { ErrorNote, PillButton } from "@/components/VehicSimUi";
 import { AnalysisDatasetPreparation } from "@/components/analysis/AnalysisDatasetPreparation";
 import { restoreSelection, selectionChecks, type ChosenRun } from "@/components/analysis/analysisSelectionData";
 import { AnalysisRunExplorer } from "@/components/analysis/AnalysisRunExplorer";
+import { overviewResponse } from "@/components/analysis/analysisOverviewData";
 import { AnalysisOverview } from "@/components/analysis/AnalysisOverview";
+import { FailureAnalysisV3 } from "@/components/analysis/FailureAnalysisV3";
 import { LegacyFailureCases } from "@/components/LegacyFailureCases";
-import { AnalysisNav, analysisError, analysisLabel, eligible } from "@/components/analysisUi";
+import { AnalysisScope, analysisError, analysisLabel, eligible } from "@/components/analysisUi";
 import { vehicsimApi } from "@/services/vehicsim";
-import type { AnalysisDashboardData, AnalysisFilters, AnalysisRun, AnalysisSelection } from "@/types/vehicsim";
+import type { AnalysisDashboardData, AnalysisFilters, AnalysisRun } from "@/types/vehicsim";
+
+import { readSavedSelection, sameSavedSelection, type SavedSelection } from "@/components/analysis/analysisSnapshotData";
 
 type Draft = { key: string; chosen: Record<number, ChosenRun>; notice?: string };
 const FILTER_KEYS = ["scenario_id", "variant_id", "aeb_version_id", "vehicle_id", "simulator", "weather", "time_of_day", "status", "failure_class"] as const;
@@ -21,13 +25,17 @@ const numericKeys = new Set(["scenario_id", "variant_id", "aeb_version_id", "veh
 const positive = (value: string | null, fallback: number) => value && /^\d+$/.test(value) && Number(value) > 0 && Number.isSafeInteger(Number(value)) ? Number(value) : fallback;
 
 export function BaselineAnalysisDashboard() {
+  return <AnalysisScope><BaselineWorkspace /></AnalysisScope>;
+}
+
+function BaselineWorkspace() {
   const { ctx, canWrite } = useVehicSimContext();
   const { user } = useAuth();
   const router = useRouter();
   const params = useSearchParams();
   const view = ["runs", "failures", "dataset"].includes(params.get("view") ?? "") ? params.get("view")! : "overview";
   const page = positive(params.get("page"), 1);
-  const size = [10, 20, 30, 50].includes(Number(params.get("page_size"))) ? Number(params.get("page_size")) : 30;
+  const size = [10, 20, 30, 50].includes(Number(params.get("page_size"))) ? Number(params.get("page_size")) : 10;
   const filters: AnalysisFilters = {};
   for (const key of FILTER_KEYS) {
     const raw = params.get(key);
@@ -36,24 +44,27 @@ export function BaselineAnalysisDashboard() {
   const filterKey = JSON.stringify(filters);
   const [result, setResult] = useState<{ key: string; data: AnalysisDashboardData | null; error: string | null } | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const alive = useRef(false), operationLock = useRef(false);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const [operation, setOperation] = useState<"save" | "handoff" | null>(null);
   const busy = operation !== null;
   const [operationError, setOperationError] = useState<{ scope: string; message: string; kind: "save" | "handoff" } | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const rawDatasetId = params.get("dataset_id"), savedId = positive(rawDatasetId, 0);
   const [snapshotRefresh, setSnapshotRefresh] = useState(0);
-  const [snapshotResult, setSnapshotResult] = useState<{ key: string; data: AnalysisSelection | null; error: string | null } | null>(null);
-  const [draftNotice, setDraftNotice] = useState<string | null>(null);
+  const [snapshotResult, setSnapshotResult] = useState<{ key: string; data: SavedSelection | null; error: string | null } | null>(null);
+  const [draftNotice, setDraftNotice] = useState<{ key: string; message: string } | null>(null);
+  const [handoffCheck, setHandoffCheck] = useState<{ key: string; time: string } | null>(null);
   const storageKey = user?.id && ctx?.project.id ? `vehicsim.analysis.selection.v1:${user.id}:${ctx.project.id}` : "";
   const draftReady = Boolean(storageKey && draft?.key === storageKey);
   const chosen = draft?.key === storageKey ? draft.chosen : {};
-  const snapshotKey = `${storageKey}:${rawDatasetId}:${snapshotRefresh}`;
+  const snapshotKey = `${storageKey}:${rawDatasetId}:${snapshotRefresh}:${ctx?.system.baseline?.id ?? "unknown"}`;
   const saved = snapshotResult?.key === snapshotKey ? snapshotResult.data : null;
   const snapshotLoading = rawDatasetId !== null && savedId > 0 && snapshotResult?.key !== snapshotKey;
   const snapshotError = rawDatasetId !== null && !savedId ? "Mã tập phân tích không hợp lệ."
     : snapshotResult?.key === snapshotKey ? snapshotResult.error : null;
   const requestKey = `${filterKey}:${page}:${size}:${refresh}`;
-  const loading = (view === "overview" || view === "runs") && result?.key !== requestKey;
+  const loading = result?.key !== requestKey;
   const data = result?.key === requestKey ? result.data : null;
   const error = result?.key === requestKey ? result.error : null;
 
@@ -67,11 +78,12 @@ export function BaselineAnalysisDashboard() {
     else window.history.replaceState(null, "", `/analysis/failures?${next}`);
   }
   useEffect(() => {
-    if (view === "failures" || view === "dataset") return;
     let active = true;
     vehicsimApi.analysisRuns(JSON.parse(filterKey) as AnalysisFilters, page, size)
       .then(value => {
         if (!active) return;
+        if (!overviewResponse(value) || !value.items.every(run => run && typeof run === "object" && run.metrics && typeof run.metrics === "object"))
+          throw new Error("Dữ liệu danh sách trả về thiếu cấu trúc cần thiết. Hãy thử tải lại; chưa thể kết luận kết quả run.");
         const last = Math.max(1, Math.ceil(value.total / size));
         if (page > last) {
           const next = new URLSearchParams(window.location.search); next.set("page", String(last));
@@ -81,7 +93,7 @@ export function BaselineAnalysisDashboard() {
       })
       .catch(e => { if (active) setResult({ key: requestKey, data: null, error: analysisError(e) }); });
     return () => { active = false; };
-  }, [filterKey, page, size, refresh, requestKey, router, view]);
+  }, [filterKey, page, size, refresh, requestKey, router]);
   useEffect(() => {
     if (!storageKey) return;
     try {
@@ -97,7 +109,7 @@ export function BaselineAnalysisDashboard() {
     try { sessionStorage.setItem(storageKey, JSON.stringify(draft.chosen)); }
     catch {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- storage errors must be visible before leaving the page
-      setDraftNotice("Trình duyệt không lưu được lựa chọn trong phiên; lựa chọn chỉ giữ khi bạn còn ở trang này.");
+      setDraftNotice({ key: storageKey, message: "Trình duyệt không lưu được lựa chọn trong phiên; lựa chọn chỉ giữ khi bạn còn ở trang này." });
     }
   }, [draft, storageKey]);
   useEffect(() => {
@@ -105,10 +117,7 @@ export function BaselineAnalysisDashboard() {
     let active = true;
     vehicsimApi.savedAnalysisDataset(savedId).then(value => {
       if (!active) return;
-      if ((value as unknown as { schema?: string }).schema !== "vehicsim.analysis-dataset/v2")
-        throw new Error("Tập dữ liệu cũ chưa có hai tập độc lập. Hãy chọn và chốt lại trước khi bàn giao.");
-      if (value.id !== savedId) throw new Error("Mã tập máy chủ trả về không khớp yêu cầu. Hãy thử tải lại.");
-      setSnapshotResult({ key: snapshotKey, data: value as unknown as AnalysisSelection, error: null });
+      setSnapshotResult({ key: snapshotKey, data: readSavedSelection(value, savedId), error: null });
     }).catch(err => { if (active) setSnapshotResult({ key: snapshotKey, data: null, error: analysisError(err) }); });
     return () => { active = false; };
   }, [savedId, storageKey, snapshotKey]);
@@ -119,42 +128,51 @@ export function BaselineAnalysisDashboard() {
   const canSave = canWrite && draftReady && checks.every(check => check.ok);
   function assign(run: AnalysisRun, role: string) {
     if (!canWrite || busy || !draftReady || (role && (!eligible(run) || !["OPTIMIZATION", "VALIDATION"].includes(role)))) return;
-    setSnapshotResult(null); setOperationError(null);
-    if (rawDatasetId !== null) update({ dataset_id: undefined });
+    setOperationError(null);
     setDraft(old => {
       const next = { ...(old?.key === storageKey ? old.chosen : {}) };
       if (!role) delete next[run.run_id]; else next[run.run_id] = { run, role: role as ChosenRun["role"] };
       return { key: storageKey, chosen: next };
     });
   }
+  const sameOpenSnapshot = (idAtStart: string | null) => alive.current && new URLSearchParams(window.location.search).get("dataset_id") === idAtStart;
   async function save() {
-    if (!canSave || busy) return;
-    setOperation("save"); setOperationError(null);
+    if (!canSave || operationLock.current) return;
+    operationLock.current = true; setOperation("save"); setOperationError(null); setHandoffCheck(null);
     try {
-      const value = await vehicsimApi.createAnalysisSelection({ scenario_id: selection[0].run.scenario_id, baseline_id: selection[0].run.baseline_id,
+      const value = readSavedSelection(await vehicsimApi.createAnalysisSelection({ scenario_id: selection[0].run.scenario_id, baseline_id: selection[0].run.baseline_id,
         optimization_run_ids: opt.map(x => x.run.run_id), validation_run_ids: val.map(x => x.run.run_id),
-        run_revisions: Object.fromEntries(selection.map(x => [String(x.run.run_id), x.run.revision])) });
-      setSnapshotResult({ key: `${storageKey}:${value.id}:${snapshotRefresh}`, data: value, error: null });
+        run_revisions: Object.fromEntries(selection.map(x => [String(x.run.run_id), x.run.revision])) }));
+      if (!sameOpenSnapshot(rawDatasetId)) return;
+      const sameIds = (a: number[], b: number[]) => a.length === b.length && a.every(id => b.includes(id));
+      if (value.scenario.id !== selection[0].run.scenario_id || value.baseline.id !== selection[0].run.baseline_id
+          || !sameIds(value.optimization_run_ids, opt.map(x => x.run.run_id)) || !sameIds(value.validation_run_ids, val.map(x => x.run.run_id))
+          || !selection.every(item => value.runs.some(run => run.run_id === item.run.run_id && run.revision === item.run.revision)))
+        throw new Error("Snapshot trả về không khớp lựa chọn/revision đã gửi. Giữ bản nháp và kiểm tra lại nguồn trước khi chốt lại.");
+      setSnapshotResult({ key: `${storageKey}:${value.id}:${snapshotRefresh}:${ctx?.system.baseline?.id ?? "unknown"}`, data: value, error: null });
       update({ dataset_id: value.id });
-    } catch (err) { setOperationError({ scope: draftScope, kind: "save", message: analysisError(err) }); }
-    finally { setOperation(null); }
+    } catch (err) { if (sameOpenSnapshot(rawDatasetId)) setOperationError({ scope: draftScope, kind: "save", message: analysisError(err) }); }
+    finally { operationLock.current = false; if (alive.current) setOperation(null); }
   }
-  async function proceed() {
-    if (!saved || saved.baseline_current !== true || busy) return;
-    setOperation("handoff"); setOperationError(null);
+  async function checkHandoff() {
+    if (!saved || saved.baseline_current !== true || operationLock.current) return;
+    operationLock.current = true; setOperation("handoff"); setOperationError(null); setHandoffCheck(null);
     try {
-      const verified = await vehicsimApi.analysisHandoff(saved.id);
-      if (verified.id !== saved.id || verified.schema !== "vehicsim.analysis-dataset/v2" || verified.baseline_current !== true || verified.handoff_ready !== true)
-        throw new Error("Máy chủ chưa xác nhận tập dữ liệu đủ điều kiện bàn giao. Hãy tải lại tập đã chốt.");
-      if (positive(new URLSearchParams(window.location.search).get("dataset_id"), 0) === saved.id)
-        router.push(`/aeb?dataset_id=${saved.id}`);
-    } catch (err) { setOperationError({ scope: snapshotKey, kind: "handoff", message: analysisError(err) }); }
-    finally { setOperation(null); }
+      const verified = readSavedSelection(await vehicsimApi.analysisHandoff(saved.id), saved.id);
+      if (!sameOpenSnapshot(rawDatasetId)) return;
+      if (verified.baseline_current !== true || verified.handoff_ready !== true || !sameSavedSelection(saved, verified))
+        throw new Error("Máy chủ chưa xác nhận cùng snapshot đủ điều kiện bàn giao. Hãy tải lại tập đã chốt và rà soát nguồn.");
+      setHandoffCheck({ key: snapshotKey, time: new Date().toLocaleTimeString("vi-VN") });
+    } catch (err) { if (sameOpenSnapshot(rawDatasetId)) setOperationError({ scope: snapshotKey, kind: "handoff", message: analysisError(err) }); }
+    finally { operationLock.current = false; if (alive.current) setOperation(null); }
+  }
+  function openOptimizer() {
+    if (saved && saved.baseline_current === true && handoffCheck?.key === snapshotKey && !operationLock.current)
+      router.push(`/aeb?dataset_id=${saved.id}`);
   }
   function clearDraft() {
     if (!canWrite || busy || !draftReady) return;
-    setDraft({ key: storageKey, chosen: {} }); setSnapshotResult(null); setOperationError(null);
-    update({ dataset_id: undefined });
+    setDraft({ key: storageKey, chosen: {} }); setOperationError(null);
   }
   const search = params.get("q") ?? "", sort = params.get("sort") ?? "newest";
   const filterLabels: Record<typeof FILTER_KEYS[number], string> = {
@@ -172,53 +190,67 @@ export function BaselineAnalysisDashboard() {
     disabled={!canWrite || busy || !storageKey || draft?.key !== storageKey || !eligible(run)} value={chosen[run.run_id]?.role ?? ""} onChange={e => assign(run, e.target.value)}>
     <option value="">Không chọn</option><option value="OPTIMIZATION">Tối ưu</option><option value="VALIDATION">Xác minh</option>
   </select>;
-  const nav = <AnalysisNav view={view} count={selection.length} />;
-  const optimizationFamily = filters.scenario_id === undefined
-    ? ctx?.families[0]
-    : ctx?.families.find(f => f.id === filters.scenario_id);
-  if (view === "failures") return <LegacyFailureCases initialScenario={filters.scenario_id} navigation={nav} />;
-  return <VehicSimPage step={3} crumbs={[{ label: "Phân tích" }, { label: view === "overview" ? "Tổng quan baseline" : view === "runs" ? "Lượt chạy" : "Tập bàn giao" }]}
-    actions={view === "dataset" ? (
-      <PillButton disabled={!savedId || snapshotLoading || busy} onClick={() => setSnapshotRefresh(value => value + 1)}>Tải lại tập đã chốt</PillButton>
-    ) : (
-      <>
-        <PillButton disabled={loading} onClick={() => setRefresh(x => x + 1)}>Tải lại kết quả</PillButton>
-        {canWrite && optimizationFamily && (
-          <PillButton variant="dark" href={`/aeb/mobo?scenario_id=${optimizationFamily.id}&new=1`}>
-            Tối ưu toàn họ {optimizationFamily.code}
-          </PillButton>
-        )}
-      </>
-    )}>
-    {nav}
-    {view !== "dataset" && <ErrorNote message={error} />}
-    {view !== "dataset" && error && <div><button className="analysis-button" onClick={() => setRefresh(x => x + 1)}>Thử tải lại</button></div>}
-    {draftReady && (draft?.notice || draftNotice) && <p role="status" className="analysis-caption">{draft?.notice || draftNotice}</p>}
+  const openDataset = () => {
+    update({ view: "dataset" });
+    requestAnimationFrame(() => document.getElementById("analysis-dataset-summary")?.focus());
+  };
+  const closeDataset = () => { update({ view: "runs" }); requestAnimationFrame(() => document.getElementById("analysis-prepare-trigger")?.focus()); };
+  const optimizationFamily = ctx?.families.find(f => f.id === filters.scenario_id);
+  return <VehicSimPage step={3} crumbs={[{ label: "Phân tích" }, { label: "Dữ liệu & kết quả" }]}
+    subtitle="Chọn lượt chạy để xem kết quả đã lưu. Mở các công cụ bổ sung khi cần điều tra hoặc bàn giao."
+    actions={<PillButton disabled={loading} onClick={() => setRefresh(x => x + 1)}>Tải lại kết quả</PillButton>}>
+    {ctx && <FailureAnalysisV3 project={ctx.project.id} canWrite={canWrite} />}
+    <div hidden={Boolean(params.get("fa_execution") || params.get("fa_report"))}>
+    <h2 className="analysis-caption">Kết quả đã lưu (legacy)</h2>
+    <ErrorNote message={error} />
+    {error && <div><button className="analysis-button" onClick={() => setRefresh(x => x + 1)}>Thử tải lại</button></div>}
+    {draftReady && (draft?.notice || draftNotice?.key === storageKey) && <p role="status" className="analysis-caption">{draft?.notice || draftNotice?.message}</p>}
     {!canWrite && <p className="analysis-caption">Bạn đang ở chế độ chỉ đọc. Chốt tập dữ liệu yêu cầu quyền ghi.</p>}
-    {selection.length > 0 && view !== "dataset" && <div className="analysis-selection-bar"><span><strong>{selection.length}</strong> run đã chọn · {opt.length} tối ưu · {val.length} xác minh</span><button className="analysis-button" onClick={() => update({ view: "dataset" })}>Rà soát tập bàn giao →</button></div>}
-    {view !== "dataset" && <section className="analysis-panel space-y-4" aria-label="Bộ lọc baseline">
-      <div className="analysis-toolbar"><h2>Phạm vi phân tích</h2><button className="analysis-button" onClick={() => update(Object.fromEntries(FILTER_KEYS.map(key => [key, undefined])), true)}>Xóa bộ lọc</button></div>
-      <div className="analysis-filters">
+    <section className="analysis-panel analysis-data-filter" aria-label="Bộ lọc baseline">
+      <h2 className="sr-only">Chọn dữ liệu</h2>
+      <div className="analysis-filters analysis-main-filters">
         <label>Họ kịch bản<select aria-label="Họ kịch bản" value={filters.scenario_id ?? ""} onChange={e => update({ scenario_id: e.target.value }, true)}><option value="">Tất cả họ</option>{ctx?.families.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
-        <label>Phiên bản baseline<select aria-label="Phiên bản baseline" value={filters.aeb_version_id ?? ""} onChange={e => update({ aeb_version_id: e.target.value }, true)}><option value="">Tất cả</option>{ctx?.versions.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}</select></label>
-        {([["status", "Trạng thái", ["PENDING", "RUNNING", "PAUSED", "COMPLETED", "FAILED", "STOPPED"]], ["failure_class", "Khâu lỗi", ["PERCEPTION", "DECISION", "CONTROL", "VEHICLE_DYNAMICS"]]] as const).map(([key, label, values]) => <label key={key}>{label}<select aria-label={label} value={filters[key] ?? ""} onChange={e => update({ [key]: e.target.value }, true)}><option value="">Tất cả</option>{values.map(value => <option key={value} value={value}>{analysisLabel(value)}</option>)}</select></label>)}
+        <label>Trạng thái<select aria-label="Trạng thái" value={filters.status ?? ""} onChange={e => update({ status: e.target.value }, true)}><option value="">Tất cả</option>{["PENDING", "RUNNING", "PAUSED", "COMPLETED", "FAILED", "STOPPED"].map(value => <option key={value} value={value}>{analysisLabel(value)}</option>)}</select></label>
+        <button className="analysis-button" onClick={() => update(Object.fromEntries(FILTER_KEYS.map(key => [key, undefined])), true)}>Xóa bộ lọc</button>
       </div>
-      <details open={Boolean(filters.weather || filters.time_of_day || filters.variant_id || filters.vehicle_id || filters.simulator)}><summary className="cursor-pointer text-[12px] font-semibold text-vehicsim-decision">Điều kiện chạy và bộ lọc nâng cao</summary><div className="analysis-filters mt-4">
+      <details open={Boolean(filters.aeb_version_id || filters.failure_class || filters.weather || filters.time_of_day || filters.variant_id || filters.vehicle_id || filters.simulator)}><summary>Lọc nâng cao</summary><div className="analysis-filters mt-4">
+        <label>Phiên bản baseline<select aria-label="Phiên bản baseline" value={filters.aeb_version_id ?? ""} onChange={e => update({ aeb_version_id: e.target.value }, true)}><option value="">Tất cả</option>{ctx?.versions.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}</select></label>
+        <label>Khâu được luật nhắc tới<select aria-label="Khâu lỗi" value={filters.failure_class ?? ""} onChange={e => update({ failure_class: e.target.value }, true)}><option value="">Tất cả</option>{["PERCEPTION", "DECISION", "CONTROL", "VEHICLE_DYNAMICS"].map(value => <option key={value} value={value}>{analysisLabel(value)}</option>)}</select></label>
         {([["weather", "Thời tiết", ["CLEAR", "CLOUDY", "RAIN", "HEAVY_RAIN", "FOG"]], ["time_of_day", "Thời điểm", ["DAY", "DUSK", "NIGHT"]]] as const).map(([key, label, values]) => <label key={key}>{label}<select value={filters[key] ?? ""} onChange={e => update({ [key]: e.target.value }, true)}><option value="">Tất cả</option>{values.map(value => <option key={value} value={value}>{analysisLabel(value)}</option>)}</select></label>)}
         {([["variant_id", "ID biến thể"], ["vehicle_id", "ID xe"], ["simulator", "Phiên bản simulator"]] as const).map(([key, label]) => <label key={key}>{label}<input type={key === "simulator" ? "text" : "number"} min={1} value={filters[key] ?? ""} onChange={e => update({ [key]: e.target.value }, true)} /></label>)}
       </div></details>
-    </section>}
-    {view === "overview" && <AnalysisOverview data={data} loading={loading} hasError={Boolean(error)} onOpenRuns={() => update({ view: "runs" })} onFilterSimulator={simulator => update({ simulator }, true)} returnTo={returnTo} scope={activeFilters.map(filter => filter.label)} />}
-    {view === "dataset" && <AnalysisDatasetPreparation selection={selection} checks={checks} ready={draftReady} canWrite={canWrite} canSave={canSave}
-      operation={operation} operationError={mutationError} errorKind={operationError?.kind ?? null}
-      snapshotId={savedId} hasSnapshot={rawDatasetId !== null} snapshot={saved} snapshotLoading={snapshotLoading} snapshotError={snapshotError}
-      search={params.get("d_q") ?? ""} returnTo={returnTo} renderSelection={roleField}
-      onSearch={d_q => update({ d_q })} onOpenRuns={() => update({ view: "runs" })} onRemove={run => assign(run, "")}
-      onClear={clearDraft} onSave={() => void save()} onProceed={() => void proceed()} onRetrySnapshot={() => setSnapshotRefresh(value => value + 1)} />}
-      {view === "runs" && <AnalysisRunExplorer data={data} loading={loading} hasError={Boolean(error)} page={page} size={size}
-        search={search} sort={sort} returnTo={returnTo} selectionCount={selection.length} activeFilters={activeFilters}
-        onRemoveFilter={key => update({ [key]: undefined }, true)} onSearch={q => update({ q })} onSort={sort => update({ sort })}
-        onPage={page => update({ page })} onSize={page_size => update({ page_size }, true)} onOpenDataset={() => update({ view: "dataset" })}
-        renderSelection={roleField} isSelected={run => Boolean(chosen[run.run_id])} />}
+      <p className="analysis-caption">Kết quả baseline đã lưu · thống kê và bảng dùng cùng bộ lọc. Đổi bộ lọc giữ nguyên lựa chọn bàn giao.</p>
+    </section>
+    <AnalysisOverview data={data} loading={loading} hasError={Boolean(error)} onFilterSimulator={simulator => update({ simulator }, true)} scope={activeFilters.map(filter => filter.label)} />
+    <AnalysisRunExplorer data={data} loading={loading} hasError={Boolean(error)} page={page} size={size}
+      search={search} sort={sort} returnTo={returnTo} selectionCount={selection.length} activeFilters={activeFilters}
+      onResetFilters={() => update(Object.fromEntries(FILTER_KEYS.map(key => [key, undefined])), true)} onRemoveFilter={key => update({ [key]: undefined }, true)} onSearch={q => update({ q })} onSort={sort => update({ sort })}
+      onPage={page => update({ page })} onSize={page_size => update({ page_size }, true)} onOpenDataset={openDataset}
+      selecting={view === "dataset"} renderSelection={roleField} isSelected={run => Boolean(chosen[run.run_id])} />
+    {selection.length > 0 && <div className="analysis-selection-bar"><span><strong>{selection.length}</strong> run đã chọn · {opt.length} tối ưu · {val.length} xác minh</span><button className="analysis-button" onClick={openDataset}>Rà soát tập bàn giao →</button></div>}
+    <details className="analysis-disclosure" data-analysis-tool="legacy" open={view === "failures"}
+      onToggle={event => { if (event.currentTarget.open !== (view === "failures")) update({ view: event.currentTarget.open ? "failures" : "runs" }); }}>
+      <summary>Tra cứu lỗi theo luật cũ</summary>
+      <p className="analysis-caption">Công cụ nâng cao có bộ lọc riêng, chỉ tra các lỗi đã lưu. Không có lỗi khớp không đồng nghĩa mọi run an toàn.</p>
+      {view === "failures" && <LegacyFailureCases initialScenario={filters.scenario_id} embedded />}
+    </details>
+    <details className="analysis-disclosure" data-analysis-tool="dataset" open={view === "dataset"}
+      onToggle={event => { if (event.currentTarget.open !== (view === "dataset")) { if (event.currentTarget.open) update({ view: "dataset" }); else closeDataset(); } }}>
+      <summary id="analysis-dataset-summary">Chuẩn bị tập bàn giao{selection.length ? ` (${selection.length} run đã chọn)` : ""}</summary>
+      <p className="analysis-caption">Gán run trong bảng phía trên vào Tối ưu hoặc Xác minh độc lập, rồi rà soát và chốt. Bản nháp được giữ khi đóng phần này.</p>
+      {view === "dataset" && <>
+        <div className="analysis-toolbar"><button className="analysis-button" onClick={closeDataset}>Đóng rà soát</button><PillButton disabled={!savedId || snapshotLoading || busy} onClick={() => setSnapshotRefresh(value => value + 1)}>Tải lại tập đã chốt</PillButton>
+          {canWrite && optimizationFamily && <PillButton href={`/aeb/mobo?scenario_id=${optimizationFamily.id}&new=1`}>Mở tối ưu toàn họ {optimizationFamily.code}</PillButton>}</div>
+        {canWrite && optimizationFamily && <p className="analysis-caption">Tối ưu toàn họ là tác vụ riêng, không sử dụng bản nháp đang chọn tại đây.</p>}
+        <AnalysisDatasetPreparation selection={selection} checks={checks} ready={draftReady} canWrite={canWrite} canSave={canSave}
+          operation={operation} operationError={mutationError} errorKind={operationError?.kind ?? null}
+          snapshotId={savedId} hasSnapshot={rawDatasetId !== null} snapshot={saved} snapshotLoading={snapshotLoading} snapshotError={snapshotError}
+          search={params.get("d_q") ?? ""} returnTo={returnTo} renderSelection={roleField}
+          onSearch={d_q => update({ d_q })} onOpenRuns={() => { document.getElementById("analysis-runs-title")?.focus(); document.getElementById("analysis-runs-title")?.scrollIntoView({ block: "center" }); }} onRemove={run => assign(run, "")}
+          onClear={clearDraft} onSave={() => void save()} onCheckHandoff={() => void checkHandoff()} onOpenOptimizer={openOptimizer}
+          checkedAt={handoffCheck?.key === snapshotKey ? handoffCheck.time : null} onRetrySnapshot={() => setSnapshotRefresh(value => value + 1)} />
+      </>}
+    </details>
+    </div>
   </VehicSimPage>;
 }

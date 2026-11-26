@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
@@ -23,6 +23,8 @@ import {
 } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
+import { formatMetric, formatMeasurement, speedKmh } from "@/components/analysis/analysisMetricFormat";
+import { hasCompleteTrialEvidence, isFeasibleTrial } from "@/components/aeb/optimizationEvidence";
 
 export default function AebMoboStudioPage() {
   const router = useRouter();
@@ -37,10 +39,16 @@ export default function AebMoboStudioPage() {
 
   const [runs, setRuns] = useState<OptimizationRun[] | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
-  const [activeRun, setActiveRun] = useState<OptimizationRun | null>(null);
+  const [runResult, setRunResult] = useState<{ id: number; data: OptimizationRun } | null>(null);
+  const activeRun = runResult?.id === selectedRunId ? runResult.data : null;
+  const listVersion = useRef(0);
+  const invalidateRunRequests = useCallback(() => { ++listVersion.current; }, []);
+  const selectionLock = useRef(false);
+  const cancellationLock = useRef(false);
+  const [detailRevision, setDetailRevision] = useState(0);
 
   // Sub-tabs: "runs" | "pareto" | "trials"
-  const [activeTab, setActiveTab] = useState<"runs" | "pareto" | "trials">(
+  const activeTab: "runs" | "pareto" | "trials" =
     queryTab === "pareto"
       ? "pareto"
       : queryTab === "trials"
@@ -49,20 +57,30 @@ export default function AebMoboStudioPage() {
       ? "runs"
       : Number.isInteger(queryRunId) && queryRunId > 0
       ? "pareto"
-      : "runs"
-  );
+      : "runs";
+
+  function openTab(tab: "runs" | "pareto" | "trials", runId = selectedRunId) {
+    const params = new URLSearchParams(searchParams);
+    params.set("tab", tab);
+    if (runId !== null) params.set("run_id", String(runId));
+    router.replace(`/aeb/mobo?${params}`);
+  }
 
   // Pareto data
-  const [paretoTrials, setParetoTrials] = useState<OptimizationTrial[] | null>(null);
+  const [paretoResult, setParetoResult] = useState<{ id: number; data: OptimizationTrial[] } | null>(null);
+  const paretoTrials = useMemo(() => paretoResult?.id === selectedRunId ? paretoResult.data.filter(isFeasibleTrial) : null, [paretoResult, selectedRunId]);
   const [selectingTrialId, setSelectingTrialId] = useState<number | null>(null);
-  const [createdCandidate, setCreatedCandidate] = useState<{
+  const [candidateResult, setCandidateResult] = useState<{
+    runId: number;
     id: number;
     label: string;
     regressionTestId?: number;
   } | null>(null);
+  const createdCandidate = candidateResult?.runId === selectedRunId ? candidateResult : null;
 
   // Trials data
-  const [allTrials, setAllTrials] = useState<OptimizationTrial[] | null>(null);
+  const [trialsResult, setTrialsResult] = useState<{ id: number; data: OptimizationTrial[] } | null>(null);
+  const allTrials = trialsResult?.id === selectedRunId ? trialsResult.data : null;
   const [trialsFilter, setTrialsFilter] = useState<"ALL" | "PARETO" | "FEASIBLE">("ALL");
 
   // Tự động chuyển sang màn khởi tạo riêng nếu có tham số ?new=1
@@ -77,78 +95,87 @@ export default function AebMoboStudioPage() {
 
   // Tải danh sách runs
   const loadRuns = useCallback(() => {
+    const version = ++listVersion.current;
     vehicsimApi
       .optimizationRuns()
       .then((data) => {
+        if (version !== listVersion.current) return;
         setRuns(data);
         if (data.length > 0) {
           const matched = Number.isInteger(queryRunId) && data.some((r) => r.id === queryRunId);
-          setSelectedRunId((cur) => (matched ? queryRunId : cur ?? data[0].id));
+          setSelectedRunId((cur) => (matched ? queryRunId : data.some(r => r.id === cur) ? cur : data[0].id));
+        } else {
+          setSelectedRunId(null);
         }
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách đợt tối ưu"));
+      .catch((err) => { if (version === listVersion.current) setError(err instanceof Error ? err.message : "Không tải được danh sách đợt tối ưu"); });
   }, [queryRunId]);
 
-  useEffect(loadRuns, [loadRuns]);
+  useEffect(() => { loadRuns(); return invalidateRunRequests; }, [loadRuns, invalidateRunRequests]);
 
   // Khi selectedRunId thay đổi, tải chi tiết run, pareto và all trials
   useEffect(() => {
+    let active = true;
     if (selectedRunId !== null) {
       vehicsimApi
         .optimizationRun(selectedRunId)
-        .then(setActiveRun)
-        .catch((err) => setError(err instanceof Error ? err.message : "Không tải được thông tin đợt tối ưu"));
+        .then(data => { if (active) setRunResult({ id: selectedRunId, data }); })
+        .catch((err) => { if (active) setError(err instanceof Error ? err.message : "Không tải được thông tin đợt tối ưu"); });
 
       vehicsimApi
         .optimizationPareto(selectedRunId)
-        .then(setParetoTrials)
-        .catch(() => setParetoTrials(null));
+        .then(data => { if (active) setParetoResult({ id: selectedRunId, data }); })
+        .catch((err) => { if (active) setError(err instanceof Error ? err.message : "Không tải được nghiệm Pareto"); });
 
       vehicsimApi
         .optimizationTrials(selectedRunId)
-        .then(setAllTrials)
-        .catch(() => setAllTrials(null));
+        .then(data => { if (active) setTrialsResult({ id: selectedRunId, data }); })
+        .catch((err) => { if (active) setError(err instanceof Error ? err.message : "Không tải được lượt thử"); });
     }
-  }, [selectedRunId]);
+    return () => { active = false; };
+  }, [selectedRunId, detailRevision]);
 
   // Polling nếu activeRun đang chạy
   useEffect(() => {
-    if (!activeRun || activeRun.status !== "RUNNING") return;
+    if (!activeRun || !["PENDING", "RUNNING"].includes(activeRun.status)) return;
+    let active = true;
     const interval = setInterval(() => {
-      vehicsimApi.optimizationRun(activeRun.id).then(setActiveRun).catch(() => {});
-      vehicsimApi.optimizationPareto(activeRun.id).then(setParetoTrials).catch(() => {});
-      vehicsimApi.optimizationTrials(activeRun.id).then(setAllTrials).catch(() => {});
+      vehicsimApi.optimizationRun(activeRun.id).then(data => { if (active) setRunResult({ id: activeRun.id, data }); }).catch(() => {});
+      vehicsimApi.optimizationPareto(activeRun.id).then(data => { if (active) setParetoResult({ id: activeRun.id, data }); }).catch(() => {});
+      vehicsimApi.optimizationTrials(activeRun.id).then(data => { if (active) setTrialsResult({ id: activeRun.id, data }); }).catch(() => {});
       loadRuns();
     }, 2500);
-    return () => clearInterval(interval);
+    return () => { active = false; clearInterval(interval); };
   }, [activeRun, loadRuns]);
 
   // Dừng run
   const handleCancelRun = async (runId: number) => {
+    if (!canWrite || cancellationLock.current || activeRun?.id !== runId || activeRun.status !== "RUNNING") return;
     if (!confirm("Bạn có chắc muốn dừng đợt tối ưu hoá này?")) return;
+    cancellationLock.current = true;
     setCancelling(true);
     try {
       await vehicsimApi.cancelOptimization(runId);
       loadRuns();
-      if (activeRun?.id === runId) {
-        const updated = await vehicsimApi.optimizationRun(runId);
-        setActiveRun(updated);
-      }
+      setDetailRevision(value => value + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể huỷ đợt chạy");
     } finally {
       setCancelling(false);
+      cancellationLock.current = false;
     }
   };
 
   // Chọn nghiệm Pareto làm ứng viên
   const handleSelectCandidate = async (trialId: number) => {
-    if (!selectedRunId) return;
+    if (!selectedRunId || !canWrite || selectionLock.current || !paretoTrials?.some(trial => trial.id === trialId && isFeasibleTrial(trial))) return;
+    selectionLock.current = true;
     setSelectingTrialId(trialId);
     setError(null);
     try {
       const res = await vehicsimApi.selectOptimizationCandidate(selectedRunId, trialId);
-      setCreatedCandidate({
+      setCandidateResult({
+        runId: selectedRunId,
         id: res.candidate_aeb_version_id,
         label: `Phương án #${trialId}`,
         regressionTestId: res.regression_test_id,
@@ -158,6 +185,7 @@ export default function AebMoboStudioPage() {
       setError(err instanceof Error ? err.message : "Không thể chọn làm ứng viên");
     } finally {
       setSelectingTrialId(null);
+      selectionLock.current = false;
     }
   };
 
@@ -171,35 +199,38 @@ export default function AebMoboStudioPage() {
 
   const filteredTrials = useMemo(() => {
     return (allTrials ?? []).filter((t) => {
-      if (trialsFilter === "PARETO") return t.is_pareto_optimal;
-      if (trialsFilter === "FEASIBLE") return !t.constraint_violated;
+      if (trialsFilter === "PARETO") return t.is_pareto_optimal && isFeasibleTrial(t);
+      if (trialsFilter === "FEASIBLE") return isFeasibleTrial(t);
       return true;
     });
   }, [allTrials, trialsFilter]);
 
   const pagedTrials = useMemo(() => {
-    const start = (trialsPage - 1) * TRIALS_PAGE_SIZE;
+    const start = (Math.min(trialsPage, Math.max(1, Math.ceil(filteredTrials.length / TRIALS_PAGE_SIZE))) - 1) * TRIALS_PAGE_SIZE;
     return filteredTrials.slice(start, start + TRIALS_PAGE_SIZE);
   }, [filteredTrials, trialsPage]);
-  const trialsPages = Math.ceil(filteredTrials.length / TRIALS_PAGE_SIZE);
+  const trialsPages = Math.max(1, Math.ceil(filteredTrials.length / TRIALS_PAGE_SIZE));
+  const safeTrialsPage = Math.min(trialsPage, trialsPages);
 
   const pagedPareto = useMemo(() => {
     const list = paretoTrials ?? [];
-    const start = (paretoPage - 1) * PARETO_PAGE_SIZE;
+    const start = (Math.min(paretoPage, Math.max(1, Math.ceil(list.length / PARETO_PAGE_SIZE))) - 1) * PARETO_PAGE_SIZE;
     return list.slice(start, start + PARETO_PAGE_SIZE);
   }, [paretoTrials, paretoPage]);
-  const paretoPages = Math.ceil((paretoTrials?.length ?? 0) / PARETO_PAGE_SIZE);
+  const paretoPages = Math.max(1, Math.ceil((paretoTrials?.length ?? 0) / PARETO_PAGE_SIZE));
+  const safeParetoPage = Math.min(paretoPage, paretoPages);
 
   const pagedRuns = useMemo(() => {
     const list = runs ?? [];
-    const start = (runsPage - 1) * RUNS_PAGE_SIZE;
+    const start = (Math.min(runsPage, Math.max(1, Math.ceil(list.length / RUNS_PAGE_SIZE))) - 1) * RUNS_PAGE_SIZE;
     return list.slice(start, start + RUNS_PAGE_SIZE);
   }, [runs, runsPage]);
-  const runsPages = Math.ceil((runs?.length ?? 0) / RUNS_PAGE_SIZE);
+  const runsPages = Math.max(1, Math.ceil((runs?.length ?? 0) / RUNS_PAGE_SIZE));
+  const safeRunsPage = Math.min(runsPage, runsPages);
 
   const completedTrialsCount =
     activeRun?.completed_trials ??
-    (allTrials && allTrials.length > 0 ? allTrials.length : 0);
+    (allTrials?.filter(trial => trial.status === "COMPLETED").length ?? 0);
   const maxTrialsCount = activeRun?.max_trials || 10;
   const runProgressPct =
     maxTrialsCount > 0
@@ -306,10 +337,10 @@ export default function AebMoboStudioPage() {
 
       {/* CỤM TABS CON NỘI BỘ (PARETO / TRIALS / LỊCH SỬ RUNS) */}
       <section className="flex flex-col gap-4">
-        <div className="flex items-center gap-2 border-b border-solid border-vehicsim-line pb-1">
+        <div className="flex flex-wrap items-center gap-2 border-b border-solid border-vehicsim-line pb-1">
           <button
             type="button"
-            onClick={() => setActiveTab("runs")}
+            onClick={() => openTab("runs")}
             className={cx(
               "flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition",
               activeTab === "runs"
@@ -323,7 +354,7 @@ export default function AebMoboStudioPage() {
 
           <button
             type="button"
-            onClick={() => setActiveTab("pareto")}
+            onClick={() => openTab("pareto")}
             className={cx(
               "flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition",
               activeTab === "pareto"
@@ -337,7 +368,7 @@ export default function AebMoboStudioPage() {
 
           <button
             type="button"
-            onClick={() => setActiveTab("trials")}
+            onClick={() => openTab("trials")}
             className={cx(
               "flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition",
               activeTab === "trials"
@@ -353,11 +384,11 @@ export default function AebMoboStudioPage() {
         {/* TAB: PHƯƠNG ÁN TỐI ƯU */}
         {activeTab === "pareto" && (
           <div className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
-            {paretoTrials?.length === 0 ? (
+            {paretoTrials === null ? <p role="status" className="p-5">{error ? "Chưa tải được nghiệm Pareto." : runs?.length === 0 ? "Chưa có đợt tối ưu." : "Đang tải nghiệm Pareto…"}</p> : paretoTrials.length === 0 ? (
               <div className="p-10">
                 <EmptyState title="Chưa có phương án tối ưu cho đợt chạy này">
                   {activeRun?.status === "COMPLETED"
-                    ? "Đợt chạy đã hoàn thành nhưng tất cả các lượt thử nghiệm đều vi phạm ràng buộc an toàn (tỉ lệ va chạm cao hơn hoặc phanh oan tăng quá 5% so với bản cơ sở). Bạn có thể xem chi tiết từng lượt ở tab 'Toàn bộ lượt thử'."
+                    ? "Đợt chạy đã hoàn thành nhưng chưa có phương án Pareto đủ số đo hợp lệ và thỏa ràng buộc. Xem trạng thái và số đo ở tab 'Toàn bộ lượt thử'."
                     : "Đợt chạy đang trong giai đoạn khởi tạo ban đầu hoặc đang mô phỏng các lượt thử nghiệm."}
                 </EmptyState>
               </div>
@@ -388,22 +419,18 @@ export default function AebMoboStudioPage() {
                         <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.BRAKE_BUILDUP_RATE ?? "—"}</td>
                         <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.MAX_DECELERATION ?? "—"}</td>
                         <td className="px-4 py-3.5 font-bold text-vehicsim-decision whitespace-nowrap">
-                          {t.rms_jerk_mps3 !== null ? `${t.rms_jerk_mps3.toFixed(2)} m/s³` : "—"}
+                          {formatMeasurement(t.rms_jerk_mps3, "m/s³", 3, true)}
                         </td>
                         <td className="px-4 py-3.5 font-bold text-vehicsim-danger whitespace-nowrap">
-                          {t.impact_speed_mps !== null
-                            ? t.impact_speed_mps <= 0.001
-                              ? "0.0 km/h (An toàn)"
-                              : `${(t.impact_speed_mps * 3.6).toFixed(1)} km/h`
-                            : "—"}
+                          {formatMeasurement(speedKmh(t.impact_speed_mps), "km/h")}
                         </td>
                         <td className="px-4 py-3.5 font-bold text-vehicsim-ink whitespace-nowrap">
-                          {t.stopping_distance_m !== null ? `${t.stopping_distance_m.toFixed(2)} m` : "—"}
+                          {formatMeasurement(t.stopping_distance_m, "m", 2, true)}
                         </td>
                         <td className="w-[170px] px-4 py-3.5 text-center whitespace-nowrap">
                           <button
                             type="button"
-                            disabled={selectingTrialId !== null || !canWrite}
+                            disabled={selectingTrialId !== null || !canWrite || !isFeasibleTrial(t)}
                             onClick={() => handleSelectCandidate(t.id)}
                             className="inline-flex h-8 items-center justify-center rounded-lg bg-vehicsim-primary px-3.5 text-[12px] font-bold text-white transition hover:bg-vehicsim-primary-hover disabled:opacity-40 shadow-xs whitespace-nowrap"
                           >
@@ -419,9 +446,9 @@ export default function AebMoboStudioPage() {
             {paretoPages > 1 && (
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-5 py-3.5">
                 <span className="text-[12px] font-medium text-vehicsim-muted">
-                  Hiển thị {(paretoPage - 1) * PARETO_PAGE_SIZE + 1}–{Math.min(paretoPage * PARETO_PAGE_SIZE, paretoTrials?.length ?? 0)} trên {paretoTrials?.length ?? 0} phương án tối ưu
+                  Hiển thị {(safeParetoPage - 1) * PARETO_PAGE_SIZE + 1}–{Math.min(safeParetoPage * PARETO_PAGE_SIZE, paretoTrials?.length ?? 0)} trên {paretoTrials?.length ?? 0} phương án tối ưu
                 </span>
-                <Pagination page={paretoPage} pages={paretoPages} onPage={setParetoPage} />
+                <Pagination page={safeParetoPage} pages={paretoPages} onPage={setParetoPage} />
               </div>
             )}
           </div>
@@ -456,7 +483,7 @@ export default function AebMoboStudioPage() {
               </div>
             </div>
 
-            {filteredTrials.length === 0 ? (
+            {allTrials === null ? <p role="status" className="p-5">{error ? "Chưa tải được lượt thử." : runs?.length === 0 ? "Chưa có đợt tối ưu." : "Đang tải lượt thử…"}</p> : filteredTrials.length === 0 ? (
               <div className="p-10">
                 <EmptyState title="Không có lượt thử nào khớp bộ lọc" />
               </div>
@@ -487,28 +514,24 @@ export default function AebMoboStudioPage() {
                           </Tag>
                         </td>
                         <td className="px-4 py-3.5 font-mono text-[12px]">
-                          {t.acquisition_value !== null ? t.acquisition_value.toFixed(4) : "—"}
+                          {formatMetric(t.acquisition_value, 4)}
                         </td>
                         <td className="px-4 py-3.5 font-semibold text-vehicsim-decision">
-                          {t.rms_jerk_mps3 !== null ? `${t.rms_jerk_mps3.toFixed(2)} m/s³` : "—"}
+                          {formatMeasurement(t.rms_jerk_mps3, "m/s³", 3, true)}
                         </td>
                         <td className="px-4 py-3.5 font-semibold text-vehicsim-danger">
-                          {t.impact_speed_mps !== null
-                            ? t.impact_speed_mps <= 0.001
-                              ? "0.0 km/h"
-                              : `${(t.impact_speed_mps * 3.6).toFixed(1)} km/h`
-                            : "—"}
+                          {formatMeasurement(speedKmh(t.impact_speed_mps), "km/h")}
                         </td>
                         <td className="px-4 py-3.5 font-semibold text-vehicsim-ink">
-                          {t.stopping_distance_m !== null ? `${t.stopping_distance_m.toFixed(2)} m` : "—"}
+                          {formatMeasurement(t.stopping_distance_m, "m", 2, true)}
                         </td>
                         <td className="px-4 py-3.5 text-center">
-                          <Tag tone={t.constraint_violated ? "danger" : "ok"}>
-                            {t.constraint_violated ? "Vi phạm" : "Hợp lệ"}
+                          <Tag tone={!hasCompleteTrialEvidence(t) ? "neutral" : t.constraint_violated ? "danger" : "ok"}>
+                            {!hasCompleteTrialEvidence(t) ? "Chưa đánh giá" : t.constraint_violated ? "Vi phạm" : "Hợp lệ"}
                           </Tag>
                         </td>
                         <td className="w-[100px] px-4 py-3.5 text-center whitespace-nowrap">
-                          {t.is_pareto_optimal ? (
+                          {t.is_pareto_optimal && isFeasibleTrial(t) ? (
                             <span className="inline-flex items-center rounded-full bg-vehicsim-ok-bg px-2 py-0.5 text-[11px] font-bold text-vehicsim-ok">
                               ★ Tối ưu
                             </span>
@@ -525,9 +548,9 @@ export default function AebMoboStudioPage() {
             {trialsPages > 1 && (
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-5 py-3.5">
                 <span className="text-[12px] font-medium text-vehicsim-muted">
-                  Hiển thị {(trialsPage - 1) * TRIALS_PAGE_SIZE + 1}–{Math.min(trialsPage * TRIALS_PAGE_SIZE, filteredTrials.length)} trên {filteredTrials.length} lượt thử
+                  Hiển thị {(safeTrialsPage - 1) * TRIALS_PAGE_SIZE + 1}–{Math.min(safeTrialsPage * TRIALS_PAGE_SIZE, filteredTrials.length)} trên {filteredTrials.length} lượt thử
                 </span>
-                <Pagination page={trialsPage} pages={trialsPages} onPage={setTrialsPage} />
+                <Pagination page={safeTrialsPage} pages={trialsPages} onPage={setTrialsPage} />
               </div>
             )}
 
@@ -542,6 +565,8 @@ export default function AebMoboStudioPage() {
         {/* TAB 3: LỊCH SỬ CÁC ĐỢT CHẠY */}
         {activeTab === "runs" && (
           <div className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
+            {runs === null && <p role="status" className="p-5">{error ? "Chưa tải được đợt tối ưu." : "Đang tải đợt tối ưu…"}</p>}
+            {runs?.length === 0 && <EmptyState title="Chưa có đợt tối ưu">Khởi tạo đợt mới để bắt đầu.</EmptyState>}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[960px] text-left text-[13px]">
                 <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
@@ -569,7 +594,7 @@ export default function AebMoboStudioPage() {
                         )}
                       >
                         <td className="w-12 px-3 py-4 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
-                          {(runsPage - 1) * RUNS_PAGE_SIZE + idx + 1}
+                          {(safeRunsPage - 1) * RUNS_PAGE_SIZE + idx + 1}
                         </td>
                         <td className="px-5 py-4 font-mono font-bold text-vehicsim-ink">#{r.id}</td>
                         <td className="px-5 py-4 font-bold text-vehicsim-ink">{r.name}</td>
@@ -606,7 +631,9 @@ export default function AebMoboStudioPage() {
                               type="button"
                               onClick={() => {
                                 setSelectedRunId(r.id);
-                                setActiveTab("pareto");
+                                openTab("pareto", r.id);
+                                setParetoPage(1);
+                                setError(null);
                               }}
                               className={cx(
                                 "min-w-[100px] whitespace-nowrap rounded-lg px-3 py-1.5 text-center text-[12px] font-bold transition shadow-xs",
@@ -623,7 +650,9 @@ export default function AebMoboStudioPage() {
                               type="button"
                               onClick={() => {
                                 setSelectedRunId(r.id);
-                                setActiveTab("trials");
+                                openTab("trials", r.id);
+                                setTrialsPage(1);
+                                setError(null);
                               }}
                               className="min-w-[100px] whitespace-nowrap rounded-lg border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-1.5 text-center text-[12px] font-bold text-vehicsim-ink transition hover:bg-vehicsim-soft hover:border-slate-400 shadow-xs"
                               title="Xem chi tiết toàn bộ các lượt thử nghiệm đã chạy"
@@ -641,9 +670,9 @@ export default function AebMoboStudioPage() {
             {runsPages > 1 && (
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-5 py-3.5">
                 <span className="text-[12px] font-medium text-vehicsim-muted">
-                  Hiển thị {(runsPage - 1) * RUNS_PAGE_SIZE + 1}–{Math.min(runsPage * RUNS_PAGE_SIZE, runs?.length ?? 0)} trên {runs?.length ?? 0} đợt chạy
+                  Hiển thị {(safeRunsPage - 1) * RUNS_PAGE_SIZE + 1}–{Math.min(safeRunsPage * RUNS_PAGE_SIZE, runs?.length ?? 0)} trên {runs?.length ?? 0} đợt chạy
                 </span>
-                <Pagination page={runsPage} pages={runsPages} onPage={setRunsPage} />
+                <Pagination page={safeRunsPage} pages={runsPages} onPage={setRunsPage} />
               </div>
             )}
           </div>

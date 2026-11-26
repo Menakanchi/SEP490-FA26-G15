@@ -20,6 +20,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import bridge
+import make_video
 import sensor_recorder
 
 WORKER = Path(__file__).resolve().parent
@@ -157,93 +158,6 @@ def prepare_runtime(source: Path, target: Path, out: Path, simulator: str) -> No
     tree.write(target, encoding="utf-8", xml_declaration=True)
 
 
-def run_carla_session(args: argparse.Namespace, info: dict, out: Path, core: dict) -> int:
-    """Chế độ CARLA Dev Runner khi chưa kết nối được CARLA server (macOS hoặc dev local).
-
-    Giới hạn: từ v9 AEB của ca người đi bộ cần điểm radar mỗi tick (ADR-043), mà chế độ này không có radar, nên ca người đi bộ chạy v9 báo lỗi rõ ràng;
-    ca xe phía trước vẫn chạy được.
-
-    Tái hiện chuẩn xác kịch bản OpenSCENARIO bằng lõi CarlaSession của dự án (ADR-042).
-    """
-    result_file = out / "result.json"
-    result_file.unlink(missing_ok=True)
-    tree = ET.parse(args.xosc)
-    params = {p.attrib["name"]: p.attrib["value"] for p in tree.iterfind(".//ParameterDeclaration")}
-    lead_elem = tree.find(".//Controller[@name='VehicSimLead']")
-    is_lead = lead_elem is not None
-    dt = info["step_s"]
-    simulator_name = f"carla-0.9.16{info['suffix']}"
-
-    b = bridge.Bridge(out / "bridge.log")
-    try:
-        opened = b.request("open", timeout=bridge.OPEN_TIMEOUT_S, xosc=str(args.xosc), out_dir=str(out), simulator_version=simulator_name)
-        if is_lead:
-            ego_v = float(params.get("vs_ego_speed_kmh", 50.0)) / 3.6
-            target_v = float(params.get("vs_target_speed_kmh", 0.0)) / 3.6
-            init_d = float(params.get("vs_initial_distance_m", 20.0))
-            target_decel = float(params["vs_target_decel_mps2"]) if params.get("vs_target_decel_mps2") else None
-            veh_len = float(params.get("vs_vehicle_length_m", 4.75))
-            lead_center = init_d + 2.3
-            ego_x = -veh_len / 2.0
-            b.request("init", ego={"fwd": [1, 0], "right": [0, -1]}, walker=[lead_center, 0.0], front_offset=veh_len / 2.0,
-                      carla={"map": "Town04", "blueprint": "vehicle.audi.etron", "target_blueprint": "vehicle.toyota.prius"},
-                      target_size=[4.6, 1.9], target_center_offset=0.0)
-            t = 0.0
-            finished = None
-            while t < 14.0 and not finished:
-                if (out / STOP_FLAG).exists():
-                    raise RunStoppedError(f"Có yêu cầu dừng ({STOP_FLAG})")
-                time_s = round(t, 4)
-                if target_decel is not None and time_s >= 4.0:
-                    target_v = max(0.0, target_v + target_decel * dt)
-                res = b.request("step", t=time_s, ego={"loc": [ego_x, 0], "fwd": [1, 0], "vel": [ego_v, 0]},
-                                ped={"loc": [lead_center, 0], "vel": [target_v, 0]}, walker_hit=False)
-                finished = res.get("finished")
-                pedal = res.get("pedal", 0.0)
-                ego_v = max(0.0, ego_v - pedal * 4.6 * dt)
-                ego_x += ego_v * dt
-                lead_center += target_v * dt
-                t += dt
-        else:
-            ego_v = float(params.get("vs_ego_speed_kmh", 50.0)) / 3.6
-            trigger_d = float(params.get("vs_trigger_distance_m", 20.0))
-            ped_v = float(params.get("vs_pedestrian_speed_mps", 3.0))
-            veh_len = float(params.get("vs_vehicle_length_m", 4.75))
-            start_y = opened.get("constants", {}).get("pedestrian_start_y_m", -3.6)
-            ego_x = -veh_len / 2.0
-            ped_y = start_y
-            b.request("init", ego={"fwd": [1, 0], "right": [0, -1]}, walker=[trigger_d, start_y], front_offset=veh_len / 2.0,
-                      carla={"map": "Town04", "blueprint": "vehicle.audi.etron"})
-            t = 0.0
-            ped_moving = False
-            finished = None
-            while t < 12.0 and not finished:
-                if (out / STOP_FLAG).exists():
-                    raise RunStoppedError(f"Có yêu cầu dừng ({STOP_FLAG})")
-                time_s = round(t, 4)
-                if (trigger_d - (ego_x + veh_len / 2.0)) <= trigger_d:
-                    ped_moving = True
-                vy = ped_v if ped_moving else 0.0
-                ped_y += vy * dt
-                res = b.request("step", t=time_s, ego={"loc": [ego_x, 0.0], "fwd": [1, 0], "vel": [ego_v, 0.0]},
-                                ped={"loc": [trigger_d, ped_y], "vel": [0.0, vy]}, walker_hit=False)
-                finished = res.get("finished")
-                pedal = res.get("pedal", 0.0)
-                ego_v = max(0.0, ego_v - pedal * 4.6 * dt)
-                ego_x += ego_v * dt
-                t += dt
-    finally:
-        b.close()
-
-    lifecycle = {"destroyed_before": 0, "destroyed_after": 0, "stopped": False, "core": core, "dev_runner": True}
-    (out / "lifecycle.json").write_text(json.dumps(lifecycle), encoding="utf-8")
-    (out / "sensors").mkdir(parents=True, exist_ok=True)
-    if not result_file.is_file():
-        raise RuntimeError(f"Lỗi khởi tạo kết quả mô phỏng CARLA: {out}")
-    print(f"Đã chạy .xosc bằng CarlaSession (Dev Runner): {result_file}")
-    return 0
-
-
 def run(args: argparse.Namespace) -> int:
     out = (args.out or args.xosc.with_suffix("")).resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -255,10 +169,10 @@ def run(args: argparse.Namespace) -> int:
     info = bridge.xosc_info(args.xosc)
     state = probe(args.host, args.port, args.sr_root)
     if not state["connected"] or not state.get("compatible") or not state["scenario_runner"]:
-        # Chế độ Dev Runner khi chưa kết nối được CARLA server (macOS hoặc dev local)
-        # Tái hiện chuẩn xác kịch bản OpenSCENARIO bằng lõi CarlaSession của dự án
-        print(f"[CARLA Dev Runner] CARLA server offline ({args.host}:{args.port}). Chạy mô phỏng kiểm chuẩn qua lõi CarlaSession ({info['suffix']}).", file=sys.stderr)
-        return run_carla_session(args, info, out, core)
+        raise RuntimeError(
+            f"CARLA chưa sẵn sàng ({args.host}:{args.port}): cần server/client tương thích và ScenarioRunner. "
+            "Kiểm tra --status hoặc chọn bộ động học để chạy offline."
+        )
     import carla
 
     client = carla.Client(args.host, args.port)
@@ -270,6 +184,7 @@ def run(args: argparse.Namespace) -> int:
         world = client.load_world(map_name)
     result_file = out / "result.json"
     result_file.unlink(missing_ok=True)
+    (out / make_video.VIDEO_NAME).unlink(missing_ok=True)
     lifecycle = {"destroyed_before": release_world(client), "destroyed_after": None, "stopped": False, "core": core}
     if lifecycle["destroyed_before"]:
         print(f"Dọn lại sau lần chạy bị ngắt: xoá {lifecycle['destroyed_before']} actor cũ.", file=sys.stderr)
@@ -279,6 +194,7 @@ def run(args: argparse.Namespace) -> int:
     env = environment(args.sr_root)
     recorder = sensor_recorder.SensorRecorder(args.host, args.port, out / "sensors", camera=args.camera, step_s=step_s)
     follower = proc = None
+    succeeded = False
     recorder.start()
     command = [sys.executable, str(args.sr_root / "scenario_runner.py"), "--openscenario", str(runtime),
                "--host", args.host, "--port", str(args.port), "--timeout", "120", "--sync", "--frameRate", str(round(1 / step_s)),
@@ -299,6 +215,7 @@ def run(args: argparse.Namespace) -> int:
         if code != 0 or not criteria or not result_file.is_file():
             result_file.unlink(missing_ok=True)
             raise RuntimeError(f"ScenarioRunner kết thúc mã {code} hoặc thiếu kết quả; xem {out / 'scenario_runner.log'}")
+        succeeded = True
     except RunStoppedError:
         lifecycle["stopped"] = True
         raise
@@ -316,9 +233,11 @@ def run(args: argparse.Namespace) -> int:
             lifecycle["destroyed_after"] = release_world(client)
         except RuntimeError:
             pass
-        if lifecycle["stopped"]:
-            result_file.unlink(missing_ok=True)  # run bị dừng không có điểm hợp lệ
+        if not succeeded:
+            result_file.unlink(missing_ok=True)  # timeout/error/cancel must not leave a partial result to submit
         (out / "lifecycle.json").write_text(json.dumps(lifecycle), encoding="utf-8")
+    if args.camera:  # chỉ khi run thành công (lỗi/dừng đã thoát ở trên); ghép video không bao giờ làm hỏng run
+        make_video.build_run_video(out, recorder.camera_interval_s, keep_frames=args.keep_frames, frame_step_s=step_s)
     print(f"Đã chạy .xosc bằng ScenarioRunner: {result_file}")
     return 0
 
@@ -333,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sr-root", type=Path, default=Path(os.environ.get("SR_ROOT", str(Path.home() / "scenario_runner"))))
     parser.add_argument("--timeout", type=float, default=240.0)
     parser.add_argument("--camera", action="store_true")
+    parser.add_argument("--keep-frames", action="store_true", help="Giữ ảnh PNG camera sau khi ghép video.mp4 (mặc định xoá để đỡ ~70 MB mỗi run)")
     parser.add_argument("--hud", action=argparse.BooleanOptionalAction, default=True,
                         help="follow_hero vẽ tốc độ/bàn đạp cạnh xe trong cửa sổ CARLA (mặc định bật; --no-hud để tắt)")
     parser.add_argument("--fast", action="store_true", help="tương thích hợp đồng worker; ScenarioRunner dùng sync tick")

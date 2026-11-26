@@ -60,9 +60,6 @@ public class AdminService {
             throw invalid("Mật khẩu phải ít nhất 8 ký tự và tối đa 72 byte UTF-8");
         long id=repo.createUser(email,b.lastName().trim(),clean(b.middleName()),b.firstName().trim(),
                 b.role().name(),b.isActive(),passwords.encode(b.password()));
-        if (Set.of("ENGINEER", "REVIEWER").contains(b.role().name())) {
-            repo.addMemberToDefaultWorkspace(id, b.role().name(), actor);
-        }
         audit("user_create",actor,id);
         return detail("users",id);
     }

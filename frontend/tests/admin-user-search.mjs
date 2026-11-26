@@ -201,7 +201,7 @@ try{
     await input.fill(oldQuery);await input.press("Enter");
     await frame.getByRole("status").filter({hasText:"Đang tải dữ liệu tài khoản"}).waitFor();
     const count=readCount();
-    await page.getByRole("navigation",{name:"Quản trị hệ thống",exact:true}).filter({visible:true}).getByRole("link",{name:/^Workspace/}).click();
+    await page.getByRole("navigation",{name:"Điều hướng VehicSim",exact:true}).filter({visible:true}).getByRole("link",{name:/^Workspace$/}).click();
     await frame.getByRole("heading",{level:1,name:"Workspace",exact:true}).waitFor();
     const late=page.waitForResponse(r=>new URL(r.url()).searchParams.get("q")===oldQuery);
     release("search");await (await late).finished();await settle();

@@ -48,6 +48,8 @@ class CarlaWebTest {
         when(db.first(anyString(), any(Object[].class))).thenReturn(new Row(Json.obj("id", 42L, "scenario_id", 3L,
                 "scenario_version_id", 4L, "carla_vehicle_model_id", 5L, "aeb_version_id", 6L,
                 "random_seed", 123456L, "run_config_json", Json.write(Map.of("ego_speed_kmh", 40)))));
+        when(db.first(startsWith("SELECT p.status"), any(Object[].class))).thenReturn(
+                new Row(Json.obj("status", "ACTIVE", "workspace_id", 3L, "workspace_status", "ACTIVE", "user_role", "ENGINEER", "member_id", 7L)));
         tx = mock(TransactionTemplate.class);
         executor = mock(TaskExecutor.class);
         runs = new RunService(db, mock(Queries.class), props, executor, mock(ApplicationEventPublisher.class),
@@ -56,7 +58,7 @@ class CarlaWebTest {
 
     @Test
     void xoscProfileHasADifferentIdentityFromDirectCarla() {
-        assertThat(runs.configuredSimulator()).isEqualTo("carla-0.9.16-xosc15");
+        assertThat(runs.configuredSimulator()).isEqualTo("carla-0.9.16-xosc16");
         when(props.simulator()).thenReturn("carla");
         assertThat(runs.configuredSimulator()).isEqualTo("carla-0.9.16");
     }
@@ -65,8 +67,8 @@ class CarlaWebTest {
     void carlaReplayKeepsOriginalVariantVehicleAebAndSeedWithoutCrossSimulatorBaselineLink() {
         assertThat(runs.runOnCarla(1, 42, 7)).isEqualTo(70);
         var call = mockingDetails(db).getInvocations().stream().filter(i -> i.getMethod().getName().equals("insert")).findFirst().orElseThrow();
-        assertThat(java.util.Arrays.asList(call.getArguments()).subList(1, 8)).containsExactly(1L, 3L, 4L, 5L, 6L, "CARLA", "carla-0.9.16-xosc15");
-        assertThat(call.getArguments()[8]).isEqualTo(0.01); // xosc15 chạy ở 100 Hz, ghi đúng vào fixed_delta_seconds
+        assertThat(java.util.Arrays.asList(call.getArguments()).subList(1, 8)).containsExactly(1L, 3L, 4L, 5L, 6L, "CARLA", "carla-0.9.16-xosc16");
+        assertThat(call.getArguments()[8]).isEqualTo(0.01); // CARLA chạy ở 100 Hz, ghi đúng vào fixed_delta_seconds
         assertThat(call.getArguments()[11]).isNull(); // baseline_run_id chỉ dành cho cặp cùng simulator
         assertThat(call.getArguments()[12]).isNull(); // optimization_trial_id: replay không thuộc trial tối ưu nào
         assertThat(call.getArguments()[14]).isEqualTo(123456L);
@@ -97,6 +99,7 @@ class CarlaWebTest {
 
     @Test
     void stepFollowsTheSimulatorIdentity() {
+        assertThat(RunService.stepFor("carla-0.9.16-xosc16")).isEqualTo(0.01);
         assertThat(RunService.stepFor("carla-0.9.16-xosc15")).isEqualTo(0.01);
         assertThat(RunService.stepFor("carla-0.9.16-xosc14")).isEqualTo(0.01);
         assertThat(RunService.stepFor("carla-0.9.16-xosc13")).isEqualTo(0.01);
@@ -125,7 +128,7 @@ class CarlaWebTest {
 
     @Test
     void queuedOldXoscRunFailsBeforeBuildingBundleOrLaunchingWorker() {
-        for (String old : List.of("xosc1", "xosc2", "xosc3", "xosc4", "xosc5")) {
+        for (String old : List.of("xosc1", "xosc2", "xosc3", "xosc4", "xosc5", "xosc15")) {
             reset(db);
             queuedRunWithProfileFailsBeforeLaunchingWorker("carla-0.9.16-" + old, old);
         }
@@ -148,7 +151,7 @@ class CarlaWebTest {
         when(props.simulator()).thenReturn("carla");
         assertThatThrownBy(runs::simulatorForNewRuns).isInstanceOf(Vs.InvalidRequestException.class).hasMessageContaining("carla-xosc");
         when(props.simulator()).thenReturn("carla-xosc");
-        assertThat(runs.simulatorForNewRuns()).isEqualTo("carla-0.9.16-xosc15");
+        assertThat(runs.simulatorForNewRuns()).isEqualTo("carla-0.9.16-xosc16");
     }
 
     @Test
@@ -169,8 +172,8 @@ class CarlaWebTest {
         java.util.List<String> probed = new java.util.ArrayList<>();
         runs.useCommandProbe(executable -> { probed.add(executable); return true; });
 
-        assertThat(runs.simulatorForNewRuns()).isEqualTo("carla-0.9.16-xosc15");
-        assertThat(runs.simulatorForNewRuns()).isEqualTo("carla-0.9.16-xosc15");
+        assertThat(runs.simulatorForNewRuns()).isEqualTo("carla-0.9.16-xosc16");
+        assertThat(runs.simulatorForNewRuns()).isEqualTo("carla-0.9.16-xosc16");
         assertThat(probed).containsExactly("python");
     }
 
@@ -216,6 +219,17 @@ class CarlaWebTest {
         assertThatThrownBy(() -> runs.carlaFile(2, 42, "00000001.png")).isInstanceOf(Vs.NotFoundException.class);
     }
 
+    @Test
+    void theReplayVideoIsServedOnlyForAnExistingRunOfTheProject() throws Exception {
+        assertThatThrownBy(() -> runs.carlaVideo(1, 42)).as("chưa có video").isInstanceOf(Vs.NotFoundException.class);
+        Path video = directory.resolve("runs/42/" + RunService.VIDEO_FILE);
+        Files.createDirectories(video.getParent());
+        Files.write(video, new byte[]{0, 0, 0, 24});
+        assertThat(runs.carlaVideo(1, 42)).isEqualTo(video);
+        when(db.first(anyString(), any(Object[].class))).thenReturn(null);
+        assertThatThrownBy(() -> runs.carlaVideo(2, 42)).as("run của project khác").isInstanceOf(Vs.NotFoundException.class);
+    }
+
     private void stubCancelLookup(String status, Object regressionTestId) {
         var row = new java.util.HashMap<String, Object>(Json.obj("id", 42L, "status", status));
         row.put("regression_test_id", regressionTestId);
@@ -240,6 +254,15 @@ class CarlaWebTest {
 
         verify(db).update(eq("UPDATE simulation_runs SET status = 'STOPPED', error_message = ?, ended_at = ? WHERE id = ? AND status = 'PENDING'"),
                 any(), any(), eq(42L));
+    }
+
+    @Test
+    void archivedWorkspaceCannotCancelRun() {
+        stubCancelLookup("PENDING", null);
+        when(db.first(startsWith("SELECT p.status"), any(Object[].class))).thenReturn(
+                new Row(Json.obj("status", "ACTIVE", "workspace_id", 3L, "workspace_status", "ARCHIVED", "user_role", "ENGINEER", "member_id", 7L)));
+        assertThatThrownBy(() -> runs.cancelRun(1, 42, 7)).isInstanceOf(ResponseStatusException.class);
+        verify(db, never()).update(anyString(), any(Object[].class));
     }
 
     /** Tiến trình giả làm worker mồ côi: sống lâu, không đọc file cờ nên chỉ chết khi bị giết. */
@@ -391,6 +414,28 @@ class CarlaWebTest {
     }
 
     @Test
+    void cancellingAFamilyCanBeRestrictedToCarlaWithoutTouchingOtherSimulators() {
+        stubCancelLookup("PENDING", null);
+        when(db.update(anyString(), any(Object[].class))).thenReturn(1);
+        when(db.list(anyString(), any(Object[].class))).thenReturn(List.of(new Row(Json.obj("id", 41L))));
+
+        Map<String, Object> reply = runs.cancelFamilyRuns(1, 3, 7, "carla");
+
+        assertThat(reply).containsEntry("stopped", 1);
+        verify(db).list(argThat((String sql) -> sql.contains("simulator_type = ?")
+                && sql.contains("regression_test_id IS NULL") && sql.contains("optimization_trial_id IS NULL")), eq(1L), eq(3L), eq("CARLA"));
+        verify(db).update(startsWith("UPDATE simulation_runs SET status = 'STOPPED'"), any(Object[].class));
+    }
+
+    @Test
+    void cancellingAFamilyRejectsUnknownSimulator() {
+        assertThatThrownBy(() -> runs.cancelFamilyRuns(1, 3, 7, "unknown"))
+                .isInstanceOf(Vs.InvalidRequestException.class);
+        verify(db, never()).list(anyString(), any(Object[].class));
+        verify(db, never()).update(anyString(), any(Object[].class));
+    }
+
+    @Test
     void activeRunsOfAFamilyListPendingBeforeRunningAndMarkRegressionRunsNotCancellable() {
         when(db.first(startsWith("SELECT id FROM scenarios"), any(Object[].class))).thenReturn(new Row(Json.obj("id", 3L)));
         Map<String, Object> config = Json.obj("ego_speed_kmh", 50.0, "trigger_distance_m", 25.0, "pedestrian_speed_mps", 1.5, "stops_at_curb", true,
@@ -450,6 +495,8 @@ class CarlaWebTest {
     @Test
     void cancelOnlyFindsRunsOfTheCallersProject() {
         when(db.first(anyString(), any(Object[].class))).thenReturn(null);
+        doAnswer(call -> ((org.springframework.transaction.support.TransactionCallback<?>) call.getArgument(0)).doInTransaction(null))
+                .when(tx).execute(any());
         assertThatThrownBy(() -> runs.cancelRun(2, 42, 7)).isInstanceOf(Vs.NotFoundException.class);
     }
 
@@ -471,6 +518,8 @@ class CarlaWebTest {
         verify(tx, times(1)).execute(any());
 
         stubRunning42();
+        doAnswer(call -> ((org.springframework.transaction.support.TransactionCallback<?>) call.getArgument(0)).doInTransaction(null))
+                .when(tx).execute(any());
         assertThat(runs.cancelRun(1, 42, 7)).isEqualTo("STOPPING"); // A vẫn là chủ run => hủy được
         release.countDown();
         holder.join(5000);

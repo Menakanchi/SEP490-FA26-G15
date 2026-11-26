@@ -3,106 +3,85 @@ import { formatMeasurement, formatRunImpact } from "./analysisMetricFormat";
 
 export type ExplanationMetric = "rms" | "impact" | "stopping" | "ttc" | "separation" | "deceleration" | "timeline";
 type Input = { label: string; value: string; field: string };
-type Method = { title: string; definition: string; field: string; unit: string; formula: string; variables: string;
-  conditions: string; interpretation: string; limitations: string[]; method: string };
-
+type Method = { title: string; definition: string; field: string; unit: string; interpretation: string; limitations: string[] };
 const METHODS: Record<ExplanationMetric, Method> = {
   rms: {
     title: "RMS jerk", field: "rms_jerk_mps3", unit: "m/s³",
-    definition: "Độ lớn hiệu dụng của tốc độ thay đổi gia tốc trong pha phanh đã ghi.",
-    formula: "jᵢ = (aᵢ − aᵢ₋₁) / dt; RMS = √(Σjᵢ² / N)",
-    variables: "aᵢ: gia tốc ego có dấu (m/s²); dt: bước danh định (s); N: số mẫu từ onset lệnh đến hết run. Mẫu trước onset được dùng làm aᵢ₋₁; nếu không có thì dùng 0.",
-    conditions: "Simulator.brakePhaseMetrics chọn frame đầu t ≥ brake_onset_t (có sai số so khớp nhỏ). Không có onset/frame phù hợp thì trả null.",
-    interpretation: "Hỗ trợ quan sát độ êm của pha phanh; RMS cao riêng lẻ không kết luận AEB không an toàn hoặc mức thoải mái của người thật.",
-    limitations: ["Objective canonical dùng dt danh định, không thêm lọc trong phép RMS; gia tốc đầu vào CARLA đã được xử lý. Có thể gồm đoạn dừng gấp và khung cuối va chạm.", "Jerk trên biểu đồ dùng Δa/Δt theo timestamp thực, ngắt khi thiếu/trùng mẫu; khác objective này. IMU/sensor recomputation và RMS lọc thử nghiệm không ghi đè số đã lưu.", "API chưa trả đầy đủ mẫu/đầu vào và phiên bản công thức để tái lập RMS tại đây; giao diện không tính lại."],
-    method: "Simulator.brakePhaseMetrics · canonical",
+    definition: "Độ lớn hiệu dụng của tốc độ thay đổi gia tốc theo phương pháp producer đã dùng.",
+    interpretation: "Hỗ trợ quan sát độ êm; riêng giá trị này chưa chứng minh an toàn hoặc mức thoải mái của người thật.",
+    limitations: ["Jerk trên biểu đồ là sai phân gia tốc theo timestamp, không phải objective RMS đã lưu. Không dùng sensor jerk hoặc chart để tính lại objective.", "API chưa trả signal/filter/window và T_AEB của từng run. Không dùng brake_onset_t làm T_AEB của CARLA."]
   },
   impact: {
     title: "Tốc độ va chạm", field: "impact_speed_mps", unit: "m/s",
-    definition: "Tốc độ ego ở frame cuối của run khi bộ mô phỏng ghi nhận va chạm; không phải tốc độ tương đối với mục tiêu.",
-    formula: "impact_speed_mps = v_ego,last nếu collision; ngược lại null",
-    variables: "v_ego,last: tốc độ ego (m/s) ở frame cuối; collision: cờ va chạm canonical. Hiển thị km/h ở nơi khác dùng m/s × 3,6.",
-    conditions: "Chỉ trình bày số đo từng run đã hoàn tất và có outcome COLLISION; không đổi null thành 0.",
-    interpretation: "Cho biết tốc độ còn lại khi va chạm, chưa đủ xác định lỗi điều khiển, bỏ sót phanh hoặc khả năng tránh va chạm.",
-    limitations: ["Relative impact của CCR và sensor recomputation là đại lượng/nguồn khác, chưa được chiếu riêng vào metric này.", "Trong aggregate backend, run hợp lệ không va chạm đóng góp 0 là quy ước tổng hợp; đó không phải số đo va chạm từng run."],
-    method: "Simulator / LeadVehicleSimulator.summaryMetrics",
+    definition: "Số đo va chạm từng run đã lưu. Định nghĩa tốc độ ego hay tương đối phụ thuộc producer lịch sử.",
+    interpretation: "Tốc độ còn lại khi va chạm chưa xác định lỗi AEB hoặc khả năng tránh va chạm.",
+    limitations: ["ADR-055 thay tốc độ ego bằng tốc độ tương đối cho định danh mới; không dùng định nghĩa hiện tại để diễn giải chắc chắn run cũ hoặc profile chưa xác minh.", "API chưa chiếu physical contact impact riêng. Không gộp sensor impact với canonical impact.", "Không va chạm: số đo từng run là null. Giá trị 0 cho ca không va chạm chỉ là quy ước objective aggregate của run hợp lệ, không phải contact đã đo."]
   },
   stopping: {
     title: "Quãng phanh", field: "stopping_distance_m", unit: "m",
-    definition: "Quãng đã đi từ onset lệnh phanh cộng phần ngoại suy khi run kết thúc mà xe còn chạy.",
-    formula: "d = (x_last − x_onset) + v_last² / (2 × a_available), khi a_available > 0",
-    variables: "x_last, x_onset: vị trí mũi ego (m); v_last: tốc độ cuối (m/s); a_available: độ lớn giảm tốc khả dụng (m/s²). Nếu a_available ≤ 0, code dùng phần còn lại bằng 0.",
-    conditions: "Không có onset/frame pha phanh thì null. Bắt đầu từ onset lệnh, không bao gồm quãng phản ứng từ quyết định đến onset.",
-    interpretation: "Không luôn là quãng dừng đã đo. Phần ngoại suy giả định giảm tốc không đổi; không phải required stopping distance hay khoảng trống còn đủ để tránh va chạm.",
-    limitations: ["Động học dùng min(AEB max, xe max, μg); CARLA xosc5 thêm giới hạn phanh 100% theo cấu hình. File cũ giữ cách tính cũ.", "API Detail chưa trả x_onset và a_available của phép tính; không thay số bằng giảm tốc cực đại đã đo hoặc tham số cấu hình.", "CARLA còn lệch ở tốc độ thấp/ma sát; phần ngoại suy không chứng minh xe thực dừng đúng quãng này."],
-    method: "Simulator.brakePhaseMetrics · observed + extrapolated",
+    definition: "Giá trị đã lưu có thể gồm quãng đi trong trace từ pha phanh và phần ngoại suy khi run kết thúc mà xe còn chạy.",
+    interpretation: "Không luôn là quãng dừng đã đo. Quãng ngắn hơn chưa chắc tốt hơn: trace có thể bị cắt bởi va chạm hoặc kết thúc run.",
+    limitations: ["API Detail chưa trả x_onset và a_available của phép tính, cũng chưa tách trace component và extrapolated component. Cả hai phần chưa xác định riêng; không tự chia hoặc thay số.", "Theo source, phần đuôi có thể dùng v²/(2a_available) với giả định giảm tốc không đổi. Mốc vị trí đầu bước phanh thay đổi theo vintage; profile chưa xác minh thì không áp một công thức chung.", "Configured deceleration khác achieved deceleration; không thay a_available bằng tham số cấu hình hay giảm tốc cực đại đã đo."]
   },
   ttc: {
     title: "TTC nhỏ nhất", field: "min_ttc_s", unit: "s",
-    definition: "Giá trị nhỏ nhất của TTC ground truth trong các frame hợp lệ; code lưu 0 khi va chạm. Khác TTC nhận thức và thời điểm va chạm đã quan sát.",
-    formula: "", variables: "", conditions: "",
-    interpretation: "TTC là dự đoán với vận tốc tức thời giữ không đổi, không phải đồng hồ đếm chắc chắn tới va chạm. Điều kiện quỹ đạo và chuyển động ngang được xét riêng trong controller.",
-    limitations: ["TTC nhận thức yêu cầu phát hiện, perceived_y có số, gap > 0 và closing ≥ 2 m/s; hành lang dự đoán dùng y_seen + vy_filtered × min(TTC, 2 s). TTC nhận thức có số chưa có nghĩa controller phải phanh.", "Không tiến gần, ngoài điều kiện GT/path hoặc thiếu tín hiệu có thể không có TTC; API không phân biệt mọi nguyên nhân null. Không dùng GT thay TTC nhận thức thiếu.", "Sampling có thể bỏ cực tiểu; API chưa trả timestamp đạt min. Không thay số từ tốc độ ban đầu hoặc khoảng cách kích hoạt tình huống."],
-    method: "groundTruthTtc / summaryMetrics; AebStack.decide cho TTC nhận thức",
+    definition: "TTC ground truth nhỏ nhất do backend cung cấp; khác TTC nhận thức và thời điểm va chạm đã quan sát.",
+    interpretation: "TTC 1D không phải physical collision truth trong bài toán 2D; TTC có số chưa có nghĩa controller phải phanh.",
+    limitations: ["GT và perception là hai nguồn khác nhau; không dùng GT thay TTC nhận thức thiếu.", "API chưa trả timestamp đạt cực tiểu hoặc lý do null; không thay bằng tốc độ ban đầu hay khoảng cách kích hoạt."]
   },
   separation: {
     title: "Khoảng cách nhỏ nhất", field: "min_distance_m", unit: "m",
-    definition: "Độ hở hình học nhỏ nhất giữa ego và mục tiêu theo các frame, không phải khoảng cách tâm, radar range hay khoảng cách tới vạch.",
-    formula: "", variables: "", conditions: "Va chạm được lưu là 0; không có mẫu hợp lệ thì không có số đo.",
-    interpretation: "Khoảng cách nhỏ hỗ trợ xem xét biên an toàn; riêng số đo này không xác định nguyên nhân lỗi AEB.",
-    limitations: ["Dùng hình học và lấy mẫu của simulator, không phải khoảng cách đo thực địa. Chưa có timestamp min trong API.", "Cảnh CCR hiện còn giới hạn hình học; không dùng khoảng cách tới vạch trên biểu đồ làm dynamic gap tới xe mục tiêu."],
-    method: "Simulator / LeadVehicleSimulator.summaryMetrics",
+    definition: "Độ hở hình học nhỏ nhất đã lưu, khác radar range hoặc khoảng cách tới vạch.",
+    interpretation: "Geometric overlap không phải sensor contact; riêng độ hở chưa xác định nguyên nhân lỗi.",
+    limitations: ["Geometry và sampling phụ thuộc producer; chưa có timestamp min trong API.", "Cảnh người đi bộ không thay hình học hai xe; không dùng khoảng cách tới vạch làm dynamic gap của CCR."]
   },
   deceleration: {
     title: "Giảm tốc cực đại", field: "max_deceleration_mps2", unit: "m/s²",
-    definition: "Độ lớn dương lớn nhất của tín hiệu giảm tốc được lõi đưa vào MotionStats; gia tốc ego trong frame mang dấu âm khi phanh.",
-    formula: "a_max = max(a_decel,i); ego_a = −a_decel",
-    variables: "a_decel,i: độ lớn giảm tốc từng bước (m/s²); khác lệnh giảm tốc và khác vector IMU thô.",
-    conditions: "Động học dùng min(lệnh, μg). CARLA dùng max(0, (v_đầu − v_cuối)/(dt × (n−1))) trong cửa sổ khoảng 0,1 s khi braking, rồi kẹp μg. dt là bước danh định; n là số mẫu tốc độ.",
-    interpretation: "Cho biết tín hiệu giảm tốc cực đại đã lưu, không chứng minh lực phanh khả dụng hoặc mức pedal đã áp dụng.",
-    limitations: ["Gia tốc CARLA đã làm mượt/kẹp và có thể khác IMU; số 0 cực đại legacy được lưu null.", "Bàn đạp 100% không tương đương một mức giảm tốc cố định; phụ thuộc xe, tốc độ và hiệu chuẩn. API chưa có calibration version từng run."],
-    method: "Simulator.MotionStats; CARLA DecelMeter.update",
+    definition: "Độ lớn giảm tốc cực đại đã lưu từ producer; khác giảm tốc đặt trong cấu hình.",
+    interpretation: "Không chứng minh lực phanh khả dụng hoặc mức pedal đã áp dụng.",
+    limitations: ["Gia tốc CARLA trong frame có thể đã làm mượt/kẹp, khác vector IMU thô. API chưa xác minh signal/filter/window của run.", "Bàn đạp 100% không tương đương một mức giảm tốc cố định; phụ thuộc xe, tốc độ và hiệu chuẩn."]
   },
   timeline: {
     title: "Quyết định AEB", field: "aeb_activation_t", unit: "s",
-    definition: "Mốc controller quyết định AEB, khác onset lệnh, pedal thật được áp dụng và thời điểm xe thực sự giảm tốc.",
-    formula: "t_onset là tick đầu t ≥ t_decision + delay_config + 0,10 s",
-    variables: "t_decision, t_onset: mốc controller (s); delay_config: BRAKE_ACTIVATION_DELAY (s); 0,10 s là hằng actuator của mô hình. Tick làm lượng tử hóa thời điểm.",
-    conditions: "Quyết định cần TTC và hành lang thỏa luật AebStack. Đọc mốc đã ghi, không sinh mốc từ công thức ở frontend.",
-    interpretation: "Trễ lệnh phanh lưu ở backend là onset − decision khi cả hai có dữ liệu; không phải độ trễ đáp ứng vật lý đã đo.",
-    limitations: ["Detail chưa có hazard onset, applied pedal và physical-deceleration onset riêng. gt_start chỉ là sự kiện mục tiêu bắt đầu hành vi, không tự coi là hazard onset.", "Các mốc va chạm/dừng chỉ lấy từ event đã ghi. Không suy dừng từ tốc độ 0 hoặc suy applied brake từ aeb=true."],
-    method: "AebStack.decide/control; metrics + events đã lưu",
-  },
+    definition: "Mốc quyết định AEB đã lưu, khác pedal được áp dụng và thời điểm xe thực sự giảm tốc.",
+    interpretation: "Chỉ đối chiếu mốc có thật; không dựng onset bằng delay cấu hình hoặc TTC.",
+    limitations: ["Detail chưa có hazard onset, writer attribution của pedal và physical braking onset đã xác minh. gt_start không tự là hazard onset.", "Run OFF có thể có quyết định shadow; response hiện chưa cung cấp AEB mode. Không suy đã phanh từ aeb=true."]
+  }
 };
+// Identifiers are source references, not proof of engine revision or runtime equivalence.
+const CARLA_REFERENCE = new Set(Array.from({ length: 7 }, (_, i) => `carla-0.9.16-xosc${i + 9}`));
+export const UNVERIFIED_METHOD = "Chưa xác minh phương pháp tính từ nguồn dữ liệu này";
 
 export function metricExplanation(kind: ExplanationMetric, detail: FailureDetail, run: AnalysisRun | null) {
   const content = { ...METHODS[kind] };
   const category = detail.environment.category;
   const cp = category === "CP_CROSSING", lead = ["CCRS", "CCRM", "CCRB"].includes(category ?? "");
-  const engine = detail.simulator === "vehicsim-kinematic-1.0" ? "Động học Java"
-    : /^carla-\d+\.\d+\.\d+-xosc[345]$/.test(detail.simulator ?? "") ? "CARLA qua lõi Java" : "Chưa xác định phương pháp simulator";
-  const known = (cp || lead) && detail.metrics.metric_source === "SIMULATOR_RESULT" && engine !== "Chưa xác định phương pháp simulator";
+  const sim = detail.simulator ?? "";
+  const engine = sim === "vehicsim-kinematic-1.0" || sim === "vehicsim-kinematic-1.4" ? "Động học Java"
+    : CARLA_REFERENCE.has(sim) || sim === "carla-0.9.16-xosc5" ? "CARLA qua lõi Java" : "Chưa xác định phương pháp simulator";
+  const reference = detail.metrics.metric_source === "SIMULATOR_RESULT" && (cp || lead);
+  let method = "API chưa có đủ metadata để đối chiếu producer lịch sử; không chọn công thức theo tên run.";
+  if (reference && kind === "rms" && CARLA_REFERENCE.has(sim))
+    method = "Tham khảo ADR-055 và source CARLA: gia tốc lọc Butterworth bậc 6 mỗi lượt xuôi/ngược, 10 Hz, từ T_AEB tới hết run. Chưa xác minh run này thực thi đúng profile đó.";
+  else if (reference && kind === "rms" && sim === "vehicsim-kinematic-1.4")
+    method = "Tham khảo source động học 1.4: jerk chưa lọc theo dt danh định, từ brake_onset_t. Không áp cách này cho CARLA; chưa xác minh source revision của run.";
+  else if (reference && kind === "ttc" && engine !== "Chưa xác định phương pháp simulator")
+    method = cp ? "Tham khảo source CP: gap / v_ego khi người trong hành lang, gap > 0, v_ego > 0,1 m/s. Không phải chứng minh collision course 2D."
+      : "Tham khảo source CCR: gap / (v_ego − v_target,x) khi tiến gần và mục tiêu trong path. Không dùng tốc độ ego thay closing speed.";
+  else if (reference && kind === "separation" && engine !== "Chưa xác định phương pháp simulator")
+    method = cp ? "Tham khảo source CP: độ hở giữa thân xe và mô hình người; không phải radar range."
+      : "Tham khảo source CCR: khoảng hở giữa hai hộp xe; không phải khoảng cách tâm.";
   const inputs: Input[] = [];
   const add = (label: string, value: unknown, unit: string, field: string) => inputs.push({ label, value: formatMeasurement(value, unit, undefined, true), field });
   const config = (code: string) => detail.configuration.find(param => param.code === code)?.value;
   if (kind === "ttc") {
-    content.formula = cp ? "TTC_GT = gap / v_ego; min_ttc = min(TTC_GT hợp lệ), va chạm → 0"
-      : "TTC_GT = gap / (v_ego − v_target,x); min_ttc = min(TTC_GT hợp lệ), va chạm → 0";
-    content.variables = cp ? "gap: từ mũi ego tới vạch băng ngang (m); v_ego: tốc độ ego (m/s). TTC nhận thức dùng cùng vận tốc dọc vì target_vx=0."
-      : "gap: từ mũi ego tới đuôi xe mục tiêu (m); v_ego, v_target,x: vận tốc dọc (m/s). Không dùng tốc độ ego thay closing speed.";
-    content.conditions = cp ? "GT chỉ tính khi người nằm trong hành lang hình học, gap > 0 và v_ego > 0,1 m/s."
-      : "GT chỉ tính khi mục tiêu trong path, gap > 0 và closing > 0,1 m/s; cùng tốc độ/đi xa thì null.";
     add("Ngưỡng TTC cấu hình", detail.ttc_threshold_s, "s", "ttc_threshold_s");
     add("TTC nhận thức tại quyết định · số đo khác", detail.metrics.aeb_activation_ttc_s, "s", "metrics.aeb_activation_ttc_s");
   } else if (kind === "separation") {
-    content.formula = cp ? "d_min = min max(0, √(dx² + dy²) − r); r = 0,30 m"
-      : "d_min = min √(dx² + dy²) giữa hai hộp xe";
-    content.variables = cp ? "dx: khoảng hở dọc từ điểm người tới đoạn đuôi–mũi ego (m); dy=max(0, |y_ped|−W_ego/2) (m); r: bán kính người của mô hình."
-      : "dx, dy: khoảng hở dọc/ngang giữa hai hộp xe theo hệ trục run (m), bằng 0 khi các khoảng tương ứng chồng nhau. Không phải khoảng cách tâm.";
     add("Chiều dài ego", detail.scene.vehicle_length_m, "m", "scene.vehicle_length_m");
     add("Chiều rộng ego", detail.scene.vehicle_width_m, "m", "scene.vehicle_width_m");
   } else if (kind === "rms" || kind === "stopping") {
-    add("Onset lệnh đã ghi", detail.metrics.brake_onset_t, "s", "metrics.brake_onset_t");
+    add("brake_onset_t đã ghi · chưa xác minh writer", detail.metrics.brake_onset_t, "s", "metrics.brake_onset_t");
     if (run?.run_id === detail.run_id) add("Bước danh định cấu hình · không phải bước đo", run.dt, "s", "run.dt");
   } else if (kind === "deceleration") {
     add("Giảm tốc tối đa cấu hình · không phải a_available", config("MAX_DECELERATION"), "m/s²", "configuration[code=MAX_DECELERATION].value");
@@ -118,9 +97,11 @@ export function metricExplanation(kind: ExplanationMetric, detail: FailureDetail
     add("Trễ lệnh đã lưu", Array.isArray(detail.stage_evidence) ? detail.stage_evidence.find(e => e?.stage === "CONTROL" && e.values)?.values?.response_time_s : null, "s", "stage_evidence[stage=CONTROL].values.response_time_s");
   }
   const rawValue = detail.metrics[content.field as keyof FailureDetail["metrics"]];
+  if (kind === "impact") inputs.push({ label: "Giá trị trường đã lưu · chưa xác nhận contact", field: "metrics.impact_speed_mps",
+    value: typeof rawValue === "number" && Number.isFinite(rawValue) && rawValue >= 0 ? `${String(rawValue)} m/s` : "—" });
   const value = kind === "impact" ? formatRunImpact(rawValue, detail) : formatMeasurement(rawValue, content.unit, kind === "rms" || kind === "stopping" ? 3 : undefined, true);
-  return { ...content, formula: known ? content.formula : null, variables: known ? content.variables : null,
-    conditions: known ? content.conditions : "Chưa đủ category, nguồn canonical hoặc simulator đã đối chiếu để chọn công thức. Không tự áp công thức từ tên run hoặc hình cảnh.",
+  return { ...content, formula: null, variables: null, method, profileStatus: UNVERIFIED_METHOD,
+    conditions: "Chưa đủ category, source revision và metadata signal/filter/window để xác nhận phép tính lịch sử. Không tự tính lại từ biểu đồ.",
     category: typeof category === "string" && category ? category : "Chưa có category trong API", engine, inputs, value: kind === "impact" && value !== "—" ? `${value} m/s` : value,
     source: typeof detail.metrics.metric_source === "string" ? detail.metrics.metric_source : "Chưa có nguồn metric trong API" };
 }

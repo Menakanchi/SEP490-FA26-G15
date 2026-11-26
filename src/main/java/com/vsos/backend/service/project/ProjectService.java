@@ -13,11 +13,13 @@ import com.vsos.backend.dto.project.ProjectDtos.ProjectList;
 import com.vsos.backend.dto.project.ProjectDtos.ProjectRequest;
 import com.vsos.backend.dto.project.ProjectDtos.VehicleOption;
 import com.vsos.backend.dto.regression.RegressionRecords.RegressionTestRow;
+import com.vsos.backend.exception.project.ProjectError;
 import com.vsos.backend.exception.project.ProjectException;
 import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.repository.project.ProjectRepository;
 import com.vsos.backend.repository.regression.RegressionRepository;
 import com.vsos.backend.service.regression.RegressionCodes;
+import com.vsos.backend.service.regression.RegressionService;
 import com.vsos.backend.service.simulation.RunService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -97,6 +99,7 @@ public class ProjectService {
         return journeyOf(projectId);
     }
 
+    /** Project cá nhân của Experiencer. */
     public ProjectItem create(long userId, ProjectRequest body) {
         String name = validName(userId, body.name(), 0);
         String description = validDescription(body.description());
@@ -104,6 +107,35 @@ public class ProjectService {
         long projectId = projects.insert(name, description, userId, vehicleId, Vs.now());
         AuditLog.event("project.create", "success", "project_id", projectId, "by", userId);
         return get(userId, projectId);
+    }
+
+    /**
+     * ADR-064: Experiencer tạo project cá nhân (không có {@code workspace_id}); Kỹ sư tạo project của một workspace đang hoạt động
+     * mà mình là thành viên (bắt buộc có {@code workspace_id}), tên duy nhất trong workspace. Role khác không tạo được project.
+     */
+    public ProjectItem create(long userId, String role, ProjectRequest body) {
+        if ("EXPERIENCER".equals(role)) {
+            if (body.workspaceId() != null) {
+                throw new ProjectException(PERSONAL_HAS_NO_WORKSPACE);
+            }
+            return create(userId, body);
+        }
+        if (!"ENGINEER".equals(role)) {
+            throw new ProjectException(CREATE_ROLE_NOT_ALLOWED);
+        }
+        Long workspaceId = body.workspaceId();
+        if (workspaceId == null) {
+            throw new ProjectException(WORKSPACE_REQUIRED);
+        }
+        if (!projects.isActiveWorkspaceMember(userId, workspaceId)) {
+            throw new ProjectException(WORKSPACE_NOT_MEMBER, workspaceId);
+        }
+        String name = validName(raw -> projects.existingNameInWorkspace(workspaceId, raw, 0), NAME_DUPLICATE_WORKSPACE, body.name());
+        String description = validDescription(body.description());
+        long vehicleId = supportedVehicle(body.vehicleId());
+        long projectId = projects.insertInWorkspace(workspaceId, name, description, userId, vehicleId, Vs.now());
+        AuditLog.event("project.create", "success", "project_id", projectId, "workspace_id", workspaceId, "by", userId);
+        return toItem(projects.find(projectId));
     }
 
     public ProjectItem update(long userId, long projectId, ProjectRequest body) {
@@ -190,6 +222,11 @@ public class ProjectService {
         if (!"BASELINE".equals(statusOf.get(baselineId))) {
             throw new ProjectException(BASELINE_CHANGED, baseline);
         }
+        var candidates = regressions.candidateRuns(testId);
+        var runIds = candidates.stream().flatMap(run -> java.util.stream.Stream.of(run.id(), run.baselineRunId())).toList();
+        if (!RegressionService.evidenceComplete(test, candidates, regressions.runResults(runIds))) {
+            throw new ProjectException(TEST_EVIDENCE_INCOMPLETE);
+        }
         regressions.archiveVersion(baselineId);
         regressions.promoteToBaseline(candidateId);
         projects.appendVersionNote(candidateId, "Dùng làm baseline thay " + baseline + " sau kiểm chứng " + RegressionCodes.testCode(testId) + ": " + reason);
@@ -211,6 +248,11 @@ public class ProjectService {
     }
 
     private String validName(long userId, String raw, long projectId) {
+        return validName(name -> projects.existingName(userId, name, projectId), NAME_DUPLICATE, raw);
+    }
+
+    /** Kiểm tên (không rỗng, độ dài, ký tự điều khiển) rồi hỏi {@code existing} có trùng trong phạm vi không. */
+    private static String validName(java.util.function.Function<String, String> existing, ProjectError duplicate, String raw) {
         String name = raw == null ? "" : raw.strip();
         int length = name.codePointCount(0, name.length());
         if (name.isEmpty()) {
@@ -222,9 +264,9 @@ public class ProjectService {
         if (name.codePoints().anyMatch(Character::isISOControl)) {
             throw new ProjectException(NAME_INVALID);
         }
-        String existing = projects.existingName(userId, name, projectId);
-        if (existing != null) {
-            throw new ProjectException(NAME_DUPLICATE, existing);
+        String taken = existing.apply(name);
+        if (taken != null) {
+            throw new ProjectException(duplicate, taken);
         }
         return name;
     }

@@ -1,5 +1,7 @@
 package com.vsos.backend.repository.regression;
 
+import com.vsos.backend.common.RunEvidence;
+
 import com.vsos.backend.common.Json;
 import com.vsos.backend.common.Vs;
 import com.vsos.backend.dto.regression.RegressionRecords.CandidateRun;
@@ -286,12 +288,15 @@ public class RegressionRepository {
         }
         for (Row r : db.list("""
                 SELECT id, status, collision_occurred, min_ttc_s, min_distance_m, impact_speed_mps, is_false_positive, verdict,
-                       rms_jerk_mps3, stopping_distance_m
+                       rms_jerk_mps3, stopping_distance_m, end_reason, aeb_mode, is_false_negative, aeb_activated,
+                       JSON_EXTRACT(telemetry_json, '$.metrics.brake_onset_t') AS brake_onset,
+                       JSON_LENGTH(JSON_EXTRACT(telemetry_json, '$.frames')) AS trace_frames
                   FROM simulation_runs
                  WHERE id IN (""" + Db.placeholders(distinct.size()) + ")", distinct.toArray())) {
+            boolean complete = RunEvidence.completeAebOn(r);
             out.put(r.lng("id"), new RunResult(r.lng("id"), r.str("status"), r.bool("collision_occurred"), r.dbl("min_ttc_s"),
                     r.dbl("min_distance_m"), r.dbl("impact_speed_mps"), r.bool("is_false_positive"), r.str("verdict"),
-                    r.dbl("rms_jerk_mps3"), r.dbl("stopping_distance_m")));
+                    r.dbl("rms_jerk_mps3"), r.dbl("stopping_distance_m"), complete));
         }
         return out;
     }

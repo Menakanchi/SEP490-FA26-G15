@@ -12,6 +12,9 @@ import org.mockito.InOrder;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.List;
+import com.vsos.backend.dto.regression.RegressionRecords.CandidateRun;
+import com.vsos.backend.dto.regression.RegressionRecords.RunResult;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -63,6 +66,10 @@ class RegressionDecisionTest {
         when(repo.lockRecommendation(TEST)).thenReturn(new RecommendationRow(77L, TEST, CANDIDATE, recommendationStatus, CREATOR, null, null,
                 null, null, null));
         when(repo.lockVersionStatuses(BASELINE, CANDIDATE)).thenReturn(versionStatus);
+        when(repo.candidateRuns(TEST)).thenReturn(List.of(new CandidateRun(101,201,100)));
+        when(repo.runResults(any())).thenReturn(Map.of(
+                100L,new RunResult(100,"COMPLETED",false,2.0,2.0,null,false,"PASS",null,null,true),
+                101L,new RunResult(101,"COMPLETED",false,2.0,2.0,null,false,"PASS",null,null,true)));
     }
 
     private void decide(String decision, String reason, boolean confirmed, long userId) {

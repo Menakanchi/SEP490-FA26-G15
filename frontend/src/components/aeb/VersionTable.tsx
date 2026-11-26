@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Pagination, Tag, cx, fmt, paramValue } from "@/components/VehicSimUi";
 import type { AebVersion, ParameterDef } from "@/types/vehicsim";
 import { KEY_PARAMS, PARAM_NAMES, STATUS_LABEL, STATUS_TONE, changedNote } from "./aebTypes";

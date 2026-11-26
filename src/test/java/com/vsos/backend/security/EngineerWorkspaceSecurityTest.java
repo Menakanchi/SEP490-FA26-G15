@@ -148,8 +148,8 @@ class EngineerWorkspaceSecurityTest {
     }
 
     @Test
-    void adminCanAccessEngineerEndpoints() throws Exception {
-        assertThat(statusOf(request(HttpMethod.GET, BASE + "/my-tasks"), RoleCode.ADMIN)).isEqualTo(200);
-        assertThat(statusOf(request(HttpMethod.GET, BASE + "/my-workspaces"), RoleCode.ADMIN)).isEqualTo(200);
+    void adminUsesAdministrationRoutesRatherThanWorkspaceMembershipRoutes() throws Exception {
+        assertThat(statusOf(request(HttpMethod.GET, BASE + "/my-tasks"), RoleCode.ADMIN)).isEqualTo(403);
+        assertThat(statusOf(request(HttpMethod.GET, BASE + "/my-workspaces"), RoleCode.ADMIN)).isEqualTo(403);
     }
 }

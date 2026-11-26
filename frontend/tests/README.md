@@ -1,7 +1,7 @@
 # Admin và Analysis regression
 
-Hướng dẫn cập nhật ngày 17/11/2026. [Final QA](../../docs/exec-plans/completed/2026-11-17-admin-analysis-phase-20-handover.md)
-ghi lệnh, số test và giới hạn của lần chạy Phase 20; hướng dẫn này không thay thế kết quả thực thi.
+Lệnh và giới hạn được tập hợp trong [hướng dẫn Admin/Phân tích lỗi](../../docs/failure-analysis-v3/README.md#kiểm-thử).
+Các harness dưới đây không thay thế kết quả thực thi hoặc kiểm chứng live backend/DB.
 
 ## Admin browser
 
@@ -53,9 +53,9 @@ Trong frontend (Node.js 22, dependencies từ npm ci), không cần app/backend 
 
     npm run test:analysis -- --repeat=2
 
-48 tests hiện tại nạp helpers production và golden API đã được Java producer kiểm.
+74 tests hiện tại nạp helpers production và golden API đã được Java producer kiểm.
 Lượt hai đảo thứ tự; không dùng baseline mode để tạo PASS.
-Để chạy thêm chín browser suites, dùng production app local đã khởi động như phần Admin:
+Để chạy thêm 13 browser suites, dùng production app local đã khởi động như phần Admin:
 
     $env:ANALYSIS_UI_URL = 'http://127.0.0.1:3122'
     $env:ANALYSIS_TEST_OUTPUT = Join-Path (Split-Path (Get-Location).Path -Parent) 'data/analysis-regression/manual-review'
@@ -80,5 +80,5 @@ không tự dùng -Danalysis.contract.update=true để bỏ qua failure.
 
 CI hiện chạy Analysis unit/contract; Admin/Analysis browser chưa provision trong CI (TD-57).
 Live account/JWT/DB persistence, CARLA runtime, screen reader, native touch và Figma là các kiểm tra riêng,
-chưa được chứng minh bởi các harness này. Xem [technical handover](../../docs/vehicsim/admin-analysis-handover.md)
+chưa được chứng minh bởi các harness này. Xem [technical handover](../../docs/failure-analysis-v3/README.md)
 để chuẩn bị QA dev riêng và tránh ghi dữ liệu production.

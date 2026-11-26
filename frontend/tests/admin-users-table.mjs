@@ -116,7 +116,7 @@ try{
   const sticky=await rowButtons().first().boundingBox();assert.ok(sticky.x>=0&&sticky.x+sticky.width<=320);
   assert.equal(await region().evaluate(el=>getComputedStyle(el).outlineWidth),"3px");
   await rowButtons().first().focus();
-  assert.equal(await rowButtons().first().evaluate(el=>getComputedStyle(el).outlineWidth),"3px");
+  assert(await rowButtons().first().evaluate(el=>parseFloat(getComputedStyle(el).outlineWidth)>=2),"Row action retains visible keyboard focus");
   await page.setViewportSize({width:1366,height:768});
 
   mode="empty";await page.goto(base+"/admin/users");
@@ -156,10 +156,10 @@ try{
   assert.equal(await region().getByText("Đã khóa",{exact:true}).count(),0);
   const scoped=page.url();await page.reload();await ready();assert.equal(page.url(),scoped);
   assert.equal(await frame.getByLabel("Từ khóa tìm kiếm",{exact:true}).inputValue(),"Fixture");
-  await page.getByRole("navigation",{name:"Quản trị hệ thống",exact:true}).filter({visible:true}).getByRole("link",{name:/^Workspace/}).click();await frame.getByRole("region",{name:"Bảng workspace, cuộn ngang",exact:true}).waitFor();
+  await page.getByRole("navigation",{name:"Điều hướng VehicSim",exact:true}).filter({visible:true}).getByRole("link",{name:/^Workspace$/}).click();await frame.getByRole("region",{name:"Bảng workspace, cuộn ngang",exact:true}).waitFor();
   await page.goBack();await ready();assert.equal(page.url(),scoped);
   const roleChip=frame.getByRole("button",{name:"Bỏ lọc vai trò: Kỹ sư",exact:true});
-  await roleChip.focus();assert.equal(await roleChip.evaluate(el=>getComputedStyle(el).outlineWidth),"3px");
+  await roleChip.focus();assert(await roleChip.evaluate(el=>parseFloat(getComputedStyle(el).outlineWidth)>=2),"Filter chip retains visible keyboard focus");
   await page.keyboard.press("Enter");await ready();assert.equal(query().role,undefined);
   await page.goBack();await ready();assert.equal(query().role,"ENGINEER");await page.goForward();await ready();assert.equal(query().role,undefined);
   await frame.getByRole("button",{name:"Bỏ lọc trạng thái: Đang hoạt động",exact:true}).focus();

@@ -7,12 +7,13 @@
  * Backend kiểm mọi luật (đúng simulator, run chưa có kết quả, regression chưa chốt); trang chỉ đọc file và hiện kết quả.
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { Card, CardTitle, ErrorNote, PillButton, StatCard, Tag, cx, runCode } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
+import { useAuth } from "@/context/AuthContext";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { TelemetrySummary } from "@/types/vehicsim";
 import { formatMeasurement, formatObjective, speedKmh } from "@/components/analysis/analysisMetricFormat";
@@ -24,20 +25,69 @@ const MAX_CSV_CHARS = 5_000_000;
 const MAX_COLLISIONS = 1000;
 
 const READ_ONLY_NOTE = "Tài khoản của bạn chỉ có quyền xem";
+const TABS = [
+  ["run", "Chạy mô phỏng"],
+  ["history", "Lượt chạy"],
+  ["result", "Nộp kết quả"],
+  ["telemetry", "Đánh giá cảm biến"],
+] as const;
+type CarlaTab = (typeof TABS)[number][0];
 
 function errorText(err: unknown, fallback: string): string {
   return err instanceof Error ? vi(err.message) : fallback;
 }
 
 export default function CarlaDataPage() {
-  const { canWrite } = useVehicSimContext();
+  const [tab, setTab] = useState<CarlaTab>("run");
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  useEffect(() => {
+    const run = Number(new URLSearchParams(window.location.search).get("run"));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mở lượt chạy được dẫn sang từ màn phân tích
+    if (Number.isSafeInteger(run) && run > 0) setTab("history");
+  }, []);
+  const moveTab = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let next = index;
+    if (event.key === "ArrowRight") next = (index + 1) % TABS.length;
+    else if (event.key === "ArrowLeft") next = (index - 1 + TABS.length) % TABS.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = TABS.length - 1;
+    else return;
+    event.preventDefault();
+    setTab(TABS[next][0]);
+    tabRefs.current[next]?.focus();
+  };
+  const { ctx, canWrite } = useVehicSimContext();
+  const { user } = useAuth();
+  const archivedWorkspace = ctx?.reviewer_can_decide === false
+    && (user?.roleCode === "ENGINEER" || (user?.roleCode === "ADMIN" && ctx.workspace !== null));
+  const canSubmitResult = ctx !== null && canWrite && !archivedWorkspace;
   return (
     <VehicSimPage
-      crumbs={[{ label: "Phân tích" }, { label: "Dữ liệu CARLA" }]}
+      crumbs={[{ label: "Chạy baseline" }, { label: "Dữ liệu CARLA" }]}
+      title="Dữ liệu CARLA"
+      subtitle="Chạy kịch bản và xem video, số đo cảm biến từ CARLA."
     >
-      <CarlaRunnerPanel />
-      <SubmitResultCard canWrite={canWrite} />
-      <TelemetryCard canWrite={canWrite} />
+      <div role="tablist" aria-label="Nội dung CARLA" className="flex w-full gap-1 overflow-x-auto rounded-xl border border-vehicsim-line bg-vehicsim-surface p-1">
+        {TABS.map(([key, label], index) => (
+          <button key={key} ref={node => { tabRefs.current[index] = node; }} type="button" role="tab"
+            id={`carla-tab-${key}`} aria-controls={`carla-panel-${key}`} aria-selected={tab === key}
+            tabIndex={tab === key ? 0 : -1} onKeyDown={event => moveTab(event, index)} onClick={() => setTab(key)}
+            className={cx("shrink-0 rounded-lg px-4 py-2.5 text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vehicsim-primary",
+              tab === key ? "bg-vehicsim-primary/10 text-vehicsim-primary" : "text-vehicsim-muted hover:bg-vehicsim-soft hover:text-vehicsim-ink")}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <CarlaRunnerPanel tab={tab} onViewRuns={() => {
+        setTab("history");
+        requestAnimationFrame(() => tabRefs.current[1]?.focus());
+      }} />
+      <div id="carla-panel-result" role="tabpanel" aria-labelledby="carla-tab-result" tabIndex={0} hidden={tab !== "result"}>
+        <SubmitResultCard canWrite={canSubmitResult} />
+      </div>
+      <div id="carla-panel-telemetry" role="tabpanel" aria-labelledby="carla-tab-telemetry" tabIndex={0} hidden={tab !== "telemetry"}>
+        <TelemetryCard canWrite={canWrite} />
+      </div>
     </VehicSimPage>
   );
 }
@@ -85,7 +135,7 @@ function SubmitResultCard({ canWrite }: { canWrite: boolean }) {
   const id = /^\d+$/.test(runId.trim()) ? Number(runId.trim()) : null;
 
   const submit = async () => {
-    if (!doc || id === null) return;
+    if (!canWrite || !doc || id === null) return;
     setBusy(true);
     setError(null);
     try {
@@ -113,7 +163,7 @@ function SubmitResultCard({ canWrite }: { canWrite: boolean }) {
 
       <div className="flex flex-wrap items-center gap-3">
         <FilePick accept=".json,application/json" label="Chọn result.json" disabled={!canWrite} onPick={pick} />
-        {fileName && <span className="text-[13px] font-medium text-vehicsim-ink">{fileName}</span>}
+        {fileName && <span className="min-w-0 break-all text-[13px] font-medium text-vehicsim-ink">{fileName}</span>}
       </div>
 
       {doc && (
@@ -233,7 +283,7 @@ function TelemetryCard({ canWrite }: { canWrite: boolean }) {
     <Card className="flex flex-col gap-4 p-6">
       <CardTitle aside={<Tag tone="neutral">3 mục tiêu MOBO</Tag>}>Đánh giá dữ liệu cảm biến</CardTitle>
       <p className="text-[13px] leading-[1.6] text-vehicsim-muted">
-        Chọn <code className="rounded bg-vehicsim-soft px-1">frames.csv</code> và (nếu có va chạm){" "}
+        Chọn <code className="rounded bg-vehicsim-soft px-1">frames.csv</code> và (nếu có){" "}
         <code className="rounded bg-vehicsim-soft px-1">collisions.json</code> trong thư mục mà{" "}
         <code className="rounded bg-vehicsim-soft px-1">worker/sensor_recorder.py</code> ghi ra. Nửa giây đầu (lúc ScenarioRunner đặt
         lại tốc độ) và xung lực lúc đâm xe được loại khỏi số đo phanh. Kết quả không được lưu vào cơ sở dữ liệu.
@@ -247,7 +297,7 @@ function TelemetryCard({ canWrite }: { canWrite: boolean }) {
         <div className="flex flex-col gap-1">
           <FilePick accept=".json,application/json" label="Chọn collisions.json" disabled={!canWrite} onPick={pickCollisions} />
           <span className="min-h-[16px] text-[12px] text-vehicsim-muted">
-            {collisions ? `${collisions.name} · ${collisions.items.length} va chạm` : "Bỏ trống = không va chạm"}
+            {collisions ? `${collisions.name} · ${collisions.items.length} sự kiện cảm biến` : "Bỏ trống: tính với 0 sự kiện, không xác nhận không va chạm"}
           </span>
         </div>
         <label className="flex flex-col gap-1 text-[12px] font-medium text-vehicsim-muted">
@@ -294,8 +344,8 @@ function SummaryView({ s }: { s: TelemetrySummary }) {
           label="Tốc độ ego lúc va chạm"
           value={s.collisions > 0 ? formatObjective(s.impact_speed_mps) : "—"}
           valueClass={s.collisions > 0 ? "text-vehicsim-danger" : undefined}
-          note={s.collisions > 0 ? `m/s · ${n(speedKmh(s.impact_speed_mps), "km/h")} · khung trước va chạm` : s.collisions === 0 ? "Không ghi nhận va chạm · không áp dụng" : "Không có dữ liệu hợp lệ"}
-          tone={s.collisions > 0 ? "danger" : "ok"}
+          note={s.collisions > 0 ? `m/s · ${n(speedKmh(s.impact_speed_mps), "km/h")} · khung trước va chạm` : s.collisions === 0 ? "Không có sự kiện va chạm trong dữ liệu cảm biến" : "Không có dữ liệu hợp lệ"}
+          tone={s.collisions > 0 ? "danger" : "info"}
         />
         <StatCard
           label="Quãng đường phanh"
@@ -312,8 +362,8 @@ function SummaryView({ s }: { s: TelemetrySummary }) {
         <Row label="Giảm tốc lớn nhất · trung bình" value={`${n(s.max_deceleration_ms2, "m/s²")} · ${n(s.mean_deceleration_ms2, "m/s²")}`} />
         <Row label="|Jerk| lớn nhất" value={n(s.max_abs_jerk_mps3, "m/s³")} />
         <Row
-          label="Va chạm"
-          value={s.collisions === 0 ? "Không" : `${s.collisions} lần · đầu tiên t ${n(s.first_collision_time_s, "s")}`}
+          label="Sự kiện va chạm cảm biến"
+          value={s.collisions === 0 ? "0 sự kiện" : `${s.collisions} lần · đầu tiên t ${n(s.first_collision_time_s, "s")}`}
           danger={s.collisions > 0}
         />
         <Row label="Tốc độ va chạm tương đối (sensor)" value={s.collisions > 0 ? n(s.relative_impact_speed_mps, "m/s") : "—"} />
@@ -341,7 +391,7 @@ function FilePick({
   return (
     <label
       className={cx(
-        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-5 py-3 text-[13px] font-semibold text-vehicsim-ink transition",
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-5 py-3 text-[13px] font-semibold text-vehicsim-ink transition focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-vehicsim-primary",
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-vehicsim-soft",
       )}
       title={disabled ? READ_ONLY_NOTE : undefined}

@@ -13,7 +13,7 @@ import { vehicsimApi } from "@/services/vehicsim";
 import type { ActiveFamilyRun, FamilyItem, FamilyVariantList, FamilyVersion, RiskLabel, TimeOfDay, Weather } from "@/types/vehicsim";
 
 export default function ScenarioFamiliesPage() {
-  const { refresh, canWrite } = useVehicSimContext();
+  const { refresh, canWrite, error: contextError } = useVehicSimContext();
   const router = useRouter();
   const searchParams = useSearchParams();
   const isNew = searchParams.get("new") === "1";
@@ -208,7 +208,7 @@ export default function ScenarioFamiliesPage() {
         )
       }
     >
-      <ErrorNote message={error} />
+      <ErrorNote message={error === contextError ? null : error} />
       {notice && <p className="rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok">{notice}</p>}
       {!isNew && focused && !notice && (
         <p className="rounded-[16px] bg-vehicsim-decision-bg px-4 py-3 text-[13px] text-vehicsim-decision">

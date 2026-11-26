@@ -248,7 +248,10 @@ export function Term({ children, tip }: { children: React.ReactNode; tip: string
 }
 
 export function OpenProjectCard({ project, purpose }: { project: ProjectItem; purpose: string }) {
-  const { openProject } = useVehicSimContext();
+  const { openProject, isExperiencer } = useVehicSimContext();
+  if (!isExperiencer) {
+    return <Card className="p-5"><p className="text-[14px] text-vehicsim-muted">Project cá nhân chỉ có thể xem thông tin tổng quan với vai trò hiện tại.</p></Card>;
+  }
   // Project lưu trữ không mở được; trang đã báo "đang lưu trữ", không mời mở thêm.
   if (project.status === "ARCHIVED") return null;
   return (
