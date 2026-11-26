@@ -881,11 +881,12 @@ INSERT INTO roles (code, name, description) VALUES
   ('REVIEWER',    'Reviewer',      'Xem kết quả kỹ thuật và ACCEPT / REJECT khuyến nghị'),
   ('EXPERIENCER', 'Experiencer',   'Người tự đăng ký: project cá nhân, chạy đến regression; không có khuyến nghị / duyệt');
 
--- 4 tham số AEB cốt lõi được tối ưu hóa (Scope rút gọn chuẩn hóa theo paper):
+-- 4 tham số AEB cốt lõi được tối ưu hóa (Scope rút gọn chuẩn hóa theo paper).
+-- Phạm vi khớp miền tìm của MOBO (ParameterBounds.DEFAULT), một nguồn cho chỉnh tay và tối ưu (ADR-068, migration 021):
 INSERT INTO aeb_parameters (code, name, category, unit, description, min_value, max_value, default_value, sort_order) VALUES
-  ('TTC_THRESHOLD',           'TTC Threshold',           'DECISION',         's',    'Ngưỡng Time-to-Collision kích hoạt phanh AEB',       0.50,   4.00,   1.50,  1),
-  ('BRAKE_ACTIVATION_DELAY',  'Brake Activation Delay',  'CONTROL',          's',    'Độ trễ từ lúc quyết định tới khi phanh tác động',   0.00,   0.50,   0.15,  2),
-  ('MAX_DECELERATION',        'Max Deceleration',        'VEHICLE_DYNAMICS', 'm/s2', 'Giới hạn giảm tốc tối đa mà bộ AEB được yêu cầu', 3.00,  10.00,   8.00,  3),
+  ('TTC_THRESHOLD',           'TTC Threshold',           'DECISION',         's',    'Ngưỡng Time-to-Collision kích hoạt phanh AEB',       0.50,   3.50,   1.50,  1),
+  ('BRAKE_ACTIVATION_DELAY',  'Brake Activation Delay',  'CONTROL',          's',    'Độ trễ từ lúc quyết định tới khi phanh tác động',   0.05,   0.45,   0.15,  2),
+  ('MAX_DECELERATION',        'Max Deceleration',        'VEHICLE_DYNAMICS', 'm/s2', 'Giới hạn giảm tốc tối đa mà bộ AEB được yêu cầu', 5.00,  10.00,   8.00,  3),
   ('BRAKE_BUILDUP_RATE',      'Brake Build-up Rate',      'CONTROL',          'm/s3', 'Tốc độ tăng lực phanh (build-up rate), tối đa 20 = JERK_LIMIT cố định của lõi AEB',  5.00,  20.00,  20.00,  4);
 
 -- Thông số xe Audi e-tron mặc định trong CARLA. Mô-men phanh 1800 N·m và phanh 100% 9,13 m/s²: hiệu chuẩn 08/11/2026

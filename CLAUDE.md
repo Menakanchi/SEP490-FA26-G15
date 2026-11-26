@@ -12,6 +12,7 @@ kiểm tra luồng và xử lý những bẫy vận hành đã gặp; dùng chun
 > **Bắt buộc sau khi pull (26/11/2026, [ADR-065](docs/adr/ADR-065-khoi-dataset-trong-result-json.md), [ADR-067](docs/adr/ADR-067-api-failure-analysis-v3-va-4-bang-fa-json.md)):**
 > DB đã có dữ liệu: sao lưu rồi chạy [migration 019](database/mysql/migrations/019_2026-11-24_lan-lap-va-lan-thu-cua-run.sql) (cột `repetition`, `attempt`)
 > và [020](database/mysql/migrations/020_2026-11-25_failure_analysis_json.sql) (4 bảng `fa_json_*`, lên 34 bảng) theo thứ tự; thiếu 019 thì backend lỗi khi tạo run.
+> Tiếp đó [021](database/mysql/migrations/021_2026-11-26_pham-vi-tham-so-aeb-theo-mobo.sql): phạm vi 4 tham số AEB theo miền MOBO ([ADR-068](docs/adr/ADR-068-pham-vi-tham-so-aeb-theo-mien-mobo.md)).
 > Môi trường CARLA chạy lại `setup-carla.ps1` (thêm `imageio-ffmpeg`, `pillow` cho video xem lại).
 
 > **Bắt buộc sau khi pull (22/11/2026, [ADR-057](docs/adr/ADR-057-hanh-lang-aeb-theo-be-rong-xe.md), [ADR-058](docs/adr/ADR-058-thoi-diem-phanh-va-ban-dap-feed-forward.md), migration 016–017):**
