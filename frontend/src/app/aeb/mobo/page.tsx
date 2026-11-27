@@ -155,6 +155,18 @@ export default function AebMoboStudioPage() {
     return () => { active = false; clearInterval(interval); };
   }, [activeRun, loadRuns]);
 
+  // Khi đợt vừa kết thúc, vòng polling dừng và bỏ các phản hồi còn bay: tải lại đầy đủ một lần để Pareto/lượt thử không kẹt ở số cũ (0).
+  const wasActiveRun = useRef<{ id: number; active: boolean } | null>(null);
+  useEffect(() => {
+    if (!activeRun) return;
+    const active = ["PENDING", "RUNNING"].includes(activeRun.status);
+    const prev = wasActiveRun.current;
+    wasActiveRun.current = { id: activeRun.id, active };
+    if (prev && prev.id === activeRun.id && prev.active && !active) {
+      setDetailRevision(value => value + 1);
+    }
+  }, [activeRun]);
+
   // Dừng run
   const handleCancelRun = async (runId: number) => {
     if (!canWrite || cancellationLock.current || activeRun?.id !== runId || activeRun.status !== "RUNNING") return;
