@@ -116,6 +116,18 @@ public class VehicSimAccess {
         }
     }
 
+    /** Phạm vi xem lượt chạy theo role (xem {@link RunViewScope}); ADMIN không cần project đang mở. */
+    public RunViewScope runViewScope(UserDetails user) {
+        String role = roleOf(user);
+        if ("ADMIN".equals(role)) {
+            return RunViewScope.all();
+        }
+        if ("EXPERIENCER".equals(role)) {
+            return RunViewScope.own(projectId(), userId(user));
+        }
+        return RunViewScope.project(projectId());
+    }
+
     /** Project hiện tại (MVP một project ACTIVE mặc định). */
     public long projectId() {
         return projects.currentProject().lng("id");

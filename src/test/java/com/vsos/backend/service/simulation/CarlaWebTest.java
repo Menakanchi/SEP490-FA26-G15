@@ -589,4 +589,34 @@ class CarlaWebTest {
         when(db.first(eq("SELECT id, status, regression_test_id, optimization_trial_id FROM simulation_runs WHERE id = ? AND project_id = ?"),
                 any(Object[].class))).thenReturn(new Row(row));
     }
+
+    @Test
+    void runListIsFilteredByTheViewScope() {
+        runs.carlaRuns(com.vsos.backend.security.RunViewScope.own(9, 18));
+        runs.carlaRuns(com.vsos.backend.security.RunViewScope.all());
+        org.mockito.ArgumentCaptor<String> sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<Object[]> args = org.mockito.ArgumentCaptor.forClass(Object[].class);
+        verify(db, atLeast(2)).list(sql.capture(), args.capture());
+        int n = sql.getAllValues().size();
+        assertThat(sql.getAllValues().get(n - 2)).contains("project_id = ?").contains("created_by_user_id = ?");
+        assertThat(args.getAllValues().get(n - 2)).containsExactly(9L, 18L);
+        assertThat(sql.getAllValues().get(n - 1)).doesNotContain("project_id = ?").doesNotContain("created_by_user_id = ?");
+        assertThat(args.getAllValues().get(n - 1)).isEmpty();
+    }
+
+    @Test
+    void experiencerCannotOpenARunSomeoneElseStarted() {
+        when(db.first(contains("created_by_user_id = ?"), any(Object[].class))).thenReturn(null);
+        var other = com.vsos.backend.security.RunViewScope.own(1, 18);
+        assertThatThrownBy(() -> runs.carlaVideo(other, 42)).isInstanceOf(Vs.NotFoundException.class);
+        assertThatThrownBy(() -> runs.carlaVideoUrl(other, 42, false)).isInstanceOf(Vs.NotFoundException.class);
+        assertThatThrownBy(() -> runs.carlaFile(other, 42, "frames.csv")).isInstanceOf(Vs.NotFoundException.class);
+    }
+
+    @Test
+    void adminLookupDoesNotRestrictByProject() {
+        assertThatThrownBy(() -> runs.carlaFile(com.vsos.backend.security.RunViewScope.all(), 42, "frames.csv"))
+                .as("run có nhưng chưa có tệp").isInstanceOf(Vs.NotFoundException.class);
+        verify(db).first(argThat((String q) -> q.contains("FROM simulation_runs WHERE id = ?") && !q.contains("project_id")), any(Object[].class));
+    }
 }
