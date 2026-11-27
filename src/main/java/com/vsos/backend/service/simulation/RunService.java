@@ -52,6 +52,7 @@ import com.vsos.backend.config.VehicSimProperties;
 import com.vsos.backend.repository.common.Db;
 import com.vsos.backend.repository.common.Queries;
 import com.vsos.backend.repository.common.Row;
+import com.vsos.backend.security.RunViewScope;
 import com.vsos.backend.service.scenario.FamilyService;
 
 /**
@@ -865,8 +866,21 @@ public class RunService {
     }
 
     public List<Map<String, Object>> carlaRuns(long projectId) {
-        return db.list("SELECT id, status, scenario_id, aeb_version_id, simulator_version, aeb_mode, purpose, regression_test_id, optimization_trial_id, created_by_user_id, error_message, queued_at FROM simulation_runs "
-                + "WHERE project_id = ? AND simulator_type = 'CARLA' ORDER BY id DESC LIMIT 30", projectId).stream().map(Row::asMap).toList();
+        return carlaRuns(RunViewScope.project(projectId));
+    }
+
+    public List<Map<String, Object>> carlaRuns(RunViewScope scope) {
+        List<Object> args = new ArrayList<>();
+        String visible = scope.sql("", args);
+        return db.list("SELECT id, project_id, status, scenario_id, aeb_version_id, simulator_version, aeb_mode, purpose, regression_test_id, optimization_trial_id, created_by_user_id, error_message, queued_at FROM simulation_runs "
+                + "WHERE simulator_type = 'CARLA'" + visible + " ORDER BY id DESC LIMIT 30", args.toArray()).stream().map(Row::asMap).toList();
+    }
+
+    /** Run CARLA mà request được xem theo {@link RunViewScope}; null nếu không thấy (gọi nơi trả 404, không lộ run tồn tại). */
+    private Row visibleCarlaRun(RunViewScope scope, long runId, String columns) {
+        List<Object> args = new ArrayList<>();
+        String visible = scope.sql("", args);
+        return db.first("SELECT " + columns + " FROM simulation_runs WHERE id = ? AND simulator_type = 'CARLA'" + visible, scope.with(args, runId));
     }
 
     /** Chạy lại đúng biến thể/AEB/xe/seed bằng profile mới; không gắn baseline_run_id khác simulator. */
@@ -1221,7 +1235,11 @@ public class RunService {
     }
 
     public Path carlaFile(long projectId, long runId, String name) {
-        Row run = db.first("SELECT id FROM simulation_runs WHERE id = ? AND project_id = ? AND simulator_type = 'CARLA'", runId, projectId);
+        return carlaFile(RunViewScope.project(projectId), runId, name);
+    }
+
+    public Path carlaFile(RunViewScope scope, long runId, String name) {
+        Row run = visibleCarlaRun(scope, runId, "id");
         if (run == null || !(List.of("frames.csv", "collisions.json", "ground_truth.csv").contains(name) || name.matches("[0-9]{8}\\.png"))) {
             throw new NotFoundException("CARLA artifact");
         }
@@ -1234,7 +1252,11 @@ public class RunService {
 
     /** Video xem lại của run CARLA (một file mp4 do worker ghép từ ảnh camera). Không có thì 404. */
     public Path carlaVideo(long projectId, long runId) {
-        Row run = db.first("SELECT id FROM simulation_runs WHERE id = ? AND project_id = ? AND simulator_type = 'CARLA'", runId, projectId);
+        return carlaVideo(RunViewScope.project(projectId), runId);
+    }
+
+    public Path carlaVideo(RunViewScope scope, long runId) {
+        Row run = visibleCarlaRun(scope, runId, "id");
         Path path = run == null ? null : runDir(runId).resolve(VIDEO_FILE);
         if (path == null || !Files.isRegularFile(path)) {
             throw new NotFoundException("CARLA video");
@@ -1244,7 +1266,11 @@ public class RunService {
 
     /** URL ngắn hạn chỉ được cấp sau khi run thuộc project hiện tại; null giữ tương thích video local. */
     public String carlaVideoUrl(long projectId, long runId, boolean download) {
-        Row run = db.first("SELECT id FROM simulation_runs WHERE id = ? AND project_id = ? AND simulator_type = 'CARLA'", runId, projectId);
+        return carlaVideoUrl(RunViewScope.project(projectId), runId, download);
+    }
+
+    public String carlaVideoUrl(RunViewScope scope, long runId, boolean download) {
+        Row run = visibleCarlaRun(scope, runId, "id");
         if (run == null) throw new NotFoundException("CARLA video");
         Row artifact = db.first("SELECT storage_url FROM simulation_artifacts WHERE simulation_run_id = ? AND artifact_type = 'VIDEO_MP4' ORDER BY id DESC LIMIT 1", runId);
         if (artifact != null && videoStorage != null && videoStorage.matches(runId, artifact.str("storage_url"))) {
@@ -1255,12 +1281,16 @@ public class RunService {
     }
 
     public Map<String, Object> carlaData(long projectId, long runId, TelemetryMetricsService telemetry) throws IOException {
-        Path csv = carlaFile(projectId, runId, "frames.csv");
-        Path collisions = carlaFile(projectId, runId, "collisions.json");
+        return carlaData(RunViewScope.project(projectId), runId, telemetry);
+    }
+
+    public Map<String, Object> carlaData(RunViewScope scope, long runId, TelemetryMetricsService telemetry) throws IOException {
+        Path csv = carlaFile(scope, runId, "frames.csv");
+        Path collisions = carlaFile(scope, runId, "collisions.json");
         List<Map<String, Object>> hits = Json.parseList(Files.readString(collisions, StandardCharsets.UTF_8)).stream().map(Json::asMap).toList();
         // Quãng phanh còn lại được ngoại suy bằng đúng mức phanh 100% mà controller đã dùng cho xe này.
         Object measured = db.scalar("SELECT m.carla_full_brake_decel_mps2 FROM simulation_runs r JOIN carla_vehicle_models m ON m.id = r.carla_vehicle_model_id "
-                + "WHERE r.id = ? AND r.project_id = ?", runId, projectId);
+                + "WHERE r.id = ?", runId);
         double fullBrake = measured instanceof Number n ? n.doubleValue() : CarlaSession.DEFAULT_FULL_BRAKE_DECEL;
         var summary = telemetry.summarise(telemetry.parseCsvFrames(Files.readString(csv, StandardCharsets.UTF_8)), telemetry.parseCollisions(hits), fullBrake);
         List<String> images = List.of();

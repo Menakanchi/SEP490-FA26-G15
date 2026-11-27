@@ -344,6 +344,10 @@ không được đưa lại vào API hiện tại. CPLA/TURNING/CUT_IN chưa tri
 - Project đang mở: frontend gửi header `X-VehicSim-Project`; `security/ProjectScope` (bean theo request) chọn project cho
   `ProjectAccess.currentProject()` (Reviewer đi qua `ReviewerScope`, mục dưới). EXPERIENCER chỉ mở được project `ACTIVE` của mình, không gửi header thì mở project hoạt động cập nhật gần
   nhất; role khác bỏ qua header và giữ project nhóm `ACTIVE` đầu tiên.
+- Phạm vi xem lượt chạy CARLA (`GET /carla/runs`, `/runs/{id}/carla-data`, `carla-files`, `carla-video`, `carla-video-url`) theo `security/RunViewScope`:
+  EXPERIENCER chỉ thấy lượt do chính mình chạy trong project đang mở; ENGINEER/REVIEWER thấy mọi lượt của project thuộc workspace mình là thành viên
+  (cả workspace xem chung, project ngoài workspace bị `ReviewerScope` chặn); ADMIN thấy mọi lượt ở mọi project, không cần project đang mở.
+  Lượt ngoài phạm vi trả 404 (không lộ lượt có tồn tại). Màn phân tích, regression và tối ưu vẫn giới hạn theo project đang mở như trước.
 - Lỗi project trả `{"code": "<TÊN_LỖI>", "detail": "<câu tiếng Việt>"}` (`exception/project/ProjectError`); lỗi khác giữ `{"detail"}`.
 
 ## Trang chủ Reviewer, công việc và phạm vi dữ liệu (UC-62/UC-63)
