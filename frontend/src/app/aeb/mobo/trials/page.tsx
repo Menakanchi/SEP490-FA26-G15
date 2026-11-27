@@ -177,41 +177,41 @@ export default function AebMoboTrialsPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-left text-[13px]">
+            <table className="w-full min-w-[860px] text-left text-[13px]">
               <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
                 <tr className="h-12">
-                  <th className="pl-5 pr-4 py-3.5 whitespace-nowrap">Lượt thử</th>
-                  <th className="px-4 py-3.5 whitespace-nowrap">Nguồn sinh mẫu</th>
-                  <th className="px-4 py-3.5 whitespace-nowrap">Điểm tiềm năng (qEHVI)</th>
-                  <th className="px-4 py-3.5 text-emerald-300 whitespace-nowrap">RMS Jerk (m/s³)</th>
-                  <th className="px-4 py-3.5 text-rose-300 whitespace-nowrap">Va chạm (m/s)</th>
-                  <th className="px-4 py-3.5 text-slate-200 whitespace-nowrap">Quãng phanh (m)</th>
-                  <th className="px-4 py-3.5 whitespace-nowrap">Ràng buộc</th>
-                  <th className="px-4 py-3.5 text-right whitespace-nowrap">Biên Pareto</th>
+                  <th className="pl-5 pr-3 py-3.5 whitespace-nowrap">Lượt thử</th>
+                  <th className="leading-tight px-3 py-3.5">Nguồn sinh mẫu</th>
+                  <th className="leading-tight px-3 py-3.5">Điểm tiềm năng (qEHVI)</th>
+                  <th className="leading-tight px-3 py-3.5 text-emerald-300">RMS Jerk (m/s³)</th>
+                  <th className="leading-tight px-3 py-3.5 text-rose-300">Va chạm (m/s)</th>
+                  <th className="leading-tight px-3 py-3.5 text-slate-200">Quãng phanh (m)</th>
+                  <th className="leading-tight px-3 py-3.5">Ràng buộc</th>
+                  <th className="leading-tight px-3 py-3.5 text-right">Biên Pareto</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
                 {pagedTrials.map((t) => (
                   <tr key={t.id} className={cx("hover:bg-vehicsim-row transition-colors", t.is_pareto_optimal && "bg-vehicsim-ok-bg/25")}>
-                    <td className="pl-5 pr-4 py-3.5 font-mono font-bold text-vehicsim-ink">#{t.trial_number}</td>
-                    <td className="px-4 py-3.5">
+                    <td className="pl-5 pr-3 py-3.5 font-mono font-bold text-vehicsim-ink">#{t.trial_number}</td>
+                    <td className="px-3 py-3.5">
                       <Tag tone={t.sampling_source === "INITIAL_DESIGN" ? "neutral" : "info"}>
                         {t.sampling_source === "INITIAL_DESIGN" ? "Khởi tạo Sobol/Random" : "qEHVI Bayes"}
                       </Tag>
                     </td>
-                    <td className="px-4 py-3.5 font-mono text-[12px] text-vehicsim-muted">
+                    <td className="px-3 py-3.5 font-mono text-[12px] text-vehicsim-muted">
                       {formatMetric(t.acquisition_value, 5)}
                     </td>
-                    <td className="px-4 py-3.5 font-semibold text-vehicsim-decision">
+                    <td className="px-3 py-3.5 font-semibold text-vehicsim-decision">
                       {formatObjective(t.rms_jerk_mps3)}
                     </td>
-                    <td className="px-4 py-3.5 font-semibold text-vehicsim-danger">
+                    <td className="px-3 py-3.5 font-semibold text-vehicsim-danger">
                       {formatMetric(t.impact_speed_mps, 3, true)}
                     </td>
-                    <td className="px-4 py-3.5 font-semibold text-vehicsim-ink">
+                    <td className="px-3 py-3.5 font-semibold text-vehicsim-ink">
                       {formatObjective(t.stopping_distance_m)}
                     </td>
-                    <td className="px-4 py-3.5">
+                    <td className="px-3 py-3.5">
                       {!hasCompleteTrialEvidence(t) ? (
                         <span className="text-vehicsim-muted">Chưa đánh giá</span>
                       ) : t.constraint_violated ? (
@@ -220,7 +220,7 @@ export default function AebMoboTrialsPage() {
                         <span className="font-bold text-vehicsim-ok">Thỏa mãn</span>
                       )}
                     </td>
-                    <td className="px-4 py-3.5 text-right">
+                    <td className="px-3 py-3.5 text-right">
                       {t.is_pareto_optimal && isFeasibleTrial(t) ? (
                         <span className="rounded-full bg-vehicsim-ok-bg px-2.5 py-0.5 text-[10px] font-bold text-vehicsim-ok">
                           PARETO
