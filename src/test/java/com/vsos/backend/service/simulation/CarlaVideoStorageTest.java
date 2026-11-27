@@ -80,6 +80,32 @@ class CarlaVideoStorageTest {
     }
 
     @Test
+    void aPrefixMovesEveryKeyAwayFromTheSharedRunsNamespace() {
+        String oldId = System.getProperty("aws.accessKeyId");
+        String oldSecret = System.getProperty("aws.secretAccessKey");
+        System.setProperty("aws.accessKeyId", "test-access");
+        System.setProperty("aws.secretAccessKey", "test-secret");
+        try {
+            var prefixed = new CarlaVideoStorage("shared", "us-east-1", "http://127.0.0.1:1", true, "integration-tests/x");
+            var plain = new CarlaVideoStorage("shared", "us-east-1", "http://127.0.0.1:1", true, "");
+            try {
+                assertThat(prefixed.matches(7, "s3://shared/integration-tests/x/runs/7/video.mp4")).isTrue();
+                // key chuẩn của dữ liệu thật không bao giờ được coi là của môi trường thử, và ngược lại
+                assertThat(prefixed.matches(7, "s3://shared/runs/7/video.mp4")).isFalse();
+                assertThat(plain.matches(7, "s3://shared/integration-tests/x/runs/7/video.mp4")).isFalse();
+                assertThat(plain.matches(7, "s3://shared/runs/7/video.mp4")).isTrue();
+                assertThat(prefixed.viewingUrl(7, false)).contains("/shared/integration-tests/x/runs/7/video.mp4?");
+            } finally {
+                prefixed.close();
+                plain.close();
+            }
+        } finally {
+            if (oldId == null) System.clearProperty("aws.accessKeyId"); else System.setProperty("aws.accessKeyId", oldId);
+            if (oldSecret == null) System.clearProperty("aws.secretAccessKey"); else System.setProperty("aws.secretAccessKey", oldSecret);
+        }
+    }
+
+    @Test
     void blankBucketKeepsLocalModeAndRejectsUploads() {
         var storage = new CarlaVideoStorage("", "us-east-1", "", false);
         assertThat(storage.enabled()).isFalse();

@@ -1,6 +1,7 @@
 package com.vsos.backend.service.simulation;
 
 import jakarta.annotation.PreDestroy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -21,14 +22,27 @@ import java.time.Duration;
 @Service
 public class CarlaVideoStorage {
     private final String bucket;
+    private final String prefix;
     private final S3Client client;
     private final S3Presigner presigner;
 
+    public CarlaVideoStorage(String bucket, String region, String endpoint, boolean pathStyle) {
+        this(bucket, region, endpoint, pathStyle, "");
+    }
+
+    /**
+     * {@code prefix}: không gian tên cho key (vd. "integration-tests/<id>/"). Để trống = key chuẩn {@code runs/<id>/video.mp4}.
+     * Nhiều database có thể dùng chung một bucket với run ID trùng nhau; môi trường thử phải đặt prefix riêng để không ghi đè video thật.
+     */
+    @Autowired
     public CarlaVideoStorage(@Value("${vehicsim.video-storage.bucket:}") String bucket,
                              @Value("${vehicsim.video-storage.region:us-east-1}") String region,
                              @Value("${vehicsim.video-storage.endpoint:}") String endpoint,
-                             @Value("${vehicsim.video-storage.path-style:false}") boolean pathStyle) {
+                             @Value("${vehicsim.video-storage.path-style:false}") boolean pathStyle,
+                             @Value("${vehicsim.video-storage.prefix:}") String prefix) {
         this.bucket = bucket.trim();
+        String namespace = prefix == null ? "" : prefix.trim().replaceAll("^/+", "");
+        this.prefix = namespace.isEmpty() || namespace.endsWith("/") ? namespace : namespace + "/";
         if (this.bucket.isEmpty()) {
             client = null;
             presigner = null;
@@ -56,7 +70,7 @@ public class CarlaVideoStorage {
 
     public boolean enabled() { return client != null; }
 
-    private String key(long runId) { return "runs/" + runId + "/video.mp4"; }
+    private String key(long runId) { return prefix + "runs/" + runId + "/video.mp4"; }
 
     public String upload(long runId, Path file) {
         if (!enabled()) throw new IllegalStateException("Video storage is disabled");

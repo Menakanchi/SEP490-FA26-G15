@@ -82,6 +82,7 @@ vehicsim:
     region: ${VEHICSIM_VIDEO_REGION:us-east-1}
     endpoint: ${VEHICSIM_VIDEO_ENDPOINT:}
     path-style: ${VEHICSIM_VIDEO_PATH_STYLE:false}
+    prefix: ${VEHICSIM_VIDEO_PREFIX:}                 # chỉ đặt khi thử trên bucket dùng chung; để trống = runs/<id>/video.mp4
   run-mode: ${VEHICSIM_RUN_MODE:async}                # async | inline
   simulation-timeout-s: ${SIMULATION_TIMEOUT_S:120}
   run-concurrency: ${VEHICSIM_RUN_CONCURRENCY:4}
