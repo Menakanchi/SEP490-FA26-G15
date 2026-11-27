@@ -747,16 +747,23 @@ public class RunService {
         // ADR-065: khối dataset cho Failure Analysis, không bao giờ làm run lỗi. Dòng aeb_versions chỉ để khai báo trạng thái phiên bản lúc ghi.
         Row aebVersion = db.first("SELECT id, project_id, version_no, label, status, source, parent_version_id FROM aeb_versions WHERE id = ?",
                 run.lng("aeb_version_id"));
-        RunDatasetWriter.attach(resultPath, result, run, bundle, aebVersion == null ? null : Json.parseMap(Json.write(aebVersion.asMap())), folder, repoRoot());
+        RunDatasetWriter.Attachment attachment = RunDatasetWriter.attach(resultPath, result, run, bundle,
+                aebVersion == null ? null : Json.parseMap(Json.write(aebVersion.asMap())), folder, repoRoot());
+        return prepareCarlaResult(run, result, resultPath, input, folder, attachment);
+    }
+
+    Map<String, Object> prepareCarlaResult(Row run, Map<String, Object> result, Path resultPath, Path input, Path folder,
+                                           RunDatasetWriter.Attachment attachment) throws IOException {
         // Capture the final producer document verbatim before adding backend-only artifact paths.
-        result.put(ORIGINAL_RESULT_BYTES, Files.readAllBytes(resultPath));
+        result.put(ORIGINAL_RESULT_BYTES, attachment.bytes() != null ? attachment.bytes() : Files.readAllBytes(resultPath));
         Map<String, Object> artifacts = new LinkedHashMap<>();
-        artifacts.put("result", resultPath.toString());
+        if (attachment.written()) artifacts.put("result", resultPath.toString());
         if (input.toString().endsWith(".xosc")) {
             artifacts.put("scenario", input.toString());
         }
         artifacts.putAll(Json.asMap(result.get("artifacts")).entrySet().stream()
                 .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), String.valueOf(e.getValue())), Map::putAll));
+        if (!attachment.written()) artifacts.remove("result");
         Path video = folder.resolve(VIDEO_FILE); // worker/make_video.py ghép ảnh camera sau run; không ghi vào result.json nên không đổi identity run
         if (Files.isRegularFile(video)) {
             artifacts.put("video", storeVideo(run.lng("id"), video));
