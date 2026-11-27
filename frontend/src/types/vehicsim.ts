@@ -756,7 +756,8 @@ export interface RegressionRequest {
   variant_ids?: number[];
 }
 
-export type RecommendationStatus = ReviewDecision | "BLOCKED";
+/** `SUPERSEDED`: candidate đã được quyết định ở kiểm thử khác; `BASELINE_CHANGED`: bản cơ sở của kiểm thử đã đổi (không Accept được). */
+export type RecommendationStatus = ReviewDecision | "BLOCKED" | "SUPERSEDED" | "BASELINE_CHANGED";
 
 export interface RecommendationItem {
   id: number;
@@ -906,6 +907,7 @@ export interface OptimizationSelectionResult {
 }
 
 export interface AnalysisRun {
+  aeb_mode?: "ON" | "OFF";
   revision: string; run_id: number; scenario_id: number; scenario_version_id: number; version_no: number;
   family: string; variant: string; seed: number; baseline_id: number; vehicle_id: number;
   simulator: string; dt: number; status: string; outcome: string; weather: string | null;

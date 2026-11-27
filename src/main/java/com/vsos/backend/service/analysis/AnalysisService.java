@@ -29,7 +29,7 @@ public class AnalysisService {
     // Scalar projection: dashboard never fetches the whole telemetry for every run.
     static final String SELECT = "SELECT r.id, r.scenario_id, r.scenario_version_id, r.aeb_version_id, "
             + "r.carla_vehicle_model_id, r.simulator_type, r.simulator_version, r.fixed_delta_seconds, "
-            + "r.random_seed, r.status, r.end_reason, r.verdict, r.collision_occurred, r.is_false_positive, r.is_false_negative, "
+            + "r.random_seed, r.aeb_mode, r.status, r.end_reason, r.verdict, r.collision_occurred, r.is_false_positive, r.is_false_negative, "
             + "r.aeb_activated, r.rms_jerk_mps3, r.impact_speed_mps, r.stopping_distance_m, r.min_distance_m, r.min_ttc_s, "
             + "r.error_message, r.queued_at, s.code, s.name, s.category, sv.version_no, pc.category AS failure_class, "
             + "JSON_UNQUOTE(JSON_EXTRACT(r.run_config_json, '$.weather')) AS weather, "
@@ -54,6 +54,7 @@ public class AnalysisService {
         if ("STOPPED".equals(row.str("status"))) return "CANCELLED";
         if ("FAILED".equals(row.str("status")) || "ERROR".equals(row.str("end_reason"))) return "ERROR";
         if (!"COMPLETED".equals(row.str("status"))) return "NOT_FINISHED";
+        if ("OFF".equals(row.str("aeb_mode"))) return "REFERENCE";
         if (!AnalysisMetrics.valid(sample(row)) || !AnalysisMetrics.evidenceComplete(List.of(sample(row)))) return "INCOMPLETE";
         if (row.bool("collision_occurred")) return "COLLISION";
         if (row.bool("is_false_positive")) return "FALSE_BRAKING";
@@ -80,12 +81,14 @@ public class AnalysisService {
                         "stopping_distance_m", r.dbl("stopping_distance_m")),
                 "created_at", Vs.iso(r.ts("queued_at")));
         out.put("revision",digest(out));
+        // Preserve the existing ON snapshot/revision contract; mark reference runs explicitly.
+        if ("OFF".equals(r.str("aeb_mode"))) out.put("aeb_mode", "OFF");
         return out;
     }
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Map<String, Object> dashboard(Filters filters, int page, int pageSize) {
         long projectId = projects.currentProject().lng("id");
-        StringBuilder sql = new StringBuilder(SELECT);
+        StringBuilder sql = new StringBuilder(filters.variantId() == null ? SELECT : SELECT.replace(" AND r.aeb_mode = 'ON'", ""));
         List<Object> args = new ArrayList<>(List.of(projectId));
         condition(sql,args,"r.scenario_id",filters.scenarioId());
         condition(sql,args,"r.scenario_version_id",filters.variantId());
@@ -102,10 +105,11 @@ public class AnalysisService {
                 .sorted(Comparator.comparingLong((Row row) -> row.lng("id")).reversed()).toList();
         Map<String, Long> counts = new LinkedHashMap<>();
         for (String key : List.of("SAFE","COLLISION","FALSE_BRAKING","NEAR_MISS","MISSED_BRAKING","OTHER_FAILURE",
-                "ERROR","CANCELLED","TIMEOUT","INCOMPLETE","NOT_FINISHED")) counts.put(key,0L);
+                "ERROR","CANCELLED","TIMEOUT","INCOMPLETE","NOT_FINISHED","REFERENCE")) counts.put(key,0L);
         rows.forEach(row -> counts.merge(outcome(row),1L,Long::sum));
         Map<String,List<Row>> groups = new LinkedHashMap<>();
-        rows.forEach(row -> groups.computeIfAbsent(identity(row), k -> new ArrayList<>()).add(row));
+        rows.stream().filter(row -> !"OFF".equals(row.str("aeb_mode")))
+                .forEach(row -> groups.computeIfAbsent(identity(row), k -> new ArrayList<>()).add(row));
         List<Map<String,Object>> summaries = new ArrayList<>();
         groups.forEach((key, group) -> summaries.add(Json.obj("identity",key,"simulator",group.get(0).str("simulator_version"),
                 "baseline_id",group.get(0).lng("aeb_version_id"),"vehicle_id",group.get(0).lng("carla_vehicle_model_id"),
@@ -123,7 +127,7 @@ public class AnalysisService {
     }
     @Transactional(readOnly = true)
     public Map<String,Object> inspection(long runId) {
-        List<Row> found = db.list(SELECT.replace(" AND r.purpose = 'BASELINE'", "")
+        List<Row> found = db.list(SELECT.replace(" AND r.purpose = 'BASELINE'", "").replace(" AND r.aeb_mode = 'ON'", "")
                 + " AND r.id = ?", projects.currentProject().lng("id"), runId);
         if (found.isEmpty()) throw new NotFoundException("baseline run");
         Row row = found.get(0);
@@ -319,14 +323,29 @@ public class AnalysisService {
         List<Row> val = current.stream().filter(row -> validation.contains(row.lng("id"))).toList();
         checkSet(opt); checkSet(val);
         Set<Long> optVariants = opt.stream().map(row -> row.lng("scenario_version_id")).collect(java.util.stream.Collectors.toSet());
-        if (val.stream().anyMatch(row -> optVariants.contains(row.lng("scenario_version_id")))
-                || current.stream().map(AnalysisService::identity).distinct().count() != 1
-                || current.stream().map(row -> row.lng("scenario_version_id")+"|"+row.getLong("random_seed")).distinct().count() != current.size()
-                || !AnalysisMetrics.objectivesAvailable(opt.stream().map(AnalysisService::sample).toList())
-                || !AnalysisMetrics.evidenceComplete(val.stream().map(AnalysisService::sample).toList())
-                || !sameValue(saved.get("optimization_objectives"),AnalysisMetrics.aggregate(opt.stream().map(AnalysisService::sample).toList()))
-                || !sameValue(saved.get("validation_objectives"),AnalysisMetrics.aggregate(val.stream().map(AnalysisService::sample).toList())))
-            throw new InvalidRequestException("Analysis dataset partitions or objectives changed");
+        if (val.stream().anyMatch(row -> optVariants.contains(row.lng("scenario_version_id"))))
+            throw new InvalidRequestException("Analysis dataset partitions contain the same variant");
+        if (current.stream().map(AnalysisService::identity).distinct().count() != 1)
+            throw new InvalidRequestException("Analysis dataset mixes vehicle or simulator identities");
+        if (current.stream().map(row -> row.lng("scenario_version_id")+"|"+row.getLong("random_seed")).distinct().count() != current.size())
+            throw new InvalidRequestException("Analysis dataset repeats a variant and seed");
+        if (!AnalysisMetrics.objectivesAvailable(opt.stream().map(AnalysisService::sample).toList()))
+            throw new InvalidRequestException("Analysis optimization objectives are incomplete");
+        if (!AnalysisMetrics.evidenceComplete(val.stream().map(AnalysisService::sample).toList()))
+            throw new InvalidRequestException("Analysis validation evidence is incomplete");
+        // MySQL's JSON parser can round a serialized double by one ULP. Compare the
+        // recomputed objectives after the same JSON conversion as summary_json,
+        // without relaxing the source revision or artifact integrity checks.
+        Map<String,Object> recomputed = Json.obj(
+                "optimization", AnalysisMetrics.aggregate(opt.stream().map(AnalysisService::sample).toList()),
+                "validation", AnalysisMetrics.aggregate(val.stream().map(AnalysisService::sample).toList()));
+        Object normalizedJson = db.scalar("SELECT CAST(? AS JSON)", Json.write(recomputed));
+        if (normalizedJson == null) throw new IllegalStateException("Could not normalize analysis objectives as MySQL JSON");
+        Map<String,Object> normalized = Json.parseMap(normalizedJson.toString());
+        if (!sameValue(saved.get("optimization_objectives"), normalized.get("optimization")))
+            throw new InvalidRequestException("Analysis optimization objectives changed");
+        if (!sameValue(saved.get("validation_objectives"), normalized.get("validation")))
+            throw new InvalidRequestException("Analysis validation objectives changed");
         List<Object> manifests = Json.asList(saved.get("manifests"));
         if (manifests.size() != ids.size() || !manifests.stream().map(Json::asMap).map(m -> ((Number)m.get("run_id")).longValue())
                 .collect(java.util.stream.Collectors.toSet()).equals(new HashSet<>(ids)))

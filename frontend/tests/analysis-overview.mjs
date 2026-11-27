@@ -98,6 +98,8 @@ try {
   await openOverview(page);
   assert.match(await overview.innerText(),/75%/);
   const objectives=overview.getByRole("region",{name:"Chỉ số tổng hợp của nhóm 1",exact:true});assert.match(await objectives.innerText(),/0\.000 m\/s/);
+  assert.equal(await row(101).locator("td.numeric").count(),0);
+  await page.getByLabel("Hiện chỉ số").check();
   assert.equal((await row(101).locator("td.numeric").nth(1).innerText()).trim(),"10.000");
   assert.equal((await row(102).locator("td.numeric").nth(1).innerText()).trim(),"—");
   assert.equal((await row(103).locator("td.numeric").nth(1).innerText()).trim(),"—");

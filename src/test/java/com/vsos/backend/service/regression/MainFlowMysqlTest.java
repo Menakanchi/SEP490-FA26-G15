@@ -16,10 +16,12 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import java.net.URI;
 import java.net.http.*;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.*;
 import static org.assertj.core.api.Assertions.*;
 
 /** Actual HTTP + JWT + Spring transactions + isolated MySQL/Redis + Java simulator.
@@ -28,7 +30,7 @@ import static org.assertj.core.api.Assertions.*;
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={
         "spring.config.import=optional:file:./target/logic-audit-no-env.properties",
         "vehicsim.simulator=kinematic","vehicsim.run-mode=inline","vehicsim.recover-on-startup=false",
-        "vehicsim.data-root=./target/e2e-flow-audit/main-flow","spring.data.redis.host=127.0.0.1",
+        "vehicsim.data-root=${VSOS_AUDIT_DATA_ROOT:./target/e2e-flow-audit/main-flow}","spring.data.redis.host=127.0.0.1",
         "spring.data.redis.port=16379","app.env=development","app.auth.login-attempts-per-ip=100"})
 class MainFlowMysqlTest {
     @DynamicPropertySource static void isolatedDatabase(DynamicPropertyRegistry properties) throws Exception {
@@ -67,6 +69,7 @@ class MainFlowMysqlTest {
     @Autowired com.vsos.backend.repository.common.Queries queries;
     @Autowired com.vsos.backend.service.analysis.AnalysisService analysis;
     @Autowired com.vsos.backend.repository.analysis.FailureAnalysisStore faStore;
+    @Autowired com.vsos.backend.service.analysis.FailureAnalysisService failureAnalysis;
     @Autowired org.springframework.transaction.support.TransactionTemplate transactions;
     private long projectId;
     private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
@@ -132,13 +135,66 @@ class MainFlowMysqlTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM failures f JOIN simulation_runs r ON r.id=f.simulation_run_id WHERE r.aeb_mode='OFF'",Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM collision_events c JOIN simulation_runs r ON r.id=c.simulation_run_id WHERE r.aeb_mode='OFF'",Integer.class)).isPositive();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM simulation_runs WHERE aeb_mode='OFF' AND (aeb_activated=1 OR is_false_positive=1 OR is_false_negative=1)",Integer.class)).isZero();
+        long referenceRun=jdbc.queryForObject("SELECT MIN(id) FROM simulation_runs WHERE project_id=? AND aeb_mode='OFF'",Long.class,projectId);
+        long referenceVariant=jdbc.queryForObject("SELECT scenario_version_id FROM simulation_runs WHERE id=?",Long.class,referenceRun);
+        var byVariant=json("GET",BASE+"/analysis/runs?variant_id="+referenceVariant,engineer,null,200);
+        var variantItems=Json.asList(byVariant.get("items")).stream().map(Json::asMap).toList();
+        assertThat(variantItems).hasSize(2);
+        assertThat(variantItems).anySatisfy(item -> {
+            assertThat(id(item,"run_id")).isEqualTo(referenceRun);
+            assertThat(item).containsEntry("aeb_mode","OFF").containsEntry("outcome","REFERENCE");
+        });
+        assertThat(Json.asMap(byVariant.get("counts"))).containsEntry("REFERENCE",1);
+        var referenceInspection=json("GET",BASE+"/analysis/runs/"+referenceRun,engineer,null,200);
+        assertThat(Json.asMap(referenceInspection.get("run"))).containsEntry("aeb_mode","OFF").containsEntry("outcome","REFERENCE");
+        var baselineOnly=json("GET",BASE+"/analysis/runs?scenario_id="+scenario,engineer,null,200);
+        assertThat(Json.asList(baselineOnly.get("items"))).allSatisfy(item -> assertThat(Json.asMap(item)).doesNotContainEntry("aeb_mode","OFF"));
         // Seed fixture setup only: all results below are produced by the real Java simulator, never inserted.
         var variants=jdbc.queryForList("SELECT id,scenario_ir_json FROM scenario_versions WHERE scenario_id=? AND source='GENERATED'",scenario)
                 .stream().map(com.vsos.backend.repository.common.Row::new).toList();
         long vehicle=jdbc.queryForObject("SELECT carla_vehicle_model_id FROM simulation_runs WHERE project_id=? LIMIT 1",Long.class,projectId);
         var secondSeeds=runService.createRuns(projectId,scenario,variants,vehicle,baseline,engineerId,"BASELINE",null,null);
         for(long runId:secondSeeds) jdbc.update("UPDATE simulation_runs SET random_seed=random_seed+100000 WHERE id=? AND status='PENDING'",runId);
-        runService.dispatch(secondSeeds);
+        // Exercise the actual worker completion path while both interactive FA slots are held.
+        // The simulator, producer JSON and database transactions are real, but this is not CARLA.
+        var originalRun=new com.vsos.backend.repository.common.Row(jdbc.queryForMap(
+                "SELECT * FROM simulation_runs WHERE project_id=? AND status='COMPLETED' LIMIT 1",projectId));
+        byte[] original=failureAnalysis.producerResult(originalRun).body();
+        var entered=new CountDownLatch(2);var release=new CountDownLatch(1);
+        class HeldInput extends ByteArrayInputStream {
+            boolean held;
+            HeldInput(){super(original);}
+            @Override public synchronized int read(byte[] bytes,int offset,int length) {
+                if(!held){held=true;entered.countDown();try {
+                    if(!release.await(60,TimeUnit.SECONDS))throw new IllegalStateException("test timeout");
+                } catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}}
+                return super.read(bytes,offset,length);
+            }
+        }
+        try(var pool=Executors.newFixedThreadPool(secondSeeds.size()+2)) {
+            var first=pool.submit(()->failureAnalysis.ingest(projectId,engineerId,new HeldInput(),original.length,null));
+            var second=pool.submit(()->failureAnalysis.ingest(projectId,engineerId,new HeldInput(),original.length,null));
+            try {
+                assertThat(entered.await(10,TimeUnit.SECONDS)).isTrue();
+                var start=new CountDownLatch(1);var workers=new ArrayList<Future<?>>();
+                for(long runId:secondSeeds)workers.add(pool.submit(()->{
+                    if(!start.await(10,TimeUnit.SECONDS))throw new IllegalStateException("test start timeout");
+                    runService.executeRun(runId);return null;
+                }));
+                start.countDown();
+                for(var worker:workers)worker.get(45,TimeUnit.SECONDS);
+                for(long runId:secondSeeds) {
+                    var row=new com.vsos.backend.repository.common.Row(jdbc.queryForMap("SELECT * FROM simulation_runs WHERE id=?",runId));
+                    assertThat(row.str("status")).as("run %s: %s",runId,row.str("error_message")).isEqualTo("COMPLETED");
+                    var source=failureAnalysis.producerResult(row);
+                    assertThat(source).isNotNull();
+                    var producer=Json.parseMap(new String(source.body(),StandardCharsets.UTF_8));
+                    assertThat(((Number)Json.asMap(producer.get("source")).get("run_id")).longValue()).isEqualTo(runId);
+                    assertThat(producer.get("simulator")).isEqualTo(com.vsos.backend.service.simulation.RunService.KINEMATIC_SIMULATOR);
+                }
+            } finally {release.countDown();}
+            first.get(30,TimeUnit.SECONDS);second.get(30,TimeUnit.SECONDS);
+        }
         awaitRuns();
         var dataset=json("GET",BASE+"/analysis/dataset?scenario_id="+scenario,engineer,null,200);
         assertThat(Json.asList(dataset.get("variants"))).hasSize(4);
