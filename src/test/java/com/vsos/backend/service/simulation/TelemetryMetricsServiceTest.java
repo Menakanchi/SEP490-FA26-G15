@@ -90,6 +90,18 @@ class TelemetryMetricsServiceTest {
     }
 
     @Test
+    void brakeOnset_ignoresSingleFramePedalBlip() {
+        // CARLA đặt lại xe lúc khởi tạo: bàn đạp 0,067 đúng một khung ở t = 0,5 s, rồi về 0 tới khi AEB phanh thật ở 2,6 s.
+        List<TelemetryMetricsService.TelemetryFrame> frames = new java.util.ArrayList<>();
+        for (int i = 50; i <= 300; i++) {
+            double t = i / 100.0;
+            double brake = i == 50 ? 0.067 : (t >= 2.6 ? 0.2 + (t - 2.6) : 0.0);
+            frames.add(new TelemetryMetricsService.TelemetryFrame(t, 13.9, 0.0, null, brake, null, null, null, null, null, null, null, null));
+        }
+        assertThat(TelemetryMetricsService.brakeOnset(frames)).isEqualTo(2.6);
+    }
+
+    @Test
     void calculateRmsJerk_excludesCollisionImpulse() {
         // Không có imu_jerk: lấy Δa/Δt, khung trước pha phanh làm điểm xuất phát.
         List<TelemetryMetricsService.TelemetryFrame> frames = List.of(
