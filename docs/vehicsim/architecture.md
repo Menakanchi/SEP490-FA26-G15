@@ -304,7 +304,7 @@ không được đưa lại vào API hiện tại. CPLA/TURNING/CUT_IN chưa tri
 - Đăng ký và quên mật khẩu: email → mã 6 số (TTL 600 s, tối đa 5 lần nhập sai,
   gửi lại sau 60 s, giới hạn theo IP). Mã lưu **HMAC** trong Redis, không lưu MySQL.
 - Không tiết lộ email có tồn tại: luồng OTP phản hồi và thời gian như nhau (gửi mail chạy nền).
-- Hai cách đăng ký, backend chọn bằng `REGISTRATION_MODE` (`auto` | `one_step` | `otp`; `GET /auth/register/mode` cho
+- Hai cách đăng ký, backend chọn bằng `REGISTRATION_MODE` (`auto` | `one_step` | `otp` | `closed`; `GET /auth/register/mode` cho
   frontend biết): `otp` = `POST /auth/register/request` rồi `/verify` (chỉ chủ email mới đăng ký được, cần SMTP);
   `one_step` = `POST /auth/register` tạo tài khoản luôn, không xác minh email. `auto` chọn `otp` ở production và `one_step`
   ở dev (chưa cần SMTP). Ở chế độ `otp` route một bước trả 403; backend cảnh báo lúc khởi động nếu `otp` mà chưa có SMTP,
@@ -502,7 +502,7 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | `JWT_SECRET`, `ACCESS_TOKEN_TTL_MINUTES` | Phiên đăng nhập (`JWT_SECRET`: Base64 ≥ 256 bit) |
 | `CORS_ORIGINS` | Origin của frontend được gọi API |
 | `OTP_TTL_SECONDS`, `OTP_MAX_ATTEMPTS`, `OTP_RESEND_COOLDOWN_SECONDS` | Mã 6 số |
-| `REGISTRATION_MODE` | `auto` (mặc định: production → `otp`, còn lại → `one_step`), `one_step`, `otp` |
+| `REGISTRATION_MODE` | `auto` (mặc định: production → `otp`, còn lại → `one_step`), `one_step`, `otp`, `closed` (tắt đăng ký công khai; tài khoản do quản trị tạo, 403 ở mọi route đăng ký) |
 | `FORWARD_HEADERS_STRATEGY` | `none` (mặc định) hoặc `native` khi đứng sau reverse proxy (TD-36) |
 | `RATE_LIMIT_WINDOW_SECONDS`, `LOGIN_ATTEMPTS_PER_IP`, `LOGIN_ATTEMPTS_PER_ACCOUNT`, `OTP_REQUESTS_PER_IP`, `REGISTER_REQUESTS_PER_IP` | Giới hạn tần suất xác thực |
 | `LLM_PROVIDER`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY` | Lớp LLM dùng chung (chỉ bước 1 "Sinh từ mô tả" gọi LLM) |
