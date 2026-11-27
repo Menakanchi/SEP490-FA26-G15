@@ -22,6 +22,11 @@ UPDATE aeb_parameters SET description = REPLACE(description, 'Khoảng tối ưu
 UPDATE aeb_parameters SET description = REPLACE(description, 'Khoảng tối ưu [0.0, 0.5] s', 'Khoảng tối ưu [0.05, 0.45] s') WHERE code = 'BRAKE_ACTIVATION_DELAY';
 UPDATE aeb_parameters SET description = REPLACE(description, 'Khoảng tối ưu [3.0, 10.0] m/s^2', 'Khoảng tối ưu [5.0, 10.0] m/s^2') WHERE code = 'MAX_DECELERATION';
 
+-- Tài liệu kỹ thuật từ 022 cũng nêu khoảng cũ; chỉ thay phần khoảng, giữ nội dung khác.
+UPDATE tech_references SET description = REPLACE(description, 'Khoảng tối ưu: [0.5, 4.0] s', 'Khoảng tối ưu: [0.5, 3.5] s') WHERE ref_code = 'PARAM_TTC_THRESHOLD';
+UPDATE tech_references SET description = REPLACE(description, 'Khoảng tối ưu: [0.0, 0.5] s', 'Khoảng tối ưu: [0.05, 0.45] s') WHERE ref_code = 'PARAM_BRAKE_ACTIVATION_DELAY';
+UPDATE tech_references SET description = REPLACE(description, 'Khoảng tối ưu: [3.0, 10.0] m/s^2', 'Khoảng tối ưu: [5.0, 10.0] m/s^2') WHERE ref_code = 'PARAM_MAX_DECELERATION';
+
 -- Giá trị đã lưu nằm ngoài phạm vi mới (chỉ để xem, không sửa).
 SELECT v.id AS aeb_version_id, v.label, v.status, p.code, pv.param_value, p.min_value, p.max_value
   FROM aeb_parameter_values pv
