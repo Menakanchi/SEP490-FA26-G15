@@ -103,7 +103,7 @@ export default function RegressionListPage() {
 
       <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
         <div className="flex items-center gap-2 px-5 py-4">
-          <span className="mr-2 text-[15px] font-bold text-vehicsim-ink">{data ? `${items.length} kiểm thử` : "…"}</span>
+          <span className="mr-2 shrink-0 whitespace-nowrap text-[15px] font-bold text-vehicsim-ink">{data ? `${items.length} kiểm thử` : "…"}</span>
           <FilterSelect<RegressionStatus>
             label="Trạng thái"
             value={status}
@@ -136,17 +136,17 @@ export default function RegressionListPage() {
         )}
 
         {shown.length > 0 && (
-          <TableScroll label="Bảng kiểm thử hồi quy" minWidth={1100}>
+          <TableScroll label="Bảng kiểm thử hồi quy" minWidth={1060}>
             <div className="flex h-11 items-center border-y border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
               <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
-              <span className="w-[200px] shrink-0 pr-3">Kiểm thử</span>
-              <span className="w-[135px] shrink-0">Phiên bản</span>
-              <span className="w-[85px] shrink-0">Kịch bản</span>
-              <span className="w-[110px] shrink-0">Trạng thái</span>
-              <span className="w-[115px] shrink-0">Sửa / Xấu đi</span>
+              <span className="w-[180px] shrink-0 pr-3">Kiểm thử</span>
+              <span className="min-w-[140px] flex-1 pr-3">Phiên bản</span>
+              <span className="w-[90px] shrink-0">Kịch bản</span>
+              <span className="w-[105px] shrink-0">Trạng thái</span>
+              <span className="w-[100px] shrink-0">Sửa / Xấu đi</span>
               {!isExperiencer && <span className="w-[100px] shrink-0">Người tạo</span>}
               <span className="w-[80px] shrink-0">Ngày</span>
-              <span className="w-[195px] shrink-0 text-right pr-2">Thao tác</span>
+              <span className="w-[180px] shrink-0 text-right pr-2">Thao tác</span>
             </div>
             {shown.map((i, idx) => {
               const running = i.status === "RUNNING" || i.status === "PENDING";
@@ -159,20 +159,20 @@ export default function RegressionListPage() {
                   <span className="w-[45px] shrink-0 pr-2 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
                     {offset + idx + 1}
                   </span>
-                  <span className="flex w-[200px] shrink-0 flex-col gap-[2px] pr-3">
+                  <span className="flex w-[180px] shrink-0 flex-col gap-[2px] pr-3">
                     <span className="text-[13px] font-bold text-vehicsim-ink">{i.code}</span>
                     <span className="truncate text-[11.5px] text-vehicsim-faint">{i.name}</span>
                   </span>
-                  <span className="w-[140px] shrink-0 text-[12.5px] font-semibold text-vehicsim-ink">
+                  <span className="min-w-[140px] flex-1 truncate pr-3 text-[12.5px] font-semibold text-vehicsim-ink" title={`${i.baseline} → ${i.candidate}`}>
                     {i.baseline} → {i.candidate}
                   </span>
                   <span className="w-[90px] shrink-0 text-[12.5px] text-vehicsim-ink">
                     {running ? `${i.progress.done}/${i.progress.total}` : i.scenarios ?? i.progress.total}
                   </span>
-                  <span className="w-[115px] shrink-0">
+                  <span className="w-[105px] shrink-0">
                     <StatusBadge status={i.status} />
                   </span>
-                  <span className="flex w-[120px] shrink-0 items-center gap-[6px]">
+                  <span className="flex w-[100px] shrink-0 items-center gap-[6px]">
                     {i.fixed === null ? (
                       <span className="text-[12.5px] text-vehicsim-faint">—</span>
                     ) : (
@@ -189,9 +189,9 @@ export default function RegressionListPage() {
                       </>
                     )}
                   </span>
-                  {!isExperiencer && <span className="w-[105px] shrink-0 truncate text-[12.5px] text-vehicsim-ink">{i.created_by ?? "—"}</span>}
-                  <span className="w-[85px] shrink-0 text-[12px] text-vehicsim-faint">{fmt.date(i.created_at)}</span>
-                  <span className="flex w-[195px] shrink-0 items-center justify-end gap-2 pr-2" onClick={(e) => e.stopPropagation()}>
+                  {!isExperiencer && <span className="w-[100px] shrink-0 truncate text-[12.5px] text-vehicsim-ink">{i.created_by ?? "—"}</span>}
+                  <span className="w-[80px] shrink-0 text-[12px] text-vehicsim-faint">{fmt.date(i.created_at)}</span>
+                  <span className="flex w-[180px] shrink-0 items-center justify-end gap-2 pr-2" onClick={(e) => e.stopPropagation()}>
                     <Link
                       href={`/validation/regression/${i.id}`}
                       className="inline-flex h-7 items-center justify-center rounded-lg border border-solid border-slate-200 bg-white px-2.5 text-[11.5px] font-bold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition whitespace-nowrap shadow-xs"

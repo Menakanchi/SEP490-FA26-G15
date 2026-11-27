@@ -28,6 +28,14 @@ import { formatMetric, formatMeasurement } from "@/components/analysis/analysisM
 import { hasCompleteTrialEvidence, isFeasibleTrial } from "@/components/aeb/optimizationEvidence";
 import { vi } from "@/components/vehicsimI18n";
 
+const RUN_STATUS_LABEL: Record<string, string> = {
+  PENDING: "Đang chờ",
+  RUNNING: "Đang chạy",
+  COMPLETED: "Hoàn tất",
+  FAILED: "Thất bại",
+  CANCELLED: "Đã hủy",
+};
+
 export default function AebMoboStudioPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -635,7 +643,7 @@ export default function AebMoboStudioPage() {
                                 : "neutral"
                             }
                           >
-                            {r.status}
+                            {RUN_STATUS_LABEL[r.status] ?? r.status}
                           </Tag>
                         </td>
                         <td className="px-5 py-4 font-semibold text-vehicsim-ink">
