@@ -45,7 +45,7 @@ export function AnalysisRunExplorer({ data, loading, hasError, page, size, searc
   const rows = (data?.items ?? []).filter(run =>
     `${run.run_id} ${run.family} ${run.variant} ${run.seed}`.toLocaleLowerCase("vi").includes(query)
     && (!outcomeFilter || run.outcome === outcomeFilter)
-    && (!collisionFilter || (collisionFilter === "collision" ? run.outcome === "COLLISION" : ["SAFE", "NEAR_MISS"].includes(run.outcome))));
+    && (!collisionFilter || (collisionFilter === "collision" ? run.outcome === "COLLISION" : ["SAFE", "NEAR_MISS", "FALSE_BRAKING", "MISSED_BRAKING", "OTHER_FAILURE"].includes(run.outcome))));
   const activeSort = ["newest", "oldest", "impact", "jerk"].includes(sort) ? sort : "newest";
   rows.sort((a, b) => {
     if (activeSort === "oldest") return a.run_id - b.run_id;

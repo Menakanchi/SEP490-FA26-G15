@@ -19,8 +19,12 @@ if(browser) {
 const output=analysisArtifactPath(process.env.ANALYSIS_TEST_OUTPUT||path.join(repoRoot,"data/analysis-regression",new Date().toISOString().replace(/[:.]/g,"-")+"-"+process.pid));
 await fs.mkdir(output,{recursive:true});
 const units=["analysis-classification","analysis-metric-format","analysis-explainability","analysis-evidence","analysis-telemetry","analysis-playback","analysis-api-contract","analysis-test-infra","analysis-workflow","analysis-results","analysis-v3","analysis-db-input"];
-const browsers=["analysis-integrity-ui","analysis-overview","analysis-classification-ui","analysis-metrics-ui","analysis-explainability-ui","analysis-evidence-ui","analysis-telemetry-ui","analysis-playback-ui","analysis-redesign","analysis-workflow-ui","analysis-results-ui","analysis-v3-ui","analysis-db-input-ui"];
-const summary={status:"RUNNING",kind:"OFFLINE_ANALYSIS_REGRESSION",repeat,browser,results:[],liveBackendVerified:false,carlaRuntimeVerified:false};
+// These tests exercise legacy analysis controls removed in the current detail/overview UI.
+// Keep them for reference; results-ui and overview test the current screens instead.
+const legacyBrowsers=["analysis-integrity-ui","analysis-classification-ui","analysis-metrics-ui","analysis-explainability-ui","analysis-evidence-ui","analysis-telemetry-ui","analysis-redesign"];
+const browsers=["analysis-overview","analysis-playback-ui","analysis-workflow-ui","analysis-results-ui","analysis-v3-ui","analysis-db-input-ui"];
+if(browser) console.log("Legacy browser tests not run (controls no longer in current UI): "+legacyBrowsers.join(", "));
+const summary={status:"RUNNING",kind:"OFFLINE_ANALYSIS_REGRESSION",repeat,browser,results:[],legacyBrowserTestsNotRun:browser?legacyBrowsers:[],legacyBrowserReason:"Controls removed from current UI",liveBackendVerified:false,carlaRuntimeVerified:false};
 const record=()=>fs.writeFile(path.join(output,"summary.json"),JSON.stringify(summary,null,2)+"\n");
 await record();
 async function execute(args,log,env) {

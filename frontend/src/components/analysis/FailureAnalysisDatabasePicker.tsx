@@ -4,7 +4,22 @@ import { failureAnalysisV3 as api } from "@/services/failureAnalysisV3";
 import { FAError, type RecordValue } from "./failureAnalysisV3Data";
 import type { DatabaseKind, DatabaseInspection } from "./failureAnalysisDatabaseData";
 import styles from "./FailureAnalysisV3.module.css";
-const failure = (e: unknown) => e instanceof FAError && e.status === 413 ? "Nguồn vượt ngân sách tiếp nhận của Module 3. Không cắt bớt member; chọn một run hoặc đề nghị tăng giới hạn phù hợp." : e instanceof Error ? e.message : "Chưa đọc được nguồn CARLA.";
+const failure = (e: unknown) => {
+  if (e instanceof FAError && ["STORED_SOURCE_IDENTITY_MISMATCH", "DB_PRODUCER_RESULT_REVISION_MISMATCH"].includes(e.code)) return "Nguồn dữ liệu không khớp định danh hoặc checksum đã lưu. Chưa thể phân tích; hãy kiểm tra lại nguồn.";
+  return e instanceof FAError && e.status === 413 ? "Nguồn vượt ngân sách tiếp nhận của Module 3. Không cắt bớt member; chọn một run hoặc đề nghị tăng giới hạn phù hợp." : e instanceof Error ? e.message : "Chưa đọc được nguồn CARLA.";
+};
+const issueMessage = (code: unknown): string => {
+  switch (code) {
+    case "DB_RESULT_NOT_PERSISTED": return "Chưa có kết quả gốc trong database. Với lượt chạy cũ, hãy chạy lại để lưu dữ liệu cho phân tích.";
+    case "DATASET_REQUIRED": return "Kết quả gốc thiếu khối dataset cần cho phân tích.";
+    case "DB_IDENTITY_FIELD_MISSING": return "Kết quả gốc thiếu thông tin định danh; chưa thể đối chiếu lượt chạy.";
+    case "DB_IDENTITY_CONFLICT": return "Thông tin định danh trong kết quả gốc không khớp lượt chạy.";
+    case "DB_RESULT_JSON_INVALID": return "Kết quả gốc không phải JSON hợp lệ.";
+    case "DB_RESULT_SCHEMA_UNSUPPORTED": return "Định dạng kết quả gốc chưa được hỗ trợ.";
+    case "DB_RESULT_BOM_NOT_EMBEDDABLE_WITHOUT_BYTE_CHANGE": return "Kết quả gốc có BOM và không thể đưa vào tập phân tích mà giữ nguyên dữ liệu.";
+    default: return "Chưa đủ dữ liệu hoặc thông tin nguồn không khớp để phân tích.";
+  }
+};
 
 export function FailureAnalysisDatabasePicker({ project, canWrite, disabled, onPending, onExecution }: {
   project: number; canWrite: boolean; disabled: boolean; onPending: (pending: boolean) => void; onExecution: (id: string) => void;
@@ -44,7 +59,7 @@ export function FailureAnalysisDatabasePicker({ project, canWrite, disabled, onP
     {inspection?.key === selectionKey && inspection.error && <p role="alert">{inspection.error}</p>}{actionError && <p role="alert">{actionError} Tải lại kết quả CARLA để kiểm tra nguồn hiện tại.</p>}
     {detail && <><p>{detail.can_analyze ? "Kết quả đã sẵn sàng để phân tích." : "Kết quả chưa sẵn sàng để phân tích."}{kind === "collections" && ` ${detail.members.length} lượt chạy trong biến thể.`}</p>
       {!detail.can_analyze && <p role="alert">Thiếu dữ liệu gốc hoặc thông tin nguồn không khớp. Kiểm tra các lượt chạy bên dưới trước khi phân tích.</p>}
-      {detail.members.filter(m => Array.isArray(m.issues) && m.issues.length).map((m, i) => <p key={i}>Lượt {String(m.run_id)}: chưa đủ dữ liệu để phân tích.</p>)}
+      {detail.members.filter(m => Array.isArray(m.issues) && m.issues.length).map((m, i) => <div key={i}><p>Lượt {String(m.run_id)}: chưa đủ dữ liệu để phân tích.</p><ul>{(m.issues as unknown[]).map((issue, j) => <li key={j}>{issueMessage(issue && typeof issue === "object" && "reason_code" in issue ? issue.reason_code : null)}</li>)}</ul></div>)}
     </>}
     {!canWrite && <p>Chế độ chỉ đọc. Phân tích cần quyền ghi và dự án/workspace ACTIVE.</p>}
   </div>;
