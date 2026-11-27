@@ -6,6 +6,9 @@ import com.vsos.backend.common.Vs.InvalidRequestException;
 import com.vsos.backend.common.Vs.NotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -442,6 +445,31 @@ public class FamilyService {
 
     public FamilyService(Db db) {
         this.db = db;
+    }
+
+    /** Xóa họ chưa được sử dụng; giữ nguyên mọi run và dữ liệu nghiệp vụ phụ thuộc. */
+    @Transactional
+    public void deleteFamily(long projectId, long scenarioId) {
+        // Khóa họ trong suốt transaction để ngăn tạo bản hoặc tham chiếu mới đồng thời.
+        if (db.first("SELECT id FROM scenarios WHERE id = ? AND project_id = ? FOR UPDATE", scenarioId, projectId) == null) {
+            throw new NotFoundException("scenario family");
+        }
+        for (String table : List.of("simulation_runs", "analysis_results", "optimization_runs", "regression_tests")) {
+            if (db.first("SELECT 1 AS used FROM " + table + " WHERE project_id = ? AND scenario_id = ? LIMIT 1", projectId, scenarioId) != null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "This scenario family has runs or related analysis, optimization or regression data and cannot be deleted");
+            }
+        }
+        try {
+            // GENERATED tham chiếu bản gốc bằng FK RESTRICT, nên xóa các con trước.
+            db.update("DELETE FROM scenario_versions WHERE scenario_id = ? AND parent_version_id IS NOT NULL", scenarioId);
+            db.update("DELETE FROM scenario_versions WHERE scenario_id = ?", scenarioId);
+            db.update("DELETE FROM scenarios WHERE id = ? AND project_id = ?", scenarioId, projectId);
+        } catch (DataIntegrityViolationException ex) {
+            // Các ràng buộc DB là hàng rào cuối nếu có dữ liệu phụ thuộc khác / ghi đồng thời.
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This scenario family is in use and cannot be deleted", ex);
+        }
     }
 
     /**

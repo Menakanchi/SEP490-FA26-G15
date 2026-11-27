@@ -19,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -118,6 +119,16 @@ public class ScenarioController {
     @GetMapping("/families")
     public List<Map<String, Object>> listFamilies() {
         return views.families();
+    }
+
+    @Operation(summary = "Xóa họ chưa có run hoặc dữ liệu phân tích, tối ưu, regression")
+    @DeleteMapping("/families/{scenarioId}")
+    public ResponseEntity<Void> deleteFamily(@PathVariable long scenarioId, @AuthenticationPrincipal UserDetails user) {
+        long uid = VehicSimAccess.requireEngineer(user);
+        access.limitWrites(uid, "family");
+        families.deleteFamily(access.projectId(), scenarioId);
+        AuditLog.event("family.delete", "success", "user_id", uid, "scenario_id", scenarioId);
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "Tạo họ kịch bản (và chạy baseline nếu run_baseline)")

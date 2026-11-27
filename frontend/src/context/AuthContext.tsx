@@ -195,8 +195,9 @@ export function useAuth(): AuthContextType {
 
 /** Trang đích sau khi đăng nhập, theo role. */
 export function homeFor(role: Role): string {
-  // EXPERIENCER bắt đầu từ danh sách project cá nhân; ADMIN vào màn quản trị; role khác vào dashboard.
+  // MANAGER làm việc trong workspace; ADMIN vào màn quản trị hệ thống.
   if (role === "experience") return "/projects";
   if (role === "admin") return "/admin/users";
+  if (role === "manager") return "/workspace";
   return "/";
 }

@@ -240,9 +240,8 @@ public final class MoboHandoffBuilder {
         }return true;
     }
     private static boolean sampleMatches(AnalysisMetrics.Sample s,Run r){
-        Object onset=r.get("result","/outcome/metrics/brake_onset_t"),jerk=r.get("result","/outcome/metrics/rms_jerk_mps3"),stop=r.get("result","/outcome/metrics/stopping_distance_m");
-        Boolean braked=onset!=null&&!"null".equals(onset)||jerk!=null||stop!=null?Boolean.TRUE:
-                Boolean.FALSE.equals(r.get("result","/evaluation/aeb_result/aeb_triggered"))?Boolean.FALSE:null;
+        Object jerk=r.get("result","/outcome/metrics/rms_jerk_mps3"),stop=r.get("result","/outcome/metrics/stopping_distance_m");
+        Boolean braked=CanonicalObjectiveReader.recordedBraking(r);
         return sameNumber(s.jerk(),jerk)&&sameNumber(s.impact(),r.get("result","/outcome/metrics/impact_speed_mps"))&&sameNumber(s.stopping(),stop)
                 &&Objects.equals(s.collision(),r.get("result","/outcome/metrics/collision"))
                 &&Objects.equals(s.collision(),r.get("result","/evaluation/aeb_result/collision"))

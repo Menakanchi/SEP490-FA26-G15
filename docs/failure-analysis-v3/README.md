@@ -45,7 +45,8 @@ không báo thành công trước response hoặc tự retry mutation không rõ
 Dialog giữ dirty/review/busy, focus return, Tab/Escape, scroll lock và ref submit lock.
 URL tài liệu chỉ http/https; DECIMAL giữ dạng string khi cần precision.
 
-Đổi role/email/status có auth_version/session revocation ở backend; UI guard
+Đổi role/status có auth_version/session revocation ở backend; Admin không thể
+đổi email tài khoản đã tạo. UI guard
 không thay authorization. ENGINEER/REVIEWER theo workspace membership; EXPERIENCER
 theo project cá nhân; ADMIN/MANAGER còn giới hạn default project TD-30.
 Đọc [ADR-064](../adr/ADR-064-ky-su-tao-project-cua-workspace.md) và source security

@@ -61,6 +61,19 @@ public class SecurityConfig {
                         // bộ lọc JWT không chạy lại ở lượt này nên không được chặn nó thành 401/403 trên response đã gửi dở.
                         .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/api/v1/vehicsim/admin/**").hasRole("ADMIN")
+                        // Quản lý workspace không truy cập các chức năng kỹ thuật, kể cả gọi API trực tiếp.
+                        // Các API thông báo và quản lý workspace vẫn theo luật riêng của chúng.
+                        .requestMatchers(
+                                "/api/v1/vehicsim/scenario-categories", "/api/v1/vehicsim/scenarios/**",
+                                "/api/v1/vehicsim/context", "/api/v1/vehicsim/projects/**",
+                                "/api/v1/vehicsim/families/**", "/api/v1/vehicsim/variants/**",
+                                "/api/v1/vehicsim/runs/**", "/api/v1/vehicsim/carla/**",
+                                "/api/v1/vehicsim/telemetry/**", "/api/v1/vehicsim/vehicles/**",
+                                "/api/v1/vehicsim/failures", "/api/v1/vehicsim/failures.csv",
+                                "/api/v1/vehicsim/analysis/**", "/api/v1/vehicsim/aeb/**",
+                                "/api/v1/vehicsim/optimizations/**", "/api/v1/vehicsim/regression/**",
+                                "/api/v1/vehicsim/recommendations/**", "/api/v1/vehicsim/decisions/**"
+                        ).hasAnyRole("ADMIN", "ENGINEER", "EXPERIENCER", "REVIEWER")
                         // Phải đứng trước /api/v1/auth/** (permitAll) để hai route này đòi đăng nhập.
                         .requestMatchers("/api/v1/auth/me", "/api/v1/auth/password/change").authenticated()
                         .requestMatchers(API_DOC_PATHS).access((authentication, context) ->

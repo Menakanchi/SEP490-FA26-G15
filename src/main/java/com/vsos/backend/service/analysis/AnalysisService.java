@@ -35,6 +35,7 @@ public class AnalysisService {
             + "JSON_UNQUOTE(JSON_EXTRACT(r.run_config_json, '$.weather')) AS weather, "
             + "JSON_UNQUOTE(JSON_EXTRACT(r.run_config_json, '$.time_of_day')) AS time_of_day, "
             + "JSON_EXTRACT(r.telemetry_json, '$.metrics.brake_onset_t') AS brake_onset, "
+            + "JSON_TYPE(JSON_EXTRACT(r.telemetry_json, '$.metrics.brake_onset_t')) AS brake_onset_type, "
             + "JSON_LENGTH(JSON_EXTRACT(r.telemetry_json, '$.frames')) AS trace_frames "
             + "FROM simulation_runs r JOIN scenarios s ON s.id = r.scenario_id "
             + "JOIN scenario_versions sv ON sv.id = r.scenario_version_id "

@@ -27,6 +27,21 @@ public class VehicSimConfig {
         return executor;
     }
 
+    /**
+     * Gửi mail OTP chạy nền trên pool riêng. Trước đây {@code @Async} dùng chung {@code simulationExecutor}
+     * (1 luồng khi chạy CARLA, hàng đợi 100 000), nên mã xác minh phải xếp sau mọi lượt mô phỏng đang chờ.
+     */
+    @Bean(name = "mailExecutor")
+    public TaskExecutor mailExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(500);
+        executor.setThreadNamePrefix("vs-mail-");
+        executor.setDaemon(true);
+        return executor;
+    }
+
     @EventListener(ApplicationReadyEvent.class)
     public void recoverUnfinishedRuns(ApplicationReadyEvent event) {
         VehicSimProperties props = event.getApplicationContext().getBean(VehicSimProperties.class);

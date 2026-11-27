@@ -9,6 +9,10 @@ import com.vsos.backend.entity.enums.RoleCode;
 import com.vsos.backend.entity.user.*;
 import com.vsos.backend.service.auth.OtpService;
 import com.vsos.backend.service.system.AdminService;
+import com.vsos.backend.repository.common.AdminRepository;
+import com.vsos.backend.repository.common.Row;
+import com.vsos.backend.service.notification.NotificationService;
+import com.vsos.backend.service.workspace.WorkspaceChatHub;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -119,6 +123,23 @@ class AdminSecurityTest {
         verifyNoMoreInteractions(otp);
         mvc.perform(get(BASE + "users").with(user(as(RoleCode.ADMIN))).param("q", "An").param("page", "2"));
         verify(admin).list("users", "An", null, null, 2, 20, "newest");
+    }
+
+    @Test void adminCannotChangeEmailThroughUserUpdateEndpoint() throws Exception {
+        var repo = mock(AdminRepository.class);
+        when(repo.user(eq(42L), anyBoolean())).thenReturn(new Row(Map.of(
+                "id", 42L, "email", "a@example.com", "role", "REVIEWER", "is_active", true)));
+        var realService = new AdminService(repo, mock(LegacyAwarePasswordEncoder.class),
+                mock(NotificationService.class), mock(WorkspaceChatHub.class));
+        when(admin.updateUser(eq(1L), eq(42L), any(UserRequest.class)))
+                .thenAnswer(invocation -> realService.updateUser(1L, 42L, invocation.getArgument(2)));
+        String changed = body("users", true).replace("a@example.com", "other@example.com");
+        assertThat(mvc.perform(put(BASE + "users/42").with(user(as(RoleCode.ADMIN)))
+                .contentType(MediaType.APPLICATION_JSON).content(changed)).andReturn().getResponse().getStatus()).isEqualTo(400);
+        verify(repo, never()).updateUser(anyLong(), anyString(), any(), anyString(), anyString(), anyBoolean(), anyBoolean());
+        assertThat(mvc.perform(write("users", true).with(user(as(RoleCode.ADMIN))))
+                .andReturn().getResponse().getStatus()).isEqualTo(200);
+        verify(repo).updateUser(42L, "A", null, "B", "REVIEWER", false, true);
     }
 
     @Test void allAdminWritesHonourTheRealQuotaBeforeCallingServices() throws Exception {

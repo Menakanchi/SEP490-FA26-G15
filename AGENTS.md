@@ -101,9 +101,9 @@ chạy `.\mvnw.cmd clean` rồi build lại. Mô phỏng mặc định qua threa
 1. Mọi lời gọi LLM qua `LlmService`; bộ sinh `.xosc` offline, không dùng LLM.
 2. Java, kể cả lõi `com.vsos.core`, không import `carla`; lời gọi API CARLA chỉ ở adapter trong `worker/`.
 3. Mọi route `/api/v1/vehicsim/*` cần đăng nhập. Mỗi tài khoản một role:
-   ADMIN/ENGINEER/EXPERIENCER được ghi; MANAGER chỉ đọc; REVIEWER được chạy regression và Accept/Reject theo [ADR-049](docs/adr/ADR-049-reviewer-chay-regression-de-kiem-tra.md).
+   ADMIN/ENGINEER/EXPERIENCER được ghi; MANAGER chỉ dùng khu quản lý workspace, không truy cập nghiệp vụ kỹ thuật theo [ADR-071](docs/adr/ADR-071-manager-quan-ly-workspace.md); REVIEWER được chạy regression và Accept/Reject theo [ADR-049](docs/adr/ADR-049-reviewer-chay-regression-de-kiem-tra.md).
    Header `X-VehicSim-Project` chọn project (`ProjectAccess`): EXPERIENCER trong project cá nhân (`ProjectScope`), Reviewer và Kỹ sư trong project
-   của workspace mình thuộc về (`ReviewerScope`, [ADR-064](docs/adr/ADR-064-ky-su-tao-project-cua-workspace.md)); ADMIN/MANAGER chung project nhóm (TD-30).
+   của workspace mình thuộc về (`ReviewerScope`, [ADR-064](docs/adr/ADR-064-ky-su-tao-project-cua-workspace.md)); ADMIN dùng project nhóm (TD-30).
 4. Cùng biến thể + seed phải tái lập được; candidate chạy đúng seed baseline.
    So sánh phải cùng xe, biến thể và phiên bản simulator.
    Không đổi tham số kịch bản và tham số AEB cùng lúc trong một lần so sánh.
@@ -112,7 +112,7 @@ chạy `.\mvnw.cmd clean` rồi build lại. Mô phỏng mặc định qua threa
    Project cá nhân không có Reviewer: chủ project tự chọn baseline theo đúng các điều kiện này (ADR-046, Proposed).
 6. Chỉ 4 tham số AEB chỉnh được theo ADR-040; seed Java/SQL khớp `AebParams`.
    Ba mục tiêu: RMS jerk, vận tốc va chạm, quãng phanh dừng; thống nhất ràng buộc tối ưu/regression.
-7. Không lộ email tồn tại; OTP hash, dùng một lần; mật khẩu tối đa 72 byte BCrypt.
+7. Không lộ email tồn tại (trừ bước xin mã đăng ký, ADR-070); OTP hash, dùng một lần; mật khẩu tối đa 72 byte BCrypt.
 8. Logic AEB, bộ mô phỏng và luật chấm chỉ ở `com.vsos.core` (`AebStack`, `Simulator`, `Evaluation`), dùng chung cho
    bộ động học và CARLA qua cầu nối; `worker/` không chứa logic AEB (`ArchitectureRulesTest#pythonWorkerHoldsNoAebLogic`).
    Lõi chỉ dùng JDK (`CoreIsolationTest`) và khớp kết quả Python cũ theo fixture ở `src/test/resources/parity`.
