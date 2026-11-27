@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -61,6 +62,8 @@ public class SecurityConfig {
                         // bộ lọc JWT không chạy lại ở lượt này nên không được chặn nó thành 401/403 trên response đã gửi dở.
                         .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/api/v1/vehicsim/admin/**").hasRole("ADMIN")
+                        // Danh mục phương tiện và chi tiết cấu hình là chỉ đọc cho Manager.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/vehicsim/vehicles", "/api/v1/vehicsim/vehicles/*").authenticated()
                         // Quản lý workspace không truy cập các chức năng kỹ thuật, kể cả gọi API trực tiếp.
                         // Các API thông báo và quản lý workspace vẫn theo luật riêng của chúng.
                         .requestMatchers(

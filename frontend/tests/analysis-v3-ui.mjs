@@ -28,6 +28,10 @@ try {
   if(p==="/vehicsim/regression")return reply({items:[],kpis:{total:0,passed:0,failed:0,running:0}});
   if(p==="/vehicsim/analysis/runs")return reply({total:1,page:1,page_size:10,counts:{COLLISION:1},items:[legacy.run],objective_groups:[],evaluation_version:"adr040-stored-aggregation/1"});
   if(p===`/vehicsim/analysis/runs/${legacy.run.run_id}`)return reply({run:legacy.run,detail:legacy.detail});
+  if(/^\/vehicsim\/runs\/(2499|2500)\/playback$/.test(p)) {
+   const runId=Number(p.split("/")[3]);
+   return reply({...legacy.detail,run_id:runId,frames:legacy.frames,duration_s:0.5,related_runs:[]});
+  }
   if(p==="/vehicsim/analysis/v3/explorer/scenarios") {
    const rows=project===1?[{scenario_id:42,code:"CP",name:"Họ kiểm thử",category:"CP_CROSSING",variant_count:2,analyzed_count:1,confirmed_count:0,suspected_count:1,no_failure_count:null,unknown_count:0}]:[];
    const q=url.searchParams.get("q")||"",items=rows.filter(row=>!q||["2499","1033",String(row.scenario_id),row.code,row.name].some(v=>v.toLocaleLowerCase("vi").includes(q.toLocaleLowerCase("vi"))));
@@ -37,6 +41,7 @@ try {
    const member=c.execution.members.find(item=>item.run_key==="2499"),report=c.reports[member.report_id];
    const objectives=Object.fromEntries(Object.entries(report.report.objectives).map(([key,value])=>[key,{value:value.canonical_value.value,status:value.canonical_value.status,unit:value.canonical_value.unit,applicability:value.canonical_applicability}]));
    const rows=project===1?[{project_id:project,scenario_id:42,scenario_version_id:1033,version_no:3,run_id:2499,random_seed:49033,repetition:1,attempt:1,simulator_type:"CARLA",simulator_version:"carla-test",aeb_mode:"ON",status:"COMPLETED",report_id:member.report_id,execution_id:c.execution.id,analysis_status:"ANALYZED",classification:"SUSPECTED",physical_outcome:"COLLISION",failure_candidates:[{type:"INEFFECTIVE_BRAKING",status:"SUSPECTED"}],root_cause_hypotheses:[{type:"INEFFECTIVE_BRAKING_MECHANISM_INVESTIGATION",status:"SUSPECTED"}],objectives}]:[];
+   if(rows.length && explorerSimulator==="CARLA") rows.push({...rows[0],run_id:2500,aeb_mode:"OFF",report_id:null,execution_id:null,analysis_status:"NOT_ANALYZED",classification:"NOT_APPLICABLE",failure_candidates:[],root_cause_hypotheses:[]});
    if(explorerSimulator!=="CARLA") for(const row of rows) {row.simulator_type=explorerSimulator;row.report_id=null;row.execution_id=null;row.analysis_status="NOT_ANALYZED";row.classification="NOT_ANALYZED";}
    const q=url.searchParams.get("q")||"",mode=url.searchParams.get("aeb_mode"),state=url.searchParams.get("classification"),type=url.searchParams.get("failure_type"),cause=url.searchParams.get("root_cause");
    const items=rows.filter(row=>(!q||["2499","1033","42","CP","Họ kiểm thử"].some(v=>v.toLocaleLowerCase("vi").includes(q.toLocaleLowerCase("vi"))))&&(!mode||mode===row.aeb_mode)&&(!state||state===row.classification)&&(!type||row.failure_candidates.some(x=>x.type===type))&&(!cause||row.root_cause_hypotheses.some(x=>x.type===cause)));
@@ -107,6 +112,60 @@ try {
  const weatherRequest=page.waitForResponse(response=>response.url().includes("/explorer/scenarios/42/runs")&&new URL(response.url()).searchParams.get("weather")==="RAIN").catch(()=>null);
  await page.getByRole("region",{name:"Khám phá họ kịch bản"}).locator("label").filter({hasText:"Thời tiết"}).locator("select").selectOption("RAIN");
  assert(await weatherRequest,"Weather filter must reach the server: "+JSON.stringify(requests.slice(-5)));
+ // Follow the action in the row, then return to the same family and filters.
+ const filteredUrl=page.url();
+ const row2499=page.getByRole("row").filter({hasText:"Lượt 2499"});
+ const replay2499=row2499.getByRole("link",{name:"Xem phát lại lượt 2499",exact:true});
+ const table=page.getByRole("region",{name:"Bảng biến thể và lượt chạy"});
+ for(const width of [1440,375]) {
+  await page.setViewportSize({width,height:900});
+  for(const scroll of ["start","end"]) {
+   await table.evaluate((el,edge)=>{el.scrollLeft=edge==="start"?0:el.scrollWidth},scroll);
+   const tableBounds=await table.boundingBox();
+   for(const action of [row2499.getByRole("button",{name:"Xem phân tích",exact:true}),replay2499]) {
+    const buttonBounds=await action.boundingBox();
+    assert(buttonBounds && tableBounds && buttonBounds.x>=tableBounds.x-1 && buttonBounds.x+buttonBounds.width<=tableBounds.x+tableBounds.width+1,`Both actions must remain visible at width ${width}, scroll ${scroll}`);
+   }
+  }
+  await table.evaluate(el=>{el.scrollLeft=0});
+  await shot(`scenario-actions-${width}`);
+ }
+ await page.setViewportSize({width:1440,height:1000});
+ const firstReplay=new URL(await replay2499.getAttribute("href"),base);
+ assert.equal(firstReplay.pathname,"/analysis/failures/2499/playback");
+ const returned=new URL(firstReplay.searchParams.get("returnTo"),base);
+ const filtered=new URL(filteredUrl);
+ assert.equal(returned.pathname,filtered.pathname);
+ for(const [key,value] of filtered.searchParams) assert.equal(returned.searchParams.get(key),value);
+ assert.equal(returned.searchParams.get("fa_open_variant"),"1033");
+ await replay2499.click();
+ await page.getByRole("region",{name:"Điều khiển playback",exact:true}).waitFor();
+ assert(requests.some(r=>r.path==="/vehicsim/runs/2499/playback"),"Playback must load the selected run");
+ await page.getByRole("link",{name:"← Về danh sách đang xem",exact:true}).click();
+ await page.waitForURL(url=>url.pathname==="/analysis/failures"&&url.searchParams.get("fa_open_variant")==="1033");
+ assert.equal(new URL(page.url()).searchParams.get("fa_scenario"),"42");
+ assert.equal(new URL(page.url()).searchParams.get("fa_q"),"2499");
+ assert.equal(new URL(page.url()).searchParams.get("fa_class"),"SUSPECTED");
+ assert.equal(new URL(page.url()).searchParams.get("fa_weather"),"RAIN");
+ await page.getByRole("row").filter({hasText:"Lượt 2499"}).waitFor();
+ assert.equal(await page.getByRole("button",{name:/Biến thể 3 · ID 1033/}).getAttribute("aria-expanded"),"true");
+ // Remove the classification filter to expose the second run and verify row identity.
+ await page.getByText("Tìm kiếm nâng cao",{exact:true}).click();
+ await page.getByLabel("Đánh giá AEB").selectOption("");
+ await page.waitForURL(url=>!url.searchParams.has("fa_class"));
+ const row2500=page.getByRole("row").filter({hasText:"Lượt 2500"});
+ const replay2500=row2500.getByRole("link",{name:"Xem phát lại lượt 2500",exact:true});
+ assert.equal(new URL(await replay2500.getAttribute("href"),base).pathname,"/analysis/failures/2500/playback");
+ await replay2500.click();
+ await page.getByRole("region",{name:"Điều khiển playback",exact:true}).waitFor();
+ assert(requests.some(r=>r.path==="/vehicsim/runs/2500/playback"),"Each row must load its own run");
+ await page.getByRole("link",{name:"← Về danh sách đang xem",exact:true}).click();
+ await page.getByRole("row").filter({hasText:"Lượt 2499"}).waitFor();
+ assert.equal(await page.getByRole("button",{name:/Biến thể 3 · ID 1033/}).getAttribute("aria-expanded"),"true");
+ await page.getByText("Tìm kiếm nâng cao",{exact:true}).click();
+ await page.getByLabel("Đánh giá AEB").selectOption("SUSPECTED");
+ await page.waitForURL(url=>url.searchParams.get("fa_class")==="SUSPECTED");
+ checks.push("each scenario row opens the correct replay and returns to the selected family, search and filters");
  await page.getByRole("button",{name:"Xem phân tích",exact:true}).click();await report().waitFor();await shot("diagnostic-detail");
  await page.getByRole("button",{name:"← Chọn kết quả khác",exact:true}).click();
  assert.equal(new URL(page.url()).searchParams.get("fa_q"),"2499");

@@ -465,11 +465,18 @@ function TeamNav({ role }: { role: string }) {
         groups: GROUPS.filter((g) => g.key === "admin"),
       }]
     : role === "MANAGER"
-    ? [{
-        id: "workspace",
-        title: "Hệ thống & Quản trị",
-        groups: GROUPS.filter((g) => g.key === "workspace"),
-      }]
+    ? [
+        {
+          id: "general",
+          title: "Tổng quan & Thiết bị",
+          groups: GROUPS.filter((g) => g.key === "vehicles"),
+        },
+        {
+          id: "workspace",
+          title: "Hệ thống & Quản trị",
+          groups: GROUPS.filter((g) => g.key === "workspace"),
+        },
+      ]
     : team
     ? [
         {
