@@ -3,7 +3,7 @@
 import React, { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Pencil, Play, X } from "lucide-react";
+import { Pencil, Play, Trash2, X } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { FamilyForm } from "@/components/FamilyForm";
@@ -55,11 +55,20 @@ export default function ScenarioFamiliesPage() {
   const [openRuns, setOpenRuns] = useState<number | null>(null);
   const [activeRuns, setActiveRuns] = useState<ActiveFamilyRun[] | null>(null);
   const [runBusy, setRunBusy] = useState<number | null>(null);
+  const loadSequence = useRef(0);
+  const deletedFamilies = useRef(new Set<number>());
 
   const load = useCallback(() => {
+    const sequence = ++loadSequence.current;
     vehicsimApi.families()
-      .then(setItems)
-      .catch((err) => setError(err instanceof Error ? err.message : "Không tải được họ kịch bản"));
+      .then((list) => {
+        if (sequence !== loadSequence.current) return;
+        // GET có thể dùng chung request được gửi trước DELETE; không để dữ liệu cũ hiện lại.
+        const visible = list.filter((family) => !deletedFamilies.current.has(family.id));
+        for (const id of deletedFamilies.current) if (!list.some((family) => family.id === id)) deletedFamilies.current.delete(id);
+        setItems(visible);
+      })
+      .catch((err) => { if (sequence === loadSequence.current) setError(err instanceof Error ? err.message : "Không tải được họ kịch bản"); });
   }, []);
   useEffect(load, [load]);
 
@@ -138,6 +147,40 @@ export default function ScenarioFamiliesPage() {
     setEditing(f);
     setFocusId(f.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const deleteFamily = async (f: FamilyItem) => {
+    if (!window.confirm(`Xóa họ kịch bản “${f.code} · ${f.name}” cùng các phiên bản và biến thể? Họ đã có lượt chạy hoặc dữ liệu phân tích, tối ưu, kiểm chứng liên quan sẽ không thể xóa.`)) return;
+    setBusy(f.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await vehicsimApi.deleteFamily(f.id);
+    } catch (err) {
+      setError(err instanceof Error ? vi(err.message) : "Không xóa được họ kịch bản");
+      setBusy(null);
+      return;
+    }
+    // Đã xóa thành công: lỗi làm mới ngữ cảnh không được báo nhầm là lỗi xóa.
+    try {
+      // Bỏ qua các request tải danh sách đã bắt đầu trước khi xóa.
+      ++loadSequence.current;
+      deletedFamilies.current.add(f.id);
+      setItems((current) => current?.filter((item) => item.id !== f.id) ?? null);
+      setPage((current) => Math.min(current, Math.max(1, Math.ceil(((items?.length ?? 1) - 1) / PAGE_SIZE))));
+      setFocusId((current) => current === f.id ? null : current);
+      setEditing((current) => current?.id === f.id ? null : current);
+      setOpenVariants((current) => current === f.id ? null : current);
+      setOpenRuns((current) => current === f.id ? null : current);
+      setVersions((current) => without(current, f.id));
+      setViewing((current) => without(current, f.id));
+      setNotice(`Đã xóa họ kịch bản ${f.code} · ${f.name}.`);
+      await refresh();
+    } catch {
+      setError("Đã xóa họ kịch bản nhưng không cập nhật được ngữ cảnh. Hãy tải lại trang.");
+    } finally {
+      setBusy(null);
+    }
   };
 
   const loadActiveRuns = useCallback((scenarioId: number) => {
@@ -475,6 +518,17 @@ export default function ScenarioFamiliesPage() {
                     >
                       <Pencil className="size-2.5 shrink-0" />
                       <span>Sửa v{f.version + 1}</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy !== null || !canWrite}
+                      onClick={() => void deleteFamily(f)}
+                      title={canWrite ? "Xóa họ kịch bản chưa có dữ liệu liên quan" : "Tài khoản chỉ có quyền xem"}
+                      aria-label={`Xóa họ kịch bản ${f.code} · ${f.name}`}
+                      className="col-span-2 inline-flex h-7 w-full items-center justify-center gap-1 rounded-md border border-solid border-vehicsim-danger/40 bg-vehicsim-surface px-1.5 text-[11px] font-semibold text-vehicsim-danger hover:bg-red-50 disabled:opacity-40"
+                    >
+                      <Trash2 className="size-3 shrink-0" />
+                      {busy === f.id ? "Đang xóa…" : "Xóa"}
                     </button>
                   </div>
                 </div>

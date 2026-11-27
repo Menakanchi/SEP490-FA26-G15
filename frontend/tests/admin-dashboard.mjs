@@ -27,6 +27,7 @@ try{
   if(p==="/auth/login")return reply({access_token:"admin-entry-fixture-only",token_type:"bearer",expires_in:3600,user:{...actor,role}});
   if(p==="/auth/me")return reply({...actor,role});
   if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
+  if(p==="/vehicsim/workspaces")return reply([]);
   if(p==="/vehicsim/projects")return reply({items:[],total:0,page:1,page_size:20,active_count:0,archived_count:0});
   if(p==="/vehicsim/context")return reply({project:{id:1,name:"Fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:null},versions:[],families:[],parameters:[],reviewer_projects:[],reviewer_can_decide:false});
   if(p.startsWith("/vehicsim/admin/")){
@@ -49,6 +50,7 @@ try{
   unexpected.push(p);return reply({detail:"Unhandled fixture "+p},404);
  });
  const page=await context.newPage();page.setDefaultTimeout(15000);
+ page.setDefaultNavigationTimeout(60000);
  page.on("pageerror",error=>errors.push(error.message));
  const frame=page.locator("[data-admin-frame]");
  const nav=()=>page.getByRole("navigation",{name:"Điều hướng VehicSim",exact:true}).filter({visible:true});
@@ -62,6 +64,7 @@ try{
  const release=()=>{assert(pending.length>0);pending.shift()();};
  // Exercise the real login form with an intercepted session, without auto-restoring expired tokens.
  await page.goto(base+"/login");
+ await page.waitForLoadState("networkidle");
  await page.getByLabel("Email",{exact:true}).fill(actor.email);
  await page.getByLabel("Mật khẩu",{exact:true}).fill("Browser-fixture-only-12");
  await page.getByRole("button",{name:"Đăng nhập",exact:true}).click();await ready("Tài khoản");
@@ -77,6 +80,12 @@ try{
   await page.setViewportSize({width,height});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   if(width<1024){await page.getByRole("button",{name:"Menu",exact:true}).focus();await page.keyboard.press("Enter");}
+  assert.equal(await nav().getByText("Hệ thống & Quản trị",{exact:true}).count(),1);
+  assert.equal(await nav().getByText("Quản trị hệ thống",{exact:true}).count(),1);
+  assert.deepEqual(await nav().locator("a[href]").evaluateAll(nodes=>nodes.map(n=>n.getAttribute("href"))),resources.map(r=>"/admin/"+r),"Admin navigation contains only the three administration pages");
+  for(const technicalSection of ["Tổng quan & Thiết bị","Quy trình kiểm thử (5 bước)","Không gian làm việc"]){
+   assert.equal(await nav().getByText(technicalSection,{exact:true}).count(),0,`Admin must not see ${technicalSection}`);
+  }
   assert.deepEqual(await nav().locator('a[href^="/admin/"]').evaluateAll(nodes=>nodes.map(n=>n.getAttribute("href"))),resources.map(r=>"/admin/"+r));
   assert.equal(await nav().locator('[aria-current="page"]').getAttribute("href"),"/admin/users");
   assert.equal(await page.getByRole("link",{name:/Tổng quan quản trị/}).count(),0);
@@ -84,9 +93,9 @@ try{
   if(width<1024){await nav().getByRole("link",{name:"Tài khoản",exact:true}).focus();await page.keyboard.press("Escape");assert.equal(await page.getByRole("button",{name:"Menu",exact:true}).getAttribute("aria-expanded"),"false");}
  }
  await page.setViewportSize({width:1366,height:768});
- // Shared brand points home; Admin links, breadcrumb and Back retain resource navigation.
+ // The Admin brand returns to the administration entry; resource navigation retains history.
  await nav().getByRole("link",{name:/^Workspace$/}).click();await ready("Workspace");
- assert.equal(await page.locator("header").getByRole("link",{name:"VehicSim",exact:true}).getAttribute("href"),"/");
+ assert.equal(await page.locator("header").getByRole("link",{name:"VehicSim",exact:true}).getAttribute("href"),"/admin/users");
  await nav().getByRole("link",{name:"Tài khoản",exact:true}).click();
  await page.waitForURL(base+"/admin/users");await ready("Tài khoản");
  await page.goBack();await ready("Workspace");
@@ -121,7 +130,27 @@ try{
   // AuthGate may suppress the streamed redirect child for a denied role.
   await page.getByRole("heading",{name:"Trang này yêu cầu quyền truy cập",exact:true}).waitFor();
   assert.equal(await frame.count(),0);assert.equal(reads.length,count);
+  if(otherRole==="ENGINEER"||otherRole==="REVIEWER"){
+   assert(await nav().getByText("Quy trình kiểm thử (5 bước)",{exact:true}).isVisible(),`${otherRole} retains technical navigation`);
+   assert.equal(await nav().getByRole("link",{name:"Nhiệm vụ & Báo cáo",exact:true}).getAttribute("href"),"/my-work");
+  }
  }
+ // Manager can manage workspaces but cannot enter technical workflows by URL.
+ role="MANAGER";
+ await page.goto(base+"/login");
+ await page.getByLabel("Email",{exact:true}).fill(actor.email);
+ await page.getByLabel("Mật khẩu",{exact:true}).fill("Browser-fixture-only-12");
+ await page.getByRole("button",{name:"Đăng nhập",exact:true}).click();
+ await page.waitForURL(base+"/workspace");
+ await page.getByText("Bạn chưa được giao workspace nào",{exact:true}).waitFor();
+ assert.deepEqual(await nav().locator("a[href]").evaluateAll(nodes=>nodes.map(n=>n.getAttribute("href"))),["/workspace"]);
+ assert(await nav().getByText("Hệ thống & Quản trị",{exact:true}).isVisible());
+ for(const target of ["/", "/vehicles", "/projects/12", "/scenarios", "/analysis/failures/3", "/aeb/mobo", "/validation/regression", "/my-work"]){
+  await page.goto(base+target);await page.waitForURL(base+"/workspace");
+  await page.getByText("Bạn chưa được giao workspace nào",{exact:true}).waitFor();
+ }
+ assert.equal(await page.locator("header").getByRole("link",{name:"VehicSim",exact:true}).getAttribute("href"),"/workspace");
+ await page.goto(base+"/profile");assert.equal(new URL(page.url()).pathname,"/profile");
  role="ADMIN";mode="expired";await page.goto(base+"/admin");await page.waitForURL(base+"/login");
  assert.equal(await page.evaluate(()=>localStorage.getItem("vehicsim_access_token")),null);
  const count=reads.length;mode="normal";await page.goto(base+"/admin");await page.waitForURL(base+"/login");assert.equal(reads.length,count);

@@ -119,7 +119,7 @@ class ProjectSecurityTest {
     void ownersWhoChangedRoleStillReadTheirPersonalProjects() throws Exception {
         for (RoleCode code : RoleCode.values()) {
             for (MockHttpServletRequestBuilder route : reads()) {
-                assertThat(statusOf(route, code)).isEqualTo(200);
+                assertThat(statusOf(route, code)).isEqualTo(code == RoleCode.MANAGER ? 403 : 200);
             }
         }
     }
@@ -130,6 +130,8 @@ class ProjectSecurityTest {
             for (MockHttpServletRequestBuilder route : experiencerOnly()) {
                 if (code == RoleCode.EXPERIENCER) {
                     assertThat(statusOf(route, code)).isBetween(200, 299);
+                } else if (code == RoleCode.MANAGER) {
+                    assertThat(statusOf(route, code)).isEqualTo(403);
                 } else {
                     mvc.perform(route.with(user(as(code))))
                             .andExpect(status().isForbidden())
@@ -146,6 +148,8 @@ class ProjectSecurityTest {
             for (MockHttpServletRequestBuilder route : creatorRoutes()) {
                 if (code == RoleCode.EXPERIENCER || code == RoleCode.ENGINEER) {
                     assertThat(statusOf(route, code)).isBetween(200, 299);
+                } else if (code == RoleCode.MANAGER) {
+                    assertThat(statusOf(route, code)).isEqualTo(403);
                 } else {
                     mvc.perform(route.with(user(as(code))))
                             .andExpect(status().isForbidden())

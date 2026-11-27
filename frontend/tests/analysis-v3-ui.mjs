@@ -10,7 +10,7 @@ const base=process.env.ANALYSIS_UI_URL||"http://127.0.0.1:3143";
 const fixtures=await Promise.all(["collection","standalone","partial","blocked"].map(async name=>{const f=JSON.parse(await fs.readFile(new URL(`./fixtures/fa-v3/${name}.json`,import.meta.url),"utf8"));f.reports=Object.fromEntries(Object.entries(f.reportBytesBase64).map(([id,value])=>[id,JSON.parse(Buffer.from(value,"base64"))]));return [name,f]}));
 const cases=Object.fromEntries(fixtures),c=cases.collection,legacy=resultFixture();
 const actor={id:7,email:"fe-r4@example.invalid",full_name:"FE-R4 browser fixture",role:"ENGINEER"};
-const checks=[],screenshots=[],errors=[],requests=[];let nextStatus=null,hold=null,uploadCase=cases.standalone;
+const checks=[],screenshots=[],errors=[],requests=[];let nextStatus=null,hold=null,uploadCase=cases.standalone,explorerSummary=null,explorerSimulator="CARLA";
 const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
 let release, page;
 try {
@@ -31,12 +31,13 @@ try {
   if(p==="/vehicsim/analysis/v3/explorer/scenarios") {
    const rows=project===1?[{scenario_id:42,code:"CP",name:"Họ kiểm thử",category:"CP_CROSSING",variant_count:2,analyzed_count:1,confirmed_count:0,suspected_count:1,no_failure_count:null,unknown_count:0}]:[];
    const q=url.searchParams.get("q")||"",items=rows.filter(row=>!q||["2499","1033",String(row.scenario_id),row.code,row.name].some(v=>v.toLocaleLowerCase("vi").includes(q.toLocaleLowerCase("vi"))));
-   return reply({project_id:project,items,total:items.length,limit:20,offset:Number(url.searchParams.get("offset")||0),summary:{scenario_count:items.length,variant_count:items.length*2,analyzed_count:items.length,confirmed_count:0,suspected_count:items.length,unknown_count:0}});
+   return reply({project_id:project,items,total:items.length,limit:20,offset:Number(url.searchParams.get("offset")||0),summary:explorerSummary??{scenario_count:items.length,variant_count:items.length*2,analyzed_count:items.length,confirmed_count:0,suspected_count:items.length,unknown_count:0}});
   }
   if(p==="/vehicsim/analysis/v3/explorer/scenarios/42/runs") {
    const member=c.execution.members.find(item=>item.run_key==="2499"),report=c.reports[member.report_id];
    const objectives=Object.fromEntries(Object.entries(report.report.objectives).map(([key,value])=>[key,{value:value.canonical_value.value,status:value.canonical_value.status,unit:value.canonical_value.unit,applicability:value.canonical_applicability}]));
    const rows=project===1?[{project_id:project,scenario_id:42,scenario_version_id:1033,version_no:3,run_id:2499,random_seed:49033,repetition:1,attempt:1,simulator_type:"CARLA",simulator_version:"carla-test",aeb_mode:"ON",status:"COMPLETED",report_id:member.report_id,execution_id:c.execution.id,analysis_status:"ANALYZED",classification:"SUSPECTED",physical_outcome:"COLLISION",failure_candidates:[{type:"INEFFECTIVE_BRAKING",status:"SUSPECTED"}],root_cause_hypotheses:[{type:"INEFFECTIVE_BRAKING_MECHANISM_INVESTIGATION",status:"SUSPECTED"}],objectives}]:[];
+   if(explorerSimulator!=="CARLA") for(const row of rows) {row.simulator_type=explorerSimulator;row.report_id=null;row.execution_id=null;row.analysis_status="NOT_ANALYZED";row.classification="NOT_ANALYZED";}
    const q=url.searchParams.get("q")||"",mode=url.searchParams.get("aeb_mode"),state=url.searchParams.get("classification"),type=url.searchParams.get("failure_type"),cause=url.searchParams.get("root_cause");
    const items=rows.filter(row=>(!q||["2499","1033","42","CP","Họ kiểm thử"].some(v=>v.toLocaleLowerCase("vi").includes(q.toLocaleLowerCase("vi"))))&&(!mode||mode===row.aeb_mode)&&(!state||state===row.classification)&&(!type||row.failure_candidates.some(x=>x.type===type))&&(!cause||row.root_cause_hypotheses.some(x=>x.type===cause)));
    return reply({project_id:project,items,total:items.length,limit:20,offset:Number(url.searchParams.get("offset")||0)});
@@ -70,10 +71,25 @@ try {
  page=await ctx.newPage();page.setDefaultTimeout(15000);page.on("pageerror",e=>errors.push(e.message));
  const workspace=()=>page.getByRole("region",{name:"Phân tích dữ liệu",exact:true});
  const shot=async name=>{await page.screenshot({path:path.join(output,name+".png"),fullPage:true});screenshots.push(name+".png")};
- const home=async()=>{await page.goto(base+"/analysis/failures?view=runs&scenario_id=42&q=kept");await page.getByText("Kết quả phân tích trước đây",{exact:true}).click();await workspace().locator("details").filter({has:page.getByText("Kết quả phân tích trước đây",{exact:true})}).locator("select").locator("option[value='"+c.source.id+"']").waitFor({state:"attached"})};
- const select=async f=>{await workspace().locator("details").filter({has:page.getByText("Kết quả phân tích trước đây",{exact:true})}).locator("select").selectOption(f.source.id);await workspace().getByRole("button",{name:/^Xem lần phân tích 1/}).waitFor()};
- const analyze=async()=>{await page.getByRole("button",{name:"Phân tích lại",exact:true}).click();await page.getByRole("region",{name:"Kết quả các lượt chạy",exact:true}).waitFor()};
+ const openExecution=async f=>{await page.goto(base+`/analysis/failures?view=runs&scenario_id=42&q=kept&fa_execution=${f.execution.id}`);await page.getByRole("region",{name:"Kết quả các lượt chạy",exact:true}).waitFor()};
  const report=()=>page.getByRole("article",{name:"Kết quả phân tích",exact:true});
+ for(const [analyzed,variants,visible] of [[0,2,true],[null,2,false],[1,2,false],[0,0,false]]) {
+  explorerSummary={scenario_count:1,variant_count:variants,analyzed_count:analyzed,confirmed_count:null,suspected_count:0,unknown_count:0};
+  await page.goto(base+"/analysis/failures");await page.getByRole("button",{name:"Họ kiểm thử · CP",exact:true}).waitFor();
+  assert.equal(await page.locator("[data-fa-empty-note]").count(),visible?1:0,`empty note for analyzed=${analyzed}, variants=${variants}`);
+  if(visible)assert.match(await page.locator("[data-fa-empty-note]").innerText(),/AEB bật khớp nguồn/);
+ }
+ explorerSummary=null;explorerSimulator="KINEMATIC";
+ await page.goto(base+"/analysis/failures");await page.getByRole("button",{name:"Họ kiểm thử · CP",exact:true}).click();
+ await page.getByRole("button",{name:/Biến thể 3 · ID 1033/}).click();
+ assert.equal(await page.getByRole("button",{name:"Phân tích",exact:true}).count(),0);
+ await page.getByText("Nguồn này chưa hỗ trợ phân tích tại đây",{exact:true}).waitFor();
+ await page.getByText("Tìm kiếm nâng cao",{exact:true}).click();
+ const offRequest=page.waitForResponse(response=>response.url().includes("/explorer/scenarios/42/runs")&&new URL(response.url()).searchParams.get("aeb_mode")==="OFF");
+ await page.getByLabel("Chế độ AEB").selectOption("OFF");await offRequest;
+ await page.getByText("Không có kết quả phù hợp. Hãy thử điều chỉnh tìm kiếm hoặc bộ lọc.",{exact:true}).waitFor();
+ explorerSimulator="CARLA";
+ checks.push("empty-summary distinguishes zero from null; kinematic runs do not expose CARLA analysis and AEB filter reaches server");
  await page.goto(base+"/analysis/failures");
  await page.getByRole("heading",{name:"Họ kịch bản",exact:true}).waitFor();
  await page.getByRole("button",{name:"Họ kiểm thử · CP",exact:true}).waitFor();await shot("scenario-overview");
@@ -83,8 +99,11 @@ try {
  await page.getByRole("button",{name:/Biến thể 3 · ID 1033/}).click();
  assert.match(await page.getByRole("region",{name:"Bảng biến thể và lượt chạy"}).innerText(),/Phanh không hiệu quả/);
  await shot("scenario-runs");
+ assert.equal(await page.getByText("Biến thể chưa có lượt chạy",{exact:true}).isVisible(),false);
+ assert.equal(requests.filter(r=>r.path.includes("/explorer/scenarios/42/variants")).length,0);
+ // Exercise the hidden variant list only in the test; it must not fetch on its own.
  await page.getByRole("searchbox",{name:"Tìm kiếm",exact:true}).fill("CP");await page.waitForURL(url=>url.searchParams.get("fa_q")==="CP");
- await page.getByText("Biến thể chưa có lượt chạy",{exact:true}).click();
+ const unrun=page.getByText("Biến thể chưa có lượt chạy",{exact:true});await unrun.locator("xpath=ancestor::details[1]").evaluate(el=>{el.hidden=false});await unrun.click();
  await page.getByText("Biến thể 4 · ID 1034 — chưa có lượt chạy",{exact:true}).waitFor();
  await page.getByRole("searchbox",{name:"Tìm kiếm",exact:true}).fill("2499");await page.waitForURL(url=>url.searchParams.get("fa_q")==="2499");
  await page.getByText("Tìm kiếm nâng cao",{exact:true}).click();
@@ -99,7 +118,7 @@ try {
  assert.equal(new URL(page.url()).searchParams.get("fa_class"),"SUSPECTED");
  assert.equal(new URL(page.url()).searchParams.get("fa_weather"),"RAIN");
  checks.push("scenario explorer uses server search, filters and returns to the preserved scope");
- await home();await select(c);await analyze();assert.equal(new URL(page.url()).searchParams.get("fa_execution"),c.execution.id);
+ await openExecution(c);assert.equal(new URL(page.url()).searchParams.get("fa_execution"),c.execution.id);
  assert.equal(await page.getByRole("button",{name:/^Xem kết quả /}).count(),2);
  await page.getByRole("button",{name:"Xem kết quả 2499",exact:true}).click();await report().waitFor();
  assert.match(await report().innerText(),/Nghi ngờ|Cần kiểm tra/);assert.match(await report().innerText(),/Nguyên nhân/);
@@ -107,11 +126,17 @@ try {
  await page.getByRole("button",{name:"Xem kết quả 2511",exact:true}).click();await report().getByText(/Lượt chạy 2511/).waitFor();assert.match(await report().innerText(),/AEB tắt/);
  checks.push("saved source, collection execution, selected report and OFF reference remain available after reload");
  assert.match(await page.getByRole("region",{name:"Bước tiếp theo",exact:true}).innerText(),/chưa đủ điều kiện/);
- for(const name of ["partial","blocked"]){await home();await select(cases[name]);await analyze();assert.match(await workspace().innerText(),/chưa thể phân tích/)}
+ for(const name of ["partial","blocked"]){await openExecution(cases[name]);await page.getByText("Chưa thể phân tích",{exact:true}).first().waitFor();assert.match(await workspace().innerText(),/chưa thể phân tích/)}
  checks.push("partial and blocked executions remain visible and cannot be silently promoted");
- await home();await select(c);nextStatus=403;await page.getByRole("button",{name:"Phân tích lại",exact:true}).click();await workspace().getByRole("alert").waitFor();assert.equal(new URL(page.url()).searchParams.get("fa_execution"),null);
- checks.push("execution error is visible and does not navigate to a report");
- await home();await select(c);await analyze();await page.getByRole("button",{name:"Xem kết quả 2499",exact:true}).click();await report().waitFor();
+ // The history control is hidden from users; unhide it only to retain its regression tests.
+ {
+  const home=async()=>{await page.goto(base+"/analysis/failures?view=runs&scenario_id=42&q=kept");const history=page.getByText("Kết quả phân tích trước đây",{exact:true});await history.locator("xpath=ancestor::details[1]").evaluate(el=>{el.hidden=false});await history.click();await workspace().locator("details").filter({has:history}).locator("select").locator("option[value='"+c.source.id+"']").waitFor({state:"attached"})};
+  const select=async f=>{await workspace().locator("details").filter({has:page.getByText("Kết quả phân tích trước đây",{exact:true})}).locator("select").selectOption(f.source.id);await workspace().getByRole("button",{name:/^Xem lần phân tích 1/}).waitFor()};
+  await home();await select(c);await page.getByRole("button",{name:"Phân tích lại",exact:true}).click();await page.getByRole("region",{name:"Kết quả các lượt chạy",exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.get("fa_execution"),c.execution.id);
+  await home();await select(c);nextStatus=403;await page.getByRole("button",{name:"Phân tích lại",exact:true}).click();await workspace().getByRole("alert").waitFor();assert.equal(new URL(page.url()).searchParams.get("fa_execution"),null);
+  checks.push("dormant source history still analyzes and reports execution errors when exercised in isolation");
+ }
+ await openExecution(c);await page.getByRole("button",{name:"Xem kết quả 2499",exact:true}).click();await report().waitFor();
  for(const width of [320,375,768,1440]){await page.setViewportSize({width,height:900});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"overflow "+width)}
  assert.deepEqual(errors,[]);await shot("current-report");
  await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",checks,screenshots,errors,liveBackendVerified:false,carlaRuntimeVerified:false},null,2));console.log("PASS V3 current browser flow; BROWSER_FIXTURE_ONLY");

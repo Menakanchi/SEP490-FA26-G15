@@ -138,7 +138,7 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- tải ngữ cảnh một lần khi vào khu VehicSim
-    if (role && !adminPage) void refresh();
+    if (role && role !== "MANAGER" && !adminPage) void refresh();
   }, [refresh, role, adminPage]);
 
   // Reviewer / Kỹ sư chờ project được chốt rồi mới mount màn con; role khác giữ hành vi cũ (màn con tự xử lý ctx = null).

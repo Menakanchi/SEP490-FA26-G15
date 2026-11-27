@@ -73,11 +73,10 @@ public class AdminService {
             throw invalid("Chuyển toàn bộ workspace sang Manager khác trước khi đổi vai trò hoặc khóa tài khoản này");
         if(roleChanged && repo.hasRoleDependencies(id))
             throw invalid("Tài khoản còn thành viên workspace, project sở hữu hoặc task chưa xong; cần xử lý phụ thuộc trước khi đổi vai trò");
-        String email=email(b.email());
-        if(repo.emailExists(email,id)) throw invalid("Email đã được sử dụng");
+        if(!email(b.email()).equals(email(old.str("email")))) throw invalid("Không được thay đổi email tài khoản");
         if(b.password()!=null && !b.password().isEmpty()) throw invalid("Đổi mật khẩu qua luồng tài khoản hoặc quên mật khẩu");
-        boolean revoke=roleChanged || old.bool("is_active")!=b.isActive() || !email.equals(old.str("email"));
-        repo.updateUser(id,email,b.lastName().trim(),clean(b.middleName()),b.firstName().trim(),
+        boolean revoke=roleChanged || old.bool("is_active")!=b.isActive();
+        repo.updateUser(id,b.lastName().trim(),clean(b.middleName()),b.firstName().trim(),
                 b.role().name(),b.isActive(),revoke);
         if(revoke) chat.disconnectUser(id);
         audit("user_update",actor,id);
