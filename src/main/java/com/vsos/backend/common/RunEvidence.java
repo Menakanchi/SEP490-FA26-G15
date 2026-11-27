@@ -11,9 +11,13 @@ public final class RunEvidence {
         var raw = row.json("telemetry_json");
         Object onset = row.asMap().containsKey("brake_onset") ? row.get("brake_onset")
                 : Json.asMap(raw.get("metrics")).get("brake_onset_t");
+        // AEB kích hoạt nhưng va chạm trước khi phanh tác động (chưa có mốc phanh, jerk, quãng phanh): coi là không phanh,
+        // jerk/quãng phanh không áp dụng cho run này thay vì thiếu bằng chứng (MOBO trước đây dừng cả đợt ở trường hợp này).
+        boolean collidedBeforeBraking = Boolean.TRUE.equals(row.boolOrNull("aeb_activated"))
+                && Boolean.TRUE.equals(row.boolOrNull("collision_occurred"));
         Boolean braked = onset != null && !"null".equals(String.valueOf(onset)) ? Boolean.TRUE
                 : row.dbl("rms_jerk_mps3") != null || row.dbl("stopping_distance_m") != null ? Boolean.TRUE
-                : Boolean.FALSE.equals(row.boolOrNull("aeb_activated")) ? Boolean.FALSE : null;
+                : Boolean.FALSE.equals(row.boolOrNull("aeb_activated")) || collidedBeforeBraking ? Boolean.FALSE : null;
         boolean trace = row.asMap().containsKey("trace_frames")
                 ? row.getInt("trace_frames") != null && row.getInt("trace_frames") > 0
                 : !Json.asList(raw.get("frames")).isEmpty();
