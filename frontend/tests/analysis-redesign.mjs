@@ -128,11 +128,11 @@ try {
  await goto();
  assert.equal(await page.getByRole("navigation",{name:"Chế độ phân tích"}).count(),0);
  assert.equal(await page.locator("tr[data-overview-run-id]").count(),0);
- assert.equal(await table.count(),1);assert.equal(await table.locator("thead th").count(),6);
+ assert.equal(await table.count(),1);assert.equal(await table.locator("thead th").count(),3);await page.getByLabel("Hiện chỉ số").check();assert.equal(await table.locator("thead th").count(),6);await page.getByLabel("Hiện chỉ số").uncheck();
  assert.equal(await legacy.getAttribute("open"),null);assert.equal(await dataset.getAttribute("open"),null);
  assert.equal(await page.getByRole("button",{name:/Analyze|Phân tích V3/}).count(),0);
  assert.equal(await page.getByRole("link",{name:/Tối ưu toàn họ/}).count(),0);
- checks.push("one workspace/table, six default columns, three objectives, collapsed optional tools, no fake analysis");
+ checks.push("one workspace/table, three default columns and optional three objectives, collapsed optional tools, no fake analysis");
  for(const [width,height] of [[320,812],[375,812],[768,1024],[1280,900],[1440,900]]){
   await page.setViewportSize({width,height});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"Workspace overflow "+width);
   await table.focus();assert(await table.evaluate(n=>document.activeElement===n));await shot("workspace-"+width);
@@ -198,8 +198,9 @@ try {
  assert.equal(writes.length,2);for(const w of writes){assert.equal(w.path,"/vehicsim/analysis/selections");assert.deepEqual(w.body.optimization_run_ids,[safe[0].run_id]);assert.deepEqual(w.body.validation_run_ids,[safe[1].run_id]);assert.deepEqual(w.body.run_revisions,Object.fromEntries(safe.map(r=>[r.run_id,r.revision])));}
  await page.reload();await dataset.getByRole("heading",{name:/Tập đã chốt #9001/}).waitFor();
  const proceed=()=>dataset.getByRole("button",{name:"Kiểm tra trước bàn giao",exact:true});
+ await dataset.locator("summary").filter({hasText:"Bàn giao theo quy trình trước"}).click();
  for(const failure of ["changed","baseline","notready","forbidden"]){handoffMode=failure;await proceed().click();await alerts.waitFor();assert.equal(new URL(page.url()).pathname,"/analysis/failures");assert.equal(writes.length,2);}
- handoffMode="normal";snapshotOverride={...saved,baseline_current:false};await page.reload();await dataset.getByRole("heading",{name:/Tập đã chốt #9001/}).waitFor();assert(await proceed().isDisabled());snapshotOverride=null;
+ handoffMode="normal";snapshotOverride={...saved,baseline_current:false};await page.reload();await dataset.getByRole("heading",{name:/Tập đã chốt #9001/}).waitFor();await dataset.locator("summary").filter({hasText:"Bàn giao theo quy trình trước"}).click();assert(await proceed().isDisabled());snapshotOverride=null;
  checks.push("scoped draft/revision persistence, two roles/safe cases, server rejection and retry, busy guard, immutable snapshot reload, handoff/currentness rejection");
  await shot("dataset-review");
  await page.setViewportSize({width:1440,height:900});await goto("view=failures&scenario_id=1&f_scenario=1&f_outcome=COLLISION");

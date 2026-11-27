@@ -17,11 +17,13 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +42,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -180,6 +183,24 @@ public class RunService {
     @Autowired
     void setVideoStorage(CarlaVideoStorage videoStorage) {
         this.videoStorage = videoStorage;
+    }
+
+    private static final int RESULT_TRANSACTION_ATTEMPTS = 4;
+
+    /** Retry only rolled-back lock conflicts; the simulation result itself is never recomputed. */
+    private <T> T persistWithRetry(TransactionCallback<T> work) throws InterruptedException {
+        // A joined caller owns the transaction and must decide whether to retry it in its entirety.
+        boolean joined = TransactionSynchronizationManager.isActualTransactionActive();
+        for (int attempt = 1; ; attempt++) {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedException("result persistence interrupted");
+            try {
+                return tx.execute(work);
+            } catch (ConcurrencyFailureException e) {
+                if (joined || attempt >= RESULT_TRANSACTION_ATTEMPTS) throw e;
+                long baseMillis = 20L << (attempt - 1);
+                Thread.sleep(baseMillis + ThreadLocalRandom.current().nextLong(baseMillis));
+            }
+        }
     }
 
     public RunService(Db db, Queries queries, VehicSimProperties props, @Qualifier("simulationExecutor") TaskExecutor simulationExecutor,
@@ -469,9 +490,11 @@ public class RunService {
             }
             Map<String, Object> bundle = bundleForRun(run);
             Map<String, Object> result = runWorker(run, bundle);
-            tx.executeWithoutResult(status -> {
+            persistWithRetry(status -> {
+                if (cancelRequested.contains(runId)) throw new RunCancelledException();
                 persist(run, result);
                 removeUploadedVideoAfterCommit(runId, result);
+                return null;
             });
         } catch (InterruptedException e) {
             // Tắt app giữa chừng: trả run về PENDING để lần khởi động sau nhặt lại, thay vì ghi FAILED.
@@ -1517,7 +1540,9 @@ public class RunService {
     }
 
     private Map<String, Object> submitCarlaResult(long projectId, long runId, long userId, Map<String, Object> resultPayload, boolean guardProject, byte[] originalBytes) {
-        Row imported = tx.execute(transaction -> {
+        Row imported;
+        try {
+            imported = persistWithRetry(transaction -> {
             if (guardProject) lockWritableProject(projectId, userId);
             Row run = db.first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ? FOR UPDATE", runId, projectId);
             if (run == null) {
@@ -1561,7 +1586,11 @@ public class RunService {
                 throw new InvalidRequestException("result.json sai cấu trúc: " + e.getMessage());
             }
             return run;
-        });
+            });
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Result persistence interrupted", e);
+        }
         // Giống executeRun: commit xong mới cho listener đọc run bằng transaction mới, không giữ snapshot của upload.
         AuditLog.event("run.carla_result", "success", "user_id", userId, "run_id", runId, "previous_status", imported.str("status"));
         events.publishEvent(new RunFinished(runId));

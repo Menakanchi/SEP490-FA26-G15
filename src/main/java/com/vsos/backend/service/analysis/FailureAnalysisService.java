@@ -108,7 +108,11 @@ public class FailureAnalysisService {
         if (expectedSha != null && !expectedSha.matches("[a-f0-9]{64}")) {
             throw new FailureAnalysisException(400, "EXPECTED_SHA256_INVALID");
         }
-        acquire();
+        // Producer results are persisted while the run completion transaction is open.
+        // They must not contend for the interactive FA compute slots: waiting here can
+        // also hold database locks needed by a request occupying one of those slots.
+        boolean interactive = producerKey == null;
+        if (interactive) acquire();
         try {
             byte[] bytes = new BoundedInput(policy(maxBytes)).read(stream, "request-body", -1);
             String digest = sha256(bytes);
@@ -150,7 +154,7 @@ public class FailureAnalysisService {
                 throw new FailureAnalysisException(409, "DB_PRODUCER_RESULT_REVISION_CONFLICT");
             return sourceView(saved);
         } finally {
-            slots.release();
+            if (interactive) slots.release();
         }
     }
 

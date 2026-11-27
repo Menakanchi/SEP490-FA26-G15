@@ -1,5 +1,6 @@
 "use client";
 
+import { TrialSelectAction, useTrialSelections } from "@/components/aeb/TrialSelectAction";
 import React, { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, TrendingUp } from "lucide-react";
@@ -9,7 +10,7 @@ import { EmptyState, ErrorNote, Pagination, PillButton } from "@/components/Vehi
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
 import { VehicSimSelect } from "@/components/VehicSimSelect";
-import { formatMeasurement, speedKmh } from "@/components/analysis/analysisMetricFormat";
+import { formatMeasurement, formatMetric } from "@/components/analysis/analysisMetricFormat";
 import { isFeasibleTrial } from "@/components/aeb/optimizationEvidence";
 import { vi } from "@/components/vehicsimI18n";
 
@@ -21,6 +22,8 @@ export default function AebMoboParetoPage() {
   const [runs, setRuns] = useState<OptimizationRun[] | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [paretoResult, setParetoResult] = useState<{ runId: number; items: OptimizationTrial[] } | null>(null);
+  // Tải lại trạng thái "đã chọn" khi danh sách Pareto được tải lại (sau khi chọn ứng viên).
+  const trialSelections = useTrialSelections(paretoResult);
   const paretoTrials = paretoResult?.runId === selectedRunId ? paretoResult.items.filter(isFeasibleTrial) : null;
   const selectionLock = useRef(false);
   const [selectingTrialId, setSelectingTrialId] = useState<number | null>(null);
@@ -195,53 +198,47 @@ export default function AebMoboParetoPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1080px] text-left text-[13px]">
+            <table className="w-full min-w-[920px] text-left text-[13px]">
               <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12px] font-black uppercase tracking-wider text-white">
                 <tr className="h-12">
-                  <th className="pl-5 pr-4 py-3.5 whitespace-nowrap">Lượt thử</th>
-                  <th className="px-4 py-3.5 whitespace-nowrap">TTC Threshold (s)</th>
-                  <th className="px-4 py-3.5 whitespace-nowrap">Brake Activation Delay (s)</th>
-                  <th className="px-4 py-3.5 whitespace-nowrap">Brake Build-up Rate (m/s³)</th>
-                  <th className="px-4 py-3.5 whitespace-nowrap">Max Deceleration (m/s²)</th>
-                  <th className="px-4 py-3.5 text-emerald-300 whitespace-nowrap">RMS Jerk</th>
-                  <th className="px-4 py-3.5 text-rose-300 whitespace-nowrap">Tốc độ va chạm</th>
-                  <th className="px-4 py-3.5 text-slate-200 whitespace-nowrap">Quãng phanh</th>
-                  <th className="w-[170px] px-4 py-3.5 text-center whitespace-nowrap">Thao tác</th>
+                  <th className="pl-3 pr-2 py-3.5">Lượt thử</th>
+                  <th className="px-2 py-3.5">Ngưỡng TTC (s)</th>
+                  <th className="px-2 py-3.5">Trễ kích hoạt (s)</th>
+                  <th className="px-2 py-3.5">Tăng lực phanh (m/s³)</th>
+                  <th className="px-2 py-3.5">Giảm tốc tối đa (m/s²)</th>
+                  <th className="px-2 py-3.5 text-emerald-300">RMS Jerk</th>
+                  <th className="px-2 py-3.5 text-rose-300">Tốc độ va chạm</th>
+                  <th className="px-2 py-3.5 text-slate-200">Quãng phanh</th>
+                  <th className="w-[160px] px-2 py-3.5 text-center">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
                 {pagedPareto?.map((t) => (
                   <tr key={t.id} className="hover:bg-vehicsim-row transition-colors">
-                    <td className="pl-5 pr-4 py-3.5 font-mono font-bold text-vehicsim-ink whitespace-nowrap">
+                    <td className="pl-3 pr-2 py-3.5 font-mono font-bold text-vehicsim-ink whitespace-nowrap">
                       #{t.trial_number}
                     </td>
-                    <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.TTC_THRESHOLD ?? "—"}</td>
-                    <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.BRAKE_ACTIVATION_DELAY ?? "—"}</td>
-                    <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.BRAKE_BUILDUP_RATE ?? "—"}</td>
-                    <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.MAX_DECELERATION ?? "—"}</td>
-                    <td className="px-4 py-3.5 font-bold text-vehicsim-decision whitespace-nowrap">
+                    <td title={String(t.parameters?.TTC_THRESHOLD ?? "—")} className="px-2 py-3.5 font-mono font-medium whitespace-nowrap">{formatMetric(t.parameters?.TTC_THRESHOLD, 3, true)}</td>
+                    <td title={String(t.parameters?.BRAKE_ACTIVATION_DELAY ?? "—")} className="px-2 py-3.5 font-mono font-medium whitespace-nowrap">{formatMetric(t.parameters?.BRAKE_ACTIVATION_DELAY, 3, true)}</td>
+                    <td title={String(t.parameters?.BRAKE_BUILDUP_RATE ?? "—")} className="px-2 py-3.5 font-mono font-medium whitespace-nowrap">{formatMetric(t.parameters?.BRAKE_BUILDUP_RATE, 3, true)}</td>
+                    <td title={String(t.parameters?.MAX_DECELERATION ?? "—")} className="px-2 py-3.5 font-mono font-medium whitespace-nowrap">{formatMetric(t.parameters?.MAX_DECELERATION, 3, true)}</td>
+                    <td className="px-2 py-3.5 font-bold text-vehicsim-decision whitespace-nowrap">
                       {formatMeasurement(t.rms_jerk_mps3, "m/s³", 3, true)}
                     </td>
-                    <td className="px-4 py-3.5 font-bold text-vehicsim-danger whitespace-nowrap">
-                      {formatMeasurement(speedKmh(t.impact_speed_mps), "km/h")}
+                    <td className="px-2 py-3.5 font-bold text-vehicsim-danger whitespace-nowrap">
+                      {formatMeasurement(t.impact_speed_mps, "m/s", 3, true)}
                     </td>
-                    <td className="px-4 py-3.5 font-bold text-vehicsim-ink whitespace-nowrap">
+                    <td className="px-2 py-3.5 font-bold text-vehicsim-ink whitespace-nowrap">
                       {formatMeasurement(t.stopping_distance_m, "m", 2, true)}
                     </td>
-                    <td className="w-[170px] px-4 py-3.5 text-center whitespace-nowrap">
-                      <button
-                        type="button"
-                        disabled={selectingTrialId !== null || !canWrite || !isFeasibleTrial(t)}
-                        onClick={() => handleSelectCandidate(t.id)}
-                        className="inline-flex h-8 items-center justify-center rounded-lg bg-vehicsim-primary px-3.5 text-[12px] font-bold text-white transition hover:bg-vehicsim-primary-hover disabled:opacity-40 shadow-xs whitespace-nowrap"
-                      >
-                        {selectingTrialId === t.id ? "Đang lưu…" : "Chọn làm ứng viên"}
-                      </button>
+                    <td className="w-[160px] px-2 py-3.5 text-center whitespace-nowrap">
+                      <TrialSelectAction trial={t} selections={trialSelections} selecting={selectingTrialId} canWrite={canWrite} onSelect={handleSelectCandidate} disabled={!isFeasibleTrial(t)} />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <p className="px-3 pb-3 text-xs text-vehicsim-muted">Tham số được làm tròn khi hiển thị; giá trị đầy đủ dùng để chọn ứng viên.</p>
           </div>
         )}
         {pages > 1 && (

@@ -1,10 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { AnalysisBadge, AnalysisLoading, AnalysisPager, AnalysisTableRegion, analysisLabel } from "@/components/analysisUi";
 import type { AnalysisDashboardData, AnalysisRun } from "@/types/vehicsim";
-import { formatObjective, formatRunImpact } from "./analysisMetricFormat";
 import styles from "./AnalysisRunExplorer.module.css";
 
 type Props = {
@@ -39,11 +38,14 @@ function descendingMetric(a: number | null, b: number | null) {
 }
 
 export function AnalysisRunExplorer({ data, loading, hasError, page, size, search, sort, returnTo,
-  selectionCount, selecting, activeFilters, onResetFilters, onRemoveFilter, onSearch, onSort, onPage, onSize,
+  selectionCount, selecting, activeFilters, onResetFilters, onRemoveFilter, onSearch, onPage, onSize,
   onOpenDataset, renderSelection, isSelected }: Props) {
+  const [collisionFilter, setCollisionFilter] = useState(""), [outcomeFilter, setOutcomeFilter] = useState("");
   const query = search.trim().toLocaleLowerCase("vi");
   const rows = (data?.items ?? []).filter(run =>
-    `${run.run_id} ${run.family} ${run.variant} ${run.seed}`.toLocaleLowerCase("vi").includes(query));
+    `${run.run_id} ${run.family} ${run.variant} ${run.seed}`.toLocaleLowerCase("vi").includes(query)
+    && (!outcomeFilter || run.outcome === outcomeFilter)
+    && (!collisionFilter || (collisionFilter === "collision" ? run.outcome === "COLLISION" : ["SAFE", "NEAR_MISS"].includes(run.outcome))));
   const activeSort = ["newest", "oldest", "impact", "jerk"].includes(sort) ? sort : "newest";
   rows.sort((a, b) => {
     if (activeSort === "oldest") return a.run_id - b.run_id;
@@ -68,40 +70,30 @@ export function AnalysisRunExplorer({ data, loading, hasError, page, size, searc
         <input type="search" aria-label="Tìm trong trang hiện tại" aria-describedby="run-search-scope" placeholder="Mã run, họ, biến thể, seed…" value={search} onChange={e => onSearch(e.target.value)} />
       </label>
       {search && <button className="analysis-button" onClick={() => onSearch("")}>Xóa tìm kiếm</button>}
-      <label className={styles.sort}>Sắp xếp trong trang
-        <select aria-label="Sắp xếp trong trang" value={activeSort} onChange={e => onSort(e.target.value)}>
-          <option value="newest">Mã run giảm dần</option><option value="oldest">Mã run tăng dần</option>
-          <option value="impact">Tốc độ va chạm giảm dần</option><option value="jerk">RMS jerk giảm dần</option>
-        </select>
-      </label>
+      <label>Kết quả va chạm<select value={collisionFilter} onChange={e => setCollisionFilter(e.target.value)}><option value="">Tất cả</option><option value="collision">Có va chạm</option><option value="no_collision">Không ghi nhận va chạm</option></select></label>
+      <label>Loại kết quả<select value={outcomeFilter} onChange={e => setOutcomeFilter(e.target.value)}><option value="">Tất cả</option><option value="FALSE_BRAKING">Phanh không cần thiết</option><option value="MISSED_BRAKING">Bỏ sót phanh</option><option value="OTHER_FAILURE">Lỗi khác</option></select></label>
     </div>
-    <p id="run-search-scope" className="analysis-caption">Tìm và sắp xếp áp dụng cho tối đa {size} run của trang này. Bộ lọc phía trên áp dụng cho toàn bộ danh sách.</p>
+    <p id="run-search-scope" className="analysis-caption">Tìm và lọc áp dụng cho tối đa {size} lượt ở trang này. Một số kết quả chưa xác định được tình trạng va chạm.</p>
     {loading ? <AnalysisLoading /> : hasError ? <div className="analysis-state">Chưa tải được danh sách. Dùng nút “Thử tải lại” phía trên.</div> : data && <>
       <div className={styles.summary}>
         <p role="status">Hiển thị <strong>{rows.length}</strong> / {data.items.length} run trong trang · <strong>{data.total}</strong> run khớp bộ lọc</p>
-        <span>—: chưa có số đo · Chỉ số theo API</span>
       </div>
       {rows.length > 0 ? <AnalysisTableRegion className={styles.tableWrap} label="Bảng lượt chạy baseline, cuộn ngang để xem thêm">
         <table className={`analysis-table ${styles.table}`}>
           <caption className="sr-only">Lượt chạy baseline, seed, cấu hình, trạng thái, chỉ số từ API và thao tác</caption>
           <thead><tr>
             <th scope="col">Run / biến thể</th><th scope="col">Trạng thái / kết quả đã lưu</th>
-            <th scope="col" className={styles.metricHeading}>RMS jerk<small>m/s³</small></th>
-            <th scope="col" className={styles.metricHeading}>Tốc độ va chạm<small>m/s</small></th>
-            <th scope="col" className={styles.metricHeading}>Quãng phanh<small>m</small></th>
             {selecting && <th scope="col">Tập dữ liệu</th>}<th scope="col">Thao tác</th>
           </tr></thead>
           <tbody>{rows.map(run => <tr key={run.run_id} data-run-id={run.run_id} data-selected={isSelected(run)}>
-            <td className={styles.identity}><Link href={href(run.run_id)}>#{run.run_id} · {run.variant}</Link><small>{run.family}</small><span className={styles.seed}>Seed {run.seed}</span><details><summary>Nguồn / cấu hình</summary><strong>{run.simulator}</strong><small>dt {run.dt} s · baseline #{run.baseline_id} · xe #{run.vehicle_id}</small><small>{analysisLabel(run.weather)} · {analysisLabel(run.time_of_day)}</small></details></td>
+            <td className={styles.identity}><Link href={href(run.run_id)}>#{run.run_id} · {run.variant}</Link><small>{run.family}</small>{run.aeb_mode === "OFF" && <small>AEB tắt · lượt đối chứng</small>}</td>
 
             <td className={styles.result}><div className={styles.badges}><div><span className={styles.badgeLabel}>Chạy</span><AnalysisBadge value={run.status} /></div><div><span className={styles.badgeLabel}>Theo luật</span><AnalysisBadge value={run.outcome} /></div></div>
-              <small>{run.trace_available === true ? "Có telemetry" : run.trace_available === false ? "Thiếu telemetry" : "Chưa xác định telemetry"}{run.failure_class ? ` · ${analysisLabel(run.failure_class)}` : ""}</small>
+              {run.failure_class && <small>{analysisLabel(run.failure_class)}</small>}
               {run.error && <small className={styles.error} title={run.error}>{run.error}</small>}
             </td>
-            <td className="numeric">{formatObjective(run.metrics.rms_jerk_mps3)}</td><td className="numeric">{formatRunImpact(run.metrics.impact_speed_mps, run)}</td><td className="numeric">{formatObjective(run.metrics.stopping_distance_m)}</td>
             {selecting && <td>{renderSelection(run)}</td>}
             <td><div className={styles.actions}><Link href={href(run.run_id)} aria-label={`Chi tiết run ${run.run_id}`}>Xem kết quả →</Link>
-              {run.status === "COMPLETED" && run.trace_available ? <Link href={href(run.run_id, true)} aria-label={`Playback run ${run.run_id}`}>Playback ↗</Link> : <span title="API chưa có telemetry để phát lại">Chưa có playback</span>}
             </div></td>
           </tr>)}</tbody>
         </table>
@@ -112,7 +104,6 @@ export function AnalysisRunExplorer({ data, loading, hasError, page, size, searc
         {data.total === 0 && <Link href="/scenarios" className="analysis-button">Mở kịch bản</Link>}
         {search && <button className="analysis-button" onClick={() => onSearch("")}>Hiện toàn bộ trang này</button>}
       </div>}
-      {rows.length > 0 && <p className="analysis-caption">Cuộn ngang bảng để xem thêm chỉ số và tập dữ liệu.</p>}
       <AnalysisPager page={page} size={size} total={data.total} onPage={onPage} onSize={onSize} />
     </>}
   </section>;

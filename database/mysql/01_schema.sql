@@ -881,11 +881,12 @@ INSERT INTO roles (code, name, description) VALUES
   ('REVIEWER',    'Reviewer',      'Xem kết quả kỹ thuật và ACCEPT / REJECT khuyến nghị'),
   ('EXPERIENCER', 'Experiencer',   'Người tự đăng ký: project cá nhân, chạy đến regression; không có khuyến nghị / duyệt');
 
--- 4 tham số AEB cốt lõi được tối ưu hóa (Scope rút gọn chuẩn hóa theo paper):
+-- 4 tham số AEB cốt lõi được tối ưu hóa (Scope rút gọn chuẩn hóa theo paper).
+-- Phạm vi khớp miền tìm của MOBO (ParameterBounds.DEFAULT), một nguồn cho chỉnh tay và tối ưu (ADR-069, migration 025):
 INSERT INTO aeb_parameters (code, name, category, unit, min_value, max_value, default_value, description, sort_order) VALUES
-  ('TTC_THRESHOLD', 'TTC Threshold', 'DECISION', 's', 0.500000, 4.000000, 1.500000, 'Ngưỡng Time-to-Collision kích hoạt phanh AEB (TTC = Range / Range_Rate). Khoảng tối ưu [0.5, 4.0] s; đánh đổi giữa tránh va chạm và tỷ lệ phanh oan (ISO 15623:2013).', 1),
-  ('BRAKE_ACTIVATION_DELAY', 'Brake Activation Delay', 'CONTROL', 's', 0.000000, 0.500000, 0.150000, 'Độ trễ phản hồi hệ thống chấp hành phanh cơ điện tử t_total = t_CAN + t_valve + t_calliper. Khoảng tối ưu [0.0, 0.5] s (Bosch Automotive Handbook / Reif 2014).', 2),
-  ('MAX_DECELERATION', 'Max Deceleration', 'VEHICLE_DYNAMICS', 'm/s2', 3.000000, 10.000000, 8.000000, 'Giới hạn giảm tốc phanh khẩn cấp tối đa a_target <= mu * g. Khoảng tối ưu [3.0, 10.0] m/s^2 (Pacejka 2012 / Euro NCAP min 5.0 m/s^2).', 3),
+  ('TTC_THRESHOLD', 'TTC Threshold', 'DECISION', 's', 0.500000, 3.500000, 1.500000, 'Ngưỡng Time-to-Collision kích hoạt phanh AEB (TTC = Range / Range_Rate). Khoảng tối ưu [0.5, 3.5] s; đánh đổi giữa tránh va chạm và tỷ lệ phanh oan (ISO 15623:2013).', 1),
+  ('BRAKE_ACTIVATION_DELAY', 'Brake Activation Delay', 'CONTROL', 's', 0.050000, 0.450000, 0.150000, 'Độ trễ phản hồi hệ thống chấp hành phanh cơ điện tử t_total = t_CAN + t_valve + t_calliper. Khoảng tối ưu [0.05, 0.45] s (Bosch Automotive Handbook / Reif 2014).', 2),
+  ('MAX_DECELERATION', 'Max Deceleration', 'VEHICLE_DYNAMICS', 'm/s2', 5.000000, 10.000000, 8.000000, 'Giới hạn giảm tốc phanh khẩn cấp tối đa a_target <= mu * g. Khoảng tối ưu [5.0, 10.0] m/s^2 (Pacejka 2012 / Euro NCAP min 5.0 m/s^2).', 3),
   ('BRAKE_BUILDUP_RATE', 'Brake Build-up Rate', 'CONTROL', 'm/s3', 5.000000, 20.000000, 20.000000, 'Tốc độ tăng lực phanh (buildup rate / jerk limit da/dt). Khoảng tối ưu [5.0, 20.0] m/s^3; cân bằng giữa RMS Jerk êm ái và quãng phanh dừng (Ebel et al. 2020 / ADR-040).', 4);
 
 -- Thông số xe Audi e-tron mặc định trong CARLA. Mô-men phanh 1800 N·m và phanh 100% 9,13 m/s²: hiệu chuẩn 08/11/2026

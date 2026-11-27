@@ -175,6 +175,8 @@ export const RECOMMENDATION_STATUS: Record<RecommendationStatus, { label: string
   REJECT: { label: "Đã từ chối", cls: "bg-vehicsim-soft text-vehicsim-muted" },
   REQUEST_MORE_TESTS: { label: "Yêu cầu thêm kiểm thử", cls: "bg-vehicsim-decision-bg text-vehicsim-decision" },
   BLOCKED: { label: "Bị chặn", cls: "bg-vehicsim-danger-bg text-vehicsim-danger" },
+  SUPERSEDED: { label: "Hết hiệu lực", cls: "bg-vehicsim-soft text-vehicsim-muted" },
+  BASELINE_CHANGED: { label: "Bản cơ sở đã đổi", cls: "bg-vehicsim-soft text-vehicsim-muted" },
 };
 
 export function RecommendationBadge({ status, className }: { status: RecommendationStatus; className?: string }) {

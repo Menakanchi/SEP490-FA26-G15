@@ -16,6 +16,12 @@ test("new OFF and vehicle-limit explanations retain physical observations in Vie
   assert.match(vi("Available vehicle braking capped deceleration at 3.0 m/s² vs 8.0 requested."), /Khả năng phanh của xe.*3.0.*8.0/);
   assert.match(vi("Optimization baseline is missing selected variant runs"), /Baseline chưa có đủ lượt chạy/);
   assert.match(vi("Optimization candidate is missing selected variant runs"), /Ứng viên chưa có đủ lượt chạy/);
+  assert.match(vi("Analysis dataset partitions contain the same variant"), /biến thể trùng/);
+  assert.match(vi("Analysis dataset mixes vehicle or simulator identities"), /không cùng xe/);
+  assert.match(vi("Analysis dataset repeats a variant and seed"), /seed bị lặp/);
+  assert.match(vi("Analysis validation evidence is incomplete"), /Tập xác minh chưa đủ/);
+  assert.match(vi("Analysis optimization objectives changed"), /Chỉ số của tập tối ưu/);
+  assert.match(vi("Analysis validation objectives changed"), /Chỉ số của tập xác minh/);
 });
 
 test("m/s frame conversion preserves raw precision; API km/h is formatted directly", () => {

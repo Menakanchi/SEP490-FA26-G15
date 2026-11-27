@@ -5,6 +5,7 @@ import com.vsos.backend.common.Vs;
 import com.vsos.backend.common.Vs.NotFoundException;
 import com.vsos.backend.dto.regression.RegressionRecords.RecommendationRow;
 import com.vsos.backend.dto.regression.RegressionRecords.RegressionTestRow;
+import com.vsos.backend.dto.regression.RegressionResponses.CandidateSource;
 import com.vsos.backend.dto.regression.RegressionResponses.Counts;
 import com.vsos.backend.dto.regression.RegressionResponses.Evidence;
 import com.vsos.backend.dto.regression.RegressionResponses.ExpectedEffect;
@@ -117,7 +118,8 @@ public class RegressionViewService {
                     RegressionCodes.testCode(x.id()),
                     Vs.versionLabel(versions.get(x.baselineVersionId())),
                     Vs.versionLabel(versions.get(x.candidateVersionId())),
-                    RegressionCodes.recommendationStatus(x, rec),
+                    RegressionCodes.recommendationStatus(x, rec, statusOf(versions, x.baselineVersionId()),
+                            statusOf(versions, x.candidateVersionId())),
                     summary.rates(),
                     summary.counts(),
                     Vs.iso(createdAt)));
@@ -143,7 +145,8 @@ public class RegressionViewService {
         Integer fixed = counts == null ? null : counts.fixed();
 
         boolean passed = "PASSED".equals(detail.status());
-        String status = RegressionCodes.recommendationStatus(test, rec);
+        String status = RegressionCodes.recommendationStatus(test, rec,
+                detail.baseline() == null ? null : detail.baseline().status(), detail.candidate() == null ? null : detail.candidate().status());
         String decision = RegressionCodes.displayDecision(rec);
         return new RecommendationDetailResponse(
                 detail,
@@ -162,7 +165,7 @@ public class RegressionViewService {
                         new Evidence("regression", "Regression " + detail.code(), passed ? "PASS" : "FAIL",
                                 regressions + " regressions · " + (fixed == null ? 0 : fixed) + " fixed"),
                         new Evidence("robustness", "Robustness validation", "NOT_RUN", "FE-13 — not run yet"),
-                        new Evidence("pareto", "Pareto front", "NOT_RUN", "FE-13 — not run yet"),
+                        paretoEvidence(detail.candidateSource()),
                         new Evidence("sensitivity", "Sensitivity analysis", "NOT_RUN", "FE-12 — not run yet")),
                 new ReviewInfo(
                         decision,
@@ -231,6 +234,27 @@ public class RegressionViewService {
             }
         }
         return new Progress(done, total);
+    }
+
+    /**
+     * Bằng chứng "Biên Pareto" theo nguồn candidate: trial của đợt MOBO nằm trên biên thì ĐẠT, không nằm trên biên thì KHÔNG ĐẠT;
+     * candidate chỉnh tay (không qua tối ưu) thì CHƯA CHẠY. Trước đây luôn ghi "chưa chạy" kể cả khi candidate lấy từ nghiệm Pareto.
+     * Pareto vẫn không thay regression (bất biến 5): mục này chỉ là bằng chứng bổ sung.
+     */
+    static Evidence paretoEvidence(CandidateSource source) {
+        if (source == null || source.trialId() == null) {
+            return new Evidence("pareto", "Pareto front", "NOT_RUN", "Manual candidate — not from optimization");
+        }
+        String trial = "Trial #" + source.trialNumber();
+        String campaign = source.campaignName() == null ? "run #" + source.optimizationRunId() : source.campaignName();
+        return Boolean.TRUE.equals(source.paretoOptimal())
+                ? new Evidence("pareto", "Pareto front", "PASS", trial + " is on the Pareto front of " + campaign)
+                : new Evidence("pareto", "Pareto front", "FAIL", trial + " is not on the Pareto front of " + campaign);
+    }
+
+    private static String statusOf(Map<Long, Row> versions, long versionId) {
+        Row v = versions.get(versionId);
+        return v == null ? null : v.str("status");
     }
 
     private Map<Long, Row> versionsOf(long projectId) {
