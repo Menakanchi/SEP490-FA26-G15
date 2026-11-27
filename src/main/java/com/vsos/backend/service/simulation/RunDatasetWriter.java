@@ -62,8 +62,20 @@ final class RunDatasetWriter {
      *
      * @param aebVersion dòng {@code aeb_versions} của run đọc lúc ghi (null nếu không có); chỉ để khai báo trạng thái phiên bản (C06)
      */
-    static void attach(Path resultPath, Map<String, Object> result, Row run, Map<String, Object> bundle, Map<String, Object> aebVersion,
-                       Path folder, Path repoRoot) {
+    record Attachment(byte[] bytes, boolean written) { }
+
+    @FunctionalInterface
+    interface ResultWriter {
+        void write(Path path, String content) throws IOException;
+    }
+
+    static Attachment attach(Path resultPath, Map<String, Object> result, Row run, Map<String, Object> bundle, Map<String, Object> aebVersion,
+                             Path folder, Path repoRoot) {
+        return attach(resultPath, result, run, bundle, aebVersion, folder, repoRoot, RunDatasetWriter::writeAtomically);
+    }
+
+    static Attachment attach(Path resultPath, Map<String, Object> result, Row run, Map<String, Object> bundle, Map<String, Object> aebVersion,
+                             Path folder, Path repoRoot, ResultWriter writer) {
         Map<String, Object> block;
         try {
             block = build(run, bundle, aebVersion, result, folder, gitCommit(repoRoot));
@@ -74,12 +86,21 @@ final class RunDatasetWriter {
             block.put("status", Json.obj("build", state("INVALID", "không dựng được khối dataset: " + e.getClass().getSimpleName() + ": " + e.getMessage())));
         }
         result.put("dataset", block);
+        String content;
         try {
             Map<String, Object> onDisk = MiniJson.parseObject(Files.readString(resultPath, StandardCharsets.UTF_8));
             onDisk.put("dataset", block);
-            writeAtomically(resultPath, MiniJson.write(onDisk));
+            content = MiniJson.write(onDisk);
         } catch (IOException | RuntimeException e) {
-            log.warn("Không ghi được khối dataset vào {}: {}", resultPath, e.toString());
+            log.warn("Không tạo được nội dung result.json kèm dataset từ {}: {}", resultPath, e.toString());
+            return new Attachment(null, false);
+        }
+        try {
+            writer.write(resultPath, content);
+            return new Attachment(content.getBytes(StandardCharsets.UTF_8), true);
+        } catch (IOException | RuntimeException e) {
+            log.warn("Không ghi được khối dataset vào {}; lưu nội dung đã bổ sung trong database: {}", resultPath, e.toString());
+            return new Attachment(content.getBytes(StandardCharsets.UTF_8), false);
         }
     }
 
