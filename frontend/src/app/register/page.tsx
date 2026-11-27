@@ -11,7 +11,8 @@ import { Loader2 } from "lucide-react";
 /**
  * Đăng ký. Backend quyết định luồng (`GET /auth/register/mode`, TD-35):
  * - `otp` (mặc định ở production): email -> mã 6 số -> tài khoản, nên chỉ chủ email mới đăng ký được;
- * - `one_step` (mặc định ở dev, chưa cần SMTP): tạo tài khoản và đăng nhập luôn, không xác minh email.
+ * - `one_step` (mặc định ở dev, chưa cần SMTP): tạo tài khoản và đăng nhập luôn, không xác minh email;
+ * - `closed`: tắt đăng ký công khai, tài khoản do quản trị cấp.
  */
 export default function RegisterPage() {
   const [mode, setMode] = useState<RegistrationMode | "loading" | "error">("loading");
@@ -32,7 +33,13 @@ export default function RegisterPage() {
   return (
     <AuthCard
       title="Tạo tài khoản"
-      subtitle={mode === "loading" ? "Đang tải..." : "Không kết nối được máy chủ. Vui lòng thử lại sau."}
+      subtitle={
+        mode === "loading"
+          ? "Đang tải..."
+          : mode === "closed"
+            ? "Đăng ký công khai đang tắt. Vui lòng liên hệ quản trị viên để được cấp tài khoản."
+            : "Không kết nối được máy chủ. Vui lòng thử lại sau."
+      }
       backHref="/login"
       backLabel="Quay lại trang Đăng nhập"
       footer={

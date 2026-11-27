@@ -25,6 +25,13 @@ class RegistrationModeTest {
     }
 
     @Test
+    void closedIsExplicitOnlyAndNeverChosenByAuto() {
+        assertThat(RegistrationMode.resolve("closed", "production")).isEqualTo(RegistrationMode.CLOSED);
+        assertThat(RegistrationMode.resolve(" CLOSED ", "development")).isEqualTo(RegistrationMode.CLOSED);
+        assertThat(RegistrationMode.resolve("auto", "production")).isNotEqualTo(RegistrationMode.CLOSED);
+    }
+
+    @Test
     void unknownValueFailsFastInsteadOfSilentlyOpeningRegistration() {
         assertThatThrownBy(() -> RegistrationMode.resolve("both", "production"))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("REGISTRATION_MODE");
@@ -34,5 +41,6 @@ class RegistrationModeTest {
     void wireValuesAreWhatTheFrontendExpects() {
         assertThat(RegistrationMode.OTP.wire()).isEqualTo("otp");
         assertThat(RegistrationMode.ONE_STEP.wire()).isEqualTo("one_step");
+        assertThat(RegistrationMode.CLOSED.wire()).isEqualTo("closed");
     }
 }

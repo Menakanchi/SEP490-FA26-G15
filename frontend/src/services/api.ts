@@ -304,12 +304,13 @@ export async function apiEventStream(
 // thông tin. Bước xin mã luôn trả cùng một câu, kể cả khi email không hợp lệ
 // với luồng đó — không dựa vào response để đoán email đã đăng ký hay chưa.
 
-/** Luồng đăng ký backend đang dùng: `otp` (xác minh email) hoặc `one_step` (không xác minh, dev). */
-export type RegistrationMode = "otp" | "one_step";
+/** Luồng đăng ký backend đang dùng: `otp` (xác minh email) hoặc `one_step` (không xác minh, dev) hoặc `closed` (tắt đăng ký công khai). */
+export type RegistrationMode = "otp" | "one_step" | "closed";
 
 export async function getRegistrationMode(): Promise<RegistrationMode> {
   const res = await request<{ mode: RegistrationMode }>("/auth/register/mode");
-  return res.mode === "otp" ? "otp" : "one_step";
+  if (res.mode === "otp" || res.mode === "closed") return res.mode;
+  return "one_step";
 }
 
 export async function requestRegisterCode(email: string): Promise<{ message_vi: string }> {

@@ -44,7 +44,7 @@ public class AuthController {
         return ResponseEntity.ok(authService.login(request, clientIp(http)));
     }
 
-    @Operation(summary = "Chế độ đăng ký", description = "`one_step` (POST /register, dev) hoặc `otp` (POST /register/request rồi /register/verify, production). Frontend đọc để chọn đúng luồng.")
+    @Operation(summary = "Chế độ đăng ký", description = "`one_step` (POST /register, dev) `otp` (POST /register/request rồi /register/verify, production) hoặc `closed` (tắt đăng ký công khai). Frontend đọc để chọn đúng luồng.")
     @GetMapping("/register/mode")
     public Map<String, String> registrationMode() {
         return Map.of("mode", authService.registrationMode().wire());
