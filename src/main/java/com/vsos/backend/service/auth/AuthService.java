@@ -41,6 +41,8 @@ public class AuthService {
     private static final String INVALID_CREDENTIALS = "Email hoặc mật khẩu không đúng";
     private static final String INVALID_OTP = "Mã xác minh không đúng hoặc đã hết hạn. Vui lòng yêu cầu mã mới.";
     private static final String RATE_LIMITED = "Quá nhiều yêu cầu. Vui lòng thử lại sau ít phút.";
+    /** ADR-070: bước xin mã đăng ký báo thẳng email đã có tài khoản. */
+    static final String EMAIL_TAKEN = "Email này đã có tài khoản. Hãy đăng nhập hoặc dùng Quên mật khẩu.";
     private static final String CANNOT_REGISTER =
             "Không thể tạo tài khoản với thông tin này. Nếu bạn đã có tài khoản, hãy đăng nhập hoặc dùng Quên mật khẩu.";
     /** BCrypt chỉ dùng 72 byte đầu của mật khẩu — dài hơn thì phần sau bị bỏ qua mà người dùng không biết. */
@@ -170,13 +172,17 @@ public class AuthService {
         return sessionFor(saved);
     }
 
-    /** Bước 1 đăng ký: chỉ gửi mã khi email chưa có tài khoản; không gửi thì vẫn trả như đã gửi. */
+    /**
+     * Bước 1 đăng ký: chỉ gửi mã khi email chưa có tài khoản. Email đã có tài khoản thì báo ngay (ADR-070) để người dùng
+     * biết đường đăng nhập / quên mật khẩu; hạn mức theo IP chạy trước nên mỗi IP chỉ dò được vài email mỗi cửa sổ.
+     */
     public void requestRegistration(String email, String clientIp) {
         requireRegistrationOpen();
         checkOtpRequestRate(clientIp);
         String normalized = normalize(email);
         if (userRepository.existsByEmail(normalized)) {
-            return;
+            AuditLog.event("auth.register_request", "rejected", "reason", "email_taken", "ip", clientIp);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, EMAIL_TAKEN);
         }
         otpService.issue(OtpService.Purpose.REGISTER, normalized)
                 .ifPresent(code -> mailService.sendOtp(normalized, code, OtpService.Purpose.REGISTER));
@@ -196,7 +202,7 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, INVALID_OTP);
         }
         if (userRepository.existsByEmail(normalized)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email này đã có tài khoản. Hãy đăng nhập.");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, EMAIL_TAKEN);
         }
         String[] names = splitFullName(fullName);
         User user = User.builder()

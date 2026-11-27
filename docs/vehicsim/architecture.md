@@ -303,7 +303,8 @@ không được đưa lại vào API hiện tại. CPLA/TURNING/CUT_IN chưa tri
 
 - Đăng ký và quên mật khẩu: email → mã 6 số (TTL 600 s, tối đa 5 lần nhập sai,
   gửi lại sau 60 s, giới hạn theo IP). Mã lưu **HMAC** trong Redis, không lưu MySQL.
-- Không tiết lộ email có tồn tại: luồng OTP phản hồi và thời gian như nhau (gửi mail chạy nền).
+- Không tiết lộ email có tồn tại: đăng nhập và quên mật khẩu phản hồi và thời gian như nhau (gửi mail chạy nền). Riêng bước xin mã
+  đăng ký trả 409 khi email đã có tài khoản ([ADR-070](../adr/ADR-070-dang-ky-bao-email-da-co-tai-khoan.md)), sau hạn mức theo IP.
 - Hai cách đăng ký, backend chọn bằng `REGISTRATION_MODE` (`auto` | `one_step` | `otp` | `closed`; `GET /auth/register/mode` cho
   frontend biết): `otp` = `POST /auth/register/request` rồi `/verify` (chỉ chủ email mới đăng ký được, cần SMTP);
   `one_step` = `POST /auth/register` tạo tài khoản luôn, không xác minh email. `auto` chọn `otp` ở production và `one_step`
@@ -453,7 +454,7 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | Bước 1 cần quyền ghi (ENGINEER/EXPERIENCER/ADMIN) | `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite` |
 | Giới hạn tần suất của bước 1; họ từ mô tả giữ nguồn `NATURAL_LANGUAGE` | _chưa có test_ (TD-33) |
 | Mọi lời gọi LLM qua `LlmService`; test không gọi LLM thật (máy chủ giả) | `ArchitectureRulesTest#onlyLlmServiceKnowsTheLlmProviders`, `DescribeServiceTest` |
-| Không lộ email có tồn tại hay không; mã OTP chỉ lưu dạng hash gắn mục đích, dùng một lần | `AuthPrivacyTest#registrationCodeIsNotSentToAnEmailThatAlreadyHasAnAccount`, `AuthPrivacyTest#wrongPasswordAndUnknownEmailGiveTheSameError`, `AuthPrivacyTest#otpIsStoredOnlyAsAPurposeBoundHash`, `AuthPrivacyTest#otpWorksOnceAndOnlyWithTheRightCode` |
+| Không lộ email có tồn tại hay không (trừ bước xin mã đăng ký, ADR-070); mã OTP chỉ lưu dạng hash gắn mục đích, dùng một lần | `AuthPrivacyTest#registrationCodeIsNotSentToAnEmailThatAlreadyHasAnAccount`, `AuthPrivacyTest#wrongPasswordAndUnknownEmailGiveTheSameError`, `AuthPrivacyTest#otpIsStoredOnlyAsAPurposeBoundHash`, `AuthPrivacyTest#otpWorksOnceAndOnlyWithTheRightCode` |
 | Đăng ký OTP ở production, một bước ở dev; giá trị lạ không mở đăng ký | `RegistrationModeTest` |
 | Mật khẩu ≤ 72 byte; token mất hiệu lực khi đổi mật khẩu; hash PBKDF2 cũ vẫn đăng nhập được | `AuthPasswordRuleTest`, `JwtServiceTest#changingThePasswordHashInvalidatesOldTokens`, `LegacyAwarePasswordEncoderTest` |
 | Nhật ký thao tác một dòng mỗi sự kiện, không chèn được dòng giả; mật khẩu / token không vào log | `AuditLogTest#newlinesInAValueCannotForgeASecondLogLine`, `ArchitectureRulesTest#logStatementsDoNotMentionSecretValues` |
