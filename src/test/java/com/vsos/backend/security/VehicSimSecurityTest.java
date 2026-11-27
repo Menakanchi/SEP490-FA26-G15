@@ -67,7 +67,7 @@ import com.vsos.backend.service.vehicle.VehicleCatalogService;
 
 /**
  * Luật cứng 3 (AGENTS.md): mọi route {@code /api/v1/vehicsim/*} cần đăng nhập; ADMIN / ENGINEER / EXPERIENCER ghi được,
- * MANAGER quản lý workspace, không truy cập nghiệp vụ kỹ thuật; chỉ REVIEWER Accept / Reject. Chạy với bộ lọc bảo mật thật ({@link SecurityConfig}), hai controller thật
+ * MANAGER quản lý workspace và xem catalog xe chung; chỉ REVIEWER Accept / Reject. Chạy với bộ lọc bảo mật thật ({@link SecurityConfig}), hai controller thật
  * (các controller VehicSim và {@link RegressionController} của màn 5) cùng luật quyền thật ({@link VehicSimAccess}),
  * service giả — không cần MySQL / Redis nên chạy được trong CI (TD-33).
  */
@@ -267,7 +267,7 @@ class VehicSimSecurityTest {
         for (String path : List.of(
                 "/context", "/projects", "/projects/1/journey", "/scenario-categories", "/families",
                 "/families/1/variants", "/scenarios/describe", "/variants/1/collection", "/runs/1",
-                "/carla/runs", "/telemetry/evaluate", "/vehicles", "/failures", "/failures.csv",
+                "/carla/runs", "/telemetry/evaluate", "/failures", "/failures.csv",
                 "/analysis/runs", "/analysis/v3/explorer/scenarios", "/analysis/v3/handoffs/1/download",
                 "/aeb/versions", "/optimizations", "/optimizations/1/pareto", "/regression",
                 "/regression/1/export.json", "/recommendations", "/decisions")) {
@@ -285,7 +285,7 @@ class VehicSimSecurityTest {
         int checked = 0;
         for (var entry : handlerMapping.getHandlerMethods().entrySet()) {
             String type = entry.getValue().getBeanType().getPackageName();
-            if (!List.of(".scenario", ".simulation", ".analysis", ".aeb", ".optimization", ".regression", ".vehicle")
+            if (!List.of(".scenario", ".simulation", ".analysis", ".aeb", ".optimization", ".regression")
                     .stream().anyMatch(type::endsWith)) continue;
             for (String pattern : entry.getKey().getPathPatternsCondition().getPatternValues()) {
                 String path = pattern.replaceAll("\\{[^}]+}", "1");
@@ -315,13 +315,13 @@ class VehicSimSecurityTest {
     }
 
     @Test
-    void technicalRolesCanBrowseTheVehicleCatalog() throws Exception {
+    void allRolesCanBrowseTheVehicleCatalog() throws Exception {
         stubServices();
         when(vehicles.detail(1L, 1L)).thenReturn(Map.of("id", 1L));
+        when(vehicles.detail(null, 1L)).thenReturn(Map.of("id", 1L));
         for (RoleCode code : RoleCode.values()) {
-            int expected = code == RoleCode.MANAGER ? 403 : 200;
-            assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles"), code)).as("%s xem danh sách xe", code).isEqualTo(expected);
-            assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles/1"), code)).as("%s xem chi tiết xe", code).isEqualTo(expected);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles"), code)).as("%s xem danh sách xe", code).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles/1"), code)).as("%s xem chi tiết xe", code).isEqualTo(200);
         }
     }
 
@@ -333,12 +333,28 @@ class VehicSimSecurityTest {
         when(vehicles.list(null)).thenReturn(List.of(Map.of("id", 1L)));
         when(vehicles.detail(null, 1L)).thenReturn(Map.of("id", 1L));
         for (RoleCode code : RoleCode.values()) {
-            int expected = code == RoleCode.MANAGER ? 403 : 200;
-            assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles"), code)).as("%s xem danh sách xe khi chưa có project", code).isEqualTo(expected);
-            assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles/1"), code)).as("%s xem chi tiết xe khi chưa có project", code).isEqualTo(expected);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles"), code)).as("%s xem danh sách xe khi chưa có project", code).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles/1"), code)).as("%s xem chi tiết xe khi chưa có project", code).isEqualTo(200);
         }
         verify(projects, never()).currentProject();
         verify(vehicles, org.mockito.Mockito.atLeastOnce()).list(null);
+    }
+
+    @Test
+    void managerViewsOnlyGlobalVehicleCatalogAndCannotWrite() throws Exception {
+        when(vehicles.list(null)).thenReturn(List.of(Map.of("id", 1L)));
+        when(vehicles.detail(null, 1L)).thenReturn(Map.of("id", 1L));
+        assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles").header(ProjectAccess.PROJECT_HEADER, "999"), RoleCode.MANAGER)).isEqualTo(200);
+        assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles/1").header(ProjectAccess.PROJECT_HEADER, "999"), RoleCode.MANAGER)).isEqualTo(200);
+        verify(vehicles).list(null);
+        verify(vehicles).detail(null, 1L);
+        verify(projects, never()).hasProject();
+        for (HttpMethod method : List.of(HttpMethod.POST, HttpMethod.PUT, HttpMethod.PATCH, HttpMethod.DELETE)) {
+            for (String path : List.of("/vehicles", "/vehicles/1", "/vehicles/1/sensors")) {
+                assertThat(statusOf(request(method, BASE + path), RoleCode.MANAGER)).as("%s %s", method, path).isEqualTo(403);
+            }
+        }
+        assertThat(mvc.perform(request(HttpMethod.GET, BASE + "/vehicles")).andReturn().getResponse().getStatus()).isEqualTo(401);
     }
 
     @Test

@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.List;
 import java.util.Map;
@@ -29,14 +31,19 @@ public class VehicleController {
     @Operation(summary = "Danh sách mẫu xe CARLA, xe project đang dùng đứng đầu",
             description = "Không cần project: chưa có project thì vẫn trả đủ danh mục, in_use = false và run_count = 0.")
     @GetMapping
-    public List<Map<String, Object>> list() {
-        return catalog.list(access.projectIdOrNull());
+    public List<Map<String, Object>> list(@AuthenticationPrincipal UserDetails user) {
+        return catalog.list(projectIdForCatalog(user));
     }
 
     @Operation(summary = "Chi tiết mẫu xe: thông số vật lý, cảm biến, số run theo bộ mô phỏng",
             description = "Không cần project: chưa có project thì in_use = false, run_count = 0, usage rỗng.")
     @GetMapping("/{vehicleId}")
-    public Map<String, Object> detail(@PathVariable long vehicleId) {
-        return catalog.detail(access.projectIdOrNull(), vehicleId);
+    public Map<String, Object> detail(@AuthenticationPrincipal UserDetails user, @PathVariable long vehicleId) {
+        return catalog.detail(projectIdForCatalog(user), vehicleId);
+    }
+
+    /** Manager xem catalog chung, không tự động lấy thống kê của project nhóm bất kỳ. */
+    private Long projectIdForCatalog(UserDetails user) {
+        return "MANAGER".equals(VehicSimAccess.roleOf(user)) ? null : access.projectIdOrNull();
     }
 }

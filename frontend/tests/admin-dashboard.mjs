@@ -13,6 +13,7 @@ await fs.mkdir(output,{recursive:true});
 const base=process.env.ADMIN_UI_URL||"http://localhost:3100";
 const actor={id:999999,email:"admin-entry@example.invalid",full_name:"Admin Entry Fixture",role:"ADMIN",is_active:true};
 const row={id:101,email:"entry-user@example.invalid",full_name:"Nguyễn Kiểm Thử",last_name:"Nguyễn",first_name:"Thử",role:"ENGINEER",is_active:true,created_date:"2026-11-07T08:00:00"};
+const vehicle={id:8,name:"Xe kiểm thử",carla_blueprint_id:"vehicle.fixture.car",length_m:4,width_m:2,height_m:1.5,num_wheels:4,mass_kg:1800,max_brake_decel_mps2:8,carla_full_brake_decel_mps2:8,is_supported:true,in_use:false,run_count:0};
 const resources=["users","workspaces","tech-references"];
 const viewports=[[1920,1080],[1366,768],[768,1024],[390,844]];
 let role="ADMIN",mode="normal";
@@ -29,6 +30,8 @@ try{
   if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
   if(p==="/vehicsim/workspaces")return reply([]);
   if(p==="/vehicsim/projects")return reply({items:[],total:0,page:1,page_size:20,active_count:0,archived_count:0});
+  if(p==="/vehicsim/vehicles")return reply([vehicle]);
+  if(p==="/vehicsim/vehicles/8")return reply({...vehicle,physics:{drag_coefficient:null,center_of_mass_m:null,tire_friction:null,max_brake_torque_nm:null,wheelbase_m:null,max_speed_mps:null},sensors:[],usage:[]});
   if(p==="/vehicsim/context")return reply({project:{id:1,name:"Fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:null},versions:[],families:[],parameters:[],reviewer_projects:[],reviewer_can_decide:false});
   if(p.startsWith("/vehicsim/admin/")){
    if(req.method()!=="GET"){writes.push(p);return reply({detail:"No writes allowed in entry regression"},405);}
@@ -135,7 +138,7 @@ try{
    assert.equal(await nav().getByRole("link",{name:"Nhiệm vụ & Báo cáo",exact:true}).getAttribute("href"),"/my-work");
   }
  }
- // Manager can manage workspaces but cannot enter technical workflows by URL.
+ // Manager may browse the common vehicle catalog and manage workspaces, but not enter other technical workflows.
  role="MANAGER";
  await page.goto(base+"/login");
  await page.getByLabel("Email",{exact:true}).fill(actor.email);
@@ -143,9 +146,21 @@ try{
  await page.getByRole("button",{name:"Đăng nhập",exact:true}).click();
  await page.waitForURL(base+"/workspace");
  await page.getByText("Bạn chưa được giao workspace nào",{exact:true}).waitFor();
- assert.deepEqual(await nav().locator("a[href]").evaluateAll(nodes=>nodes.map(n=>n.getAttribute("href"))),["/workspace"]);
+ assert.deepEqual(await nav().locator("a[href]").evaluateAll(nodes=>nodes.map(n=>n.getAttribute("href"))),["/vehicles","/workspace"]);
  assert(await nav().getByText("Hệ thống & Quản trị",{exact:true}).isVisible());
- for(const target of ["/", "/vehicles", "/projects/12", "/scenarios", "/analysis/failures/3", "/aeb/mobo", "/validation/regression", "/my-work"]){
+ await nav().getByRole("link",{name:"Phương tiện & Cấu hình",exact:true}).click();
+ await page.waitForURL(base+"/vehicles");
+ await page.getByText("Xe kiểm thử",{exact:true}).first().waitFor();
+ assert.equal(await page.getByText("Project đang dùng",{exact:true}).count(),0);
+ assert.equal(await page.getByText("Lượt chạy",{exact:true}).count(),0);
+ await shot("manager-vehicles");
+ await page.getByRole("link",{name:"Chi tiết",exact:true}).click();
+ await page.waitForURL(base+"/vehicles/8");
+ await page.getByText("Vật lý CARLA",{exact:true}).waitFor();
+ assert.equal(await page.getByText("Lượt chạy",{exact:true}).count(),0);
+ assert.equal(await page.getByText("Lịch sử sử dụng",{exact:true}).count(),0);
+ await shot("manager-vehicle-detail");
+ for(const target of ["/", "/projects/12", "/scenarios", "/analysis/failures/3", "/aeb/mobo", "/validation/regression", "/my-work"]){
   await page.goto(base+target);await page.waitForURL(base+"/workspace");
   await page.getByText("Bạn chưa được giao workspace nào",{exact:true}).waitFor();
  }

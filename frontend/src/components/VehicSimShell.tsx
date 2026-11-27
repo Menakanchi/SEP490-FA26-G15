@@ -21,7 +21,7 @@ export function VehicSimShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   // Các màn nghiệp vụ thuộc quy trình kiểm thử không dành cho quản lý workspace.
   const managerDenied = user?.roleCode === "MANAGER" && (
-    pathname === "/" || ["/vehicles", "/projects", "/scenarios", "/analysis", "/aeb", "/validation", "/runs", "/my-work"].some(
+    pathname === "/" || ["/projects", "/scenarios", "/analysis", "/aeb", "/validation", "/runs", "/my-work"].some(
       (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
     )
   );

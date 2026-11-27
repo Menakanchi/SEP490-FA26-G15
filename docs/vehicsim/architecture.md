@@ -9,7 +9,7 @@ Scenario Forge đã gỡ ngày 04/10/2026 (ADR-032); bộ xuất OpenSCENARIO hi
 > gồm bản đồ code, hợp đồng dữ liệu, cách kiểm thử và giới hạn hiện hành.
 > Các bảng tên Python/Forge bên dưới là lịch sử; không phải API đang tồn tại.
 > Admin chỉ có ba trang quản trị, không có Overview riêng. Reviewer theo membership workspace;
-> Engineer và Reviewer theo membership workspace (ADR-064); ADMIN dùng project nhóm mặc định (TD-30). MANAGER không truy cập nghiệp vụ kỹ thuật (ADR-071).
+> Engineer và Reviewer theo membership workspace (ADR-064); ADMIN dùng project nhóm mặc định (TD-30). MANAGER xem danh mục phương tiện chung, không truy cập kỹ thuật khác (ADR-072).
 
 > **Cập nhật 26/11/2026 sau merge:** đã có `OptimizationService` / `core/mobo/MoboEngine`, trial/Pareto và API hủy run/họ/regression/campaign. Snapshot FA chưa được nối vào campaign; Sensitivity/Robustness còn mở. Profile CARLA hiện tại là `carla-0.9.16-xosc16` (ADR-066), động học `1.4`; các định danh v15 ở phần lịch sử bên dưới không dùng cho run mới. Worker trả lỗi khi CARLA không sẵn sàng. Xem [báo cáo kiểm chứng](../LOGIC_AUDIT_REPORT.md).
 
@@ -323,8 +323,8 @@ không được đưa lại vào API hiện tại. CPLA/TURNING/CUT_IN chưa tri
 - JWT HS256 mang `pwv` (dấu vân tay của password hash): đổi mật khẩu là mọi phiên cũ
   hết hiệu lực. Production (`APP_ENV=production`) không chạy nếu thiếu `JWT_SECRET`; thiếu ở dev thì dùng khoá mặc định
   công khai và backend cảnh báo khi khởi động.
-- Vai trò (ADR-035, ADR-071): **mỗi người đúng một role hệ thống** (`users.role_id`) — `ADMIN`, `MANAGER` (quản lý
-  workspace được giao, thêm Engineer/Reviewer; không truy cập nghiệp vụ kỹ thuật), `ENGINEER` (làm toàn bộ quy trình), `REVIEWER`
+- Vai trò (ADR-035, ADR-071, ADR-072): **mỗi người đúng một role hệ thống** (`users.role_id`) — `ADMIN`, `MANAGER` (quản lý
+  workspace được giao, thêm Engineer/Reviewer; xem danh mục phương tiện chung, không truy cập kỹ thuật khác), `ENGINEER` (làm toàn bộ quy trình), `REVIEWER`
   (đọc, chạy regression và duyệt recommendation theo ADR-049), `EXPERIENCER` (tự đăng ký: project cá nhân, mô phỏng, tối ưu, regression; không
   recommendation, không duyệt). Role khác EXPERIENCER do Admin cấp bằng `scripts/CreateAdmin.java --role …`
   (API quản lý user là TD-28). EXPERIENCER làm việc trong project cá nhân (mục dưới); Reviewer lọc project theo membership workspace
@@ -423,7 +423,7 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | Tắt backend giữa run CARLA: ghi cờ dừng trước để worker tự dọn world, quá hạn mới giết | `CarlaWebTest#shuttingDownMidRunAsksTheWorkerToCleanUpBeforeKillingIt` |
 | Adapter CARLA áp góc lái của chính tick đó (không dùng `get_control()` của tick trước) và phanh/ga do lõi Java quyết định | `test_brake_override_keeps_this_ticks_steering` |
 | Mọi tham số AEB được simulator dùng; seed Java khớp SQL; AEB có đúng 4 tham số chỉnh được | `AebParameterSeedTest#everySeededParameterIsUsedByTheSimulator`, `AebParameterSeedTest#javaParameterSeedMatchesSqlSeed`, `SimulatorBehaviorTest#aebHasExactlyTheFourTunableParameters` |
-| Mọi route `/api/v1/vehicsim/*` cần đăng nhập; ENGINEER / EXPERIENCER / ADMIN ghi kỹ thuật được, MANAGER không truy cập kỹ thuật | `VehicSimSecurityTest#everyVehicsimRouteRequiresLogin`, `VehicSimSecurityTest#technicalRolesCanReadButOnlyWriteRolesCanWrite`, `VehicSimSecurityTest#managerCannotBypassTechnicalPagesUsingDirectApiRequests` |
+| Mọi route `/api/v1/vehicsim/*` cần đăng nhập; ENGINEER / EXPERIENCER / ADMIN ghi kỹ thuật được, MANAGER chỉ xem danh mục phương tiện chung và không truy cập kỹ thuật khác | `VehicSimSecurityTest#everyVehicsimRouteRequiresLogin`, `VehicSimSecurityTest#technicalRolesCanReadButOnlyWriteRolesCanWrite`, `VehicSimSecurityTest#managerCannotBypassTechnicalPagesUsingDirectApiRequests` |
 | Chỉ REVIEWER quyết định recommendation; được chạy regression theo ADR-049, không chạy baseline độc lập; chỉ ADMIN khởi tạo dữ liệu | `VehicSimSecurityTest#onlyReviewerCanAcceptOrReject`, `VehicSimSecurityTest#reviewerCanRunRegressionWithoutGainingScenarioOrCandidateWrites`, `VehicSimSecurityTest#onlyAdminCanBootstrap` |
 | EXPERIENCER chỉ mở project `ACTIVE` của chính mình (project người khác, project nhóm, project lưu trữ bị chặn); role khác bỏ qua header, giữ project nhóm | `ProjectScopeTest#theHeaderMustPointToAnActiveProjectOfTheExperiencer`, `ProjectScopeTest#otherRolesKeepTheTeamProjectAndIgnoreTheHeader` |
 | API project cá nhân cần đăng nhập; quản lý / làm việc chỉ EXPERIENCER, chủ project đã đổi role chỉ đọc; ghi qua hạn mức; lỗi mang tên lỗi và câu tiếng Việt | `ProjectSecurityTest#onlyExperiencersManageAndWorkInPersonalProjects`, `ProjectSecurityTest#ownersWhoChangedRoleStillReadTheirPersonalProjects`, `ProjectSecurityTest#writesHonourTheQuotaButReadsDoNot`, `ProjectSecurityTest#projectErrorsCarryTheirNameAndVietnameseDetail` |

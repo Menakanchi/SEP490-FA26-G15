@@ -101,7 +101,7 @@ chạy `.\mvnw.cmd clean` rồi build lại. Mô phỏng mặc định qua threa
 1. Mọi lời gọi LLM qua `LlmService`; bộ sinh `.xosc` offline, không dùng LLM.
 2. Java, kể cả lõi `com.vsos.core`, không import `carla`; lời gọi API CARLA chỉ ở adapter trong `worker/`.
 3. Mọi route `/api/v1/vehicsim/*` cần đăng nhập. Mỗi tài khoản một role:
-   ADMIN/ENGINEER/EXPERIENCER được ghi; MANAGER chỉ dùng khu quản lý workspace, không truy cập nghiệp vụ kỹ thuật theo [ADR-071](docs/adr/ADR-071-manager-quan-ly-workspace.md); REVIEWER được chạy regression và Accept/Reject theo [ADR-049](docs/adr/ADR-049-reviewer-chay-regression-de-kiem-tra.md).
+   ADMIN/ENGINEER/EXPERIENCER được ghi; MANAGER quản lý workspace và chỉ xem danh mục phương tiện chung theo [ADR-072](docs/adr/ADR-072-manager-xem-danh-muc-phuong-tien.md), không truy cập kỹ thuật khác; REVIEWER được chạy regression và Accept/Reject theo [ADR-049](docs/adr/ADR-049-reviewer-chay-regression-de-kiem-tra.md).
    Header `X-VehicSim-Project` chọn project (`ProjectAccess`): EXPERIENCER trong project cá nhân (`ProjectScope`), Reviewer và Kỹ sư trong project
    của workspace mình thuộc về (`ReviewerScope`, [ADR-064](docs/adr/ADR-064-ky-su-tao-project-cua-workspace.md)); ADMIN dùng project nhóm (TD-30).
 4. Cùng biến thể + seed phải tái lập được; candidate chạy đúng seed baseline.
