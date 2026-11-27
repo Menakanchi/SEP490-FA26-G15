@@ -34,6 +34,7 @@ import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 import com.vsos.backend.common.Json;
+import com.vsos.backend.security.RunViewScope;
 import com.vsos.backend.security.VehicSimAccess;
 import com.vsos.backend.service.simulation.RunCollectionService;
 import com.vsos.backend.service.simulation.RunService;
@@ -164,10 +165,22 @@ public class SimulationController {
         return runs.carlaStatus();
     }
 
-    @Operation(summary = "Các lượt chạy CARLA gần nhất mà người dùng được xem: EXPERIENCER chỉ lượt của mình, cả workspace xem chung, ADMIN xem hết")
+    @Operation(summary = "Các lượt chạy CARLA gần nhất mà người dùng được xem: EXPERIENCER chỉ lượt của mình, cả workspace xem chung, ADMIN xem hết hoặc lọc theo project_id")
     @GetMapping("/carla/runs")
-    public List<Map<String, Object>> carlaRuns(@AuthenticationPrincipal UserDetails user) {
+    public List<Map<String, Object>> carlaRuns(@RequestParam(name = "project_id", required = false) Long projectId,
+                                               @AuthenticationPrincipal UserDetails user) {
+        // Chỉ ADMIN được chọn project; role khác bỏ qua tham số và giữ phạm vi của mình.
+        if (projectId != null && "ADMIN".equals(VehicSimAccess.roleOf(user))) {
+            return runs.carlaRuns(RunViewScope.project(projectId));
+        }
         return runs.carlaRuns(access.runViewScope(user));
+    }
+
+    @Operation(summary = "ADMIN: các project có lượt CARLA, để chọn xem từng project")
+    @GetMapping("/carla/run-projects")
+    public List<Map<String, Object>> carlaRunProjects(@AuthenticationPrincipal UserDetails user) {
+        VehicSimAccess.requireAdmin(user);
+        return runs.carlaRunProjects();
     }
 
     @Operation(summary = "Số đo sensor và danh sách ảnh RGB đã ghi của run CARLA")
