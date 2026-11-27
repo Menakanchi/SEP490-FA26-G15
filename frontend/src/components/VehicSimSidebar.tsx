@@ -426,6 +426,7 @@ function NavGroups({ groups, sections }: NavGroupsProps) {
 
 function TeamNav({ role }: { role: string }) {
   const [personal, setPersonal] = useState(0);
+  const { ctx } = useVehicSimContext();
   const pathname = usePathname();
   const search = useSearchParams();
   const verifyEvidence = isVerifyEvidence(pathname, search.get("returnTo"));
@@ -436,7 +437,7 @@ function TeamNav({ role }: { role: string }) {
       .projects()
       .then((list) => setPersonal(list.active_count + list.archived_count))
       .catch(() => setPersonal(0));
-  }, [role]);
+  }, [role, ctx?.project.id]);
 
   const reviewer = role === "REVIEWER";
   const team = reviewer || role === "ENGINEER";
@@ -452,7 +453,7 @@ function TeamNav({ role }: { role: string }) {
 
   const personalGroup: Group = {
     key: "personal",
-    label: `Project cá nhân (${personal})`,
+    label: `${role === "ENGINEER" ? "Project của tôi" : "Project cá nhân"} (${personal})`,
     icon: lucideIcon(FolderOpen),
     href: "/projects",
     prefix: "/projects",
@@ -498,7 +499,7 @@ function TeamNav({ role }: { role: string }) {
           groups: [
             { key: "workspace", label: "Workspace nhóm", icon: peopleIcon, href: "/workspace", prefix: "/workspace" },
             { key: "my-work", label: "Nhiệm vụ & Báo cáo", icon: taskIcon, href: "/my-work", prefix: "/my-work" },
-            ...(personal > 0 ? [personalGroup] : []),
+            ...(role === "ENGINEER" || personal > 0 ? [personalGroup] : []),
           ],
         },
       ]

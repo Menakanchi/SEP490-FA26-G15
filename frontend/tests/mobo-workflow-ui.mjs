@@ -46,8 +46,9 @@ try {
  await context.addInitScript(()=>localStorage.setItem("vehicsim_access_token","browser-fixture-only"));
  await context.route("**/api/v1/**",async route=>{
   const req=route.request(),p=new URL(req.url()).pathname.replace("/api/v1","");
-  const reply=(body,status=200)=>route.fulfill({status,contentType:"application/json",body:JSON.stringify(body)});
-  if(req.method()==="OPTIONS")return route.fulfill({status:204});
+  const cors={"access-control-allow-origin":"*","access-control-allow-methods":"GET, POST, PUT, PATCH, DELETE, OPTIONS","access-control-allow-headers":"authorization, content-type, x-vehicsim-project"};
+  const reply=(body,status=200)=>route.fulfill({status,headers:cors,contentType:"application/json",body:JSON.stringify(body)});
+  if(req.method()==="OPTIONS")return route.fulfill({status:204,headers:cors});
   if(p==="/auth/me")return reply(user);
   if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
   if(p==="/vehicsim/regression"&&req.method()==="GET")return reply({items:[],kpis:{total:0,passed:0,failed:0,running:0}});
@@ -80,17 +81,17 @@ try {
   if(match){
    const id=Number(match[1]);
    if(delayFirst&&id===1)await new Promise(resolve=>pending.push(resolve));
-   const completed={...row,id:id*100+1,trial_number:id*100+1};
+   const completed={...row,id:id*100+1,trial_number:id*100+1,candidate_aeb_version_id:id===1?20:21};
    const missing={...row,id:id*100+90,trial_number:id*100+90,stopping_distance_m:null};
    return reply(match[2]==="pareto"?[completed,missing]:[completed,{...row,id:102,trial_number:2,status:"RUNNING",is_pareto_optimal:false},{...row,id:103,trial_number:3,status:"FAILED",is_pareto_optimal:false},{...row,id:104,trial_number:4,constraint_violated:true,is_pareto_optimal:false},missing]);
   }
   if(p.match(/^\/vehicsim\/optimizations\/\d+\/select\/\d+$/)&&req.method()==="POST"){
    writes.push(p);if(holdSelection)await new Promise(resolve=>pending.push(resolve));
-   return reply({candidate_aeb_version_id:20,regression_test_id:30});
+   return reply({candidate_aeb_version_id:p.includes('/optimizations/2/')?21:20,regression_test_id:30});
   }
   unexpected.push(p);return reply({detail:"Unhandled fixture"},404);
  });
- const page=await context.newPage();page.setDefaultTimeout(15000);page.on("pageerror",error=>errors.push(error.message));
+ const page=await context.newPage();page.setDefaultTimeout(Number(process.env.MOBO_UI_TIMEOUT)||15000);page.on("pageerror",error=>errors.push(error.message));
  const choose=async id=>{await page.getByRole("button",{name:"Chọn đợt tối ưu hoá",exact:true}).click();await page.getByRole("option",{name:new RegExp("Run #"+id+" ·")}).click();};
  const noOverflow=async()=>assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),"No document overflow");
  const readableHeaders=async()=>assert(await page.locator("thead").evaluate(head=>{
@@ -133,7 +134,10 @@ try {
  await page.getByRole("button",{name:"Đang lưu…",exact:true}).waitFor();
  assert(await page.getByRole("button",{name:"Chọn đợt tối ưu hoá",exact:true}).isDisabled());
  assert.equal(writes.length,1);holdSelection=false;for(const release of pending.splice(0))release();
- await page.getByText(/Đã tạo ứng viên AEB/).waitFor();assert.equal(await page.getByRole("link",{name:"Xem kiểm thử hồi quy →",exact:true}).getAttribute("href"),"/validation/regression/30");await choose(2);await page.getByRole("cell",{name:"#201",exact:true}).waitFor();
+ await page.getByText(/Đã tạo ứng viên AEB/).waitFor();assert.equal(await page.getByRole("link",{name:"Xem kiểm thử hồi quy →",exact:true}).getAttribute("href"),"/validation/regression/30");
+ await page.getByText("Đã chọn",{exact:true}).waitFor();assert.equal(await page.getByRole("button",{name:"Chọn làm ứng viên",exact:true}).count(),0);
+ assert.equal(await page.getByRole("link",{name:"RT-030 →",exact:true}).getAttribute("href"),"/validation/regression/30");
+ await choose(2);await page.getByRole("cell",{name:"#201",exact:true}).waitFor();
  assert.equal(await page.getByText(/Đã tạo ứng viên AEB/).count(),0);
  // The new combined studio uses the same evidence and campaign identity rules.
  await page.goto(base+"/aeb/mobo?run_id=1&tab=trials");await page.getByRole("cell",{name:"#101",exact:true}).waitFor();
@@ -153,9 +157,17 @@ try {
  assert.equal(await page.getByText(/Đã chọn .* làm Ứng viên AEB/).count(),0);
  holdSelection=true;await page.getByRole("button",{name:"Chọn làm ứng viên",exact:true}).evaluate(button=>{button.click();button.click();});
  await page.getByRole("button",{name:"Đang lưu…",exact:true}).waitFor();assert.equal(writes.length,2);
+ holdSelection=false;for(const release of pending.splice(0))release();
+ await page.getByText("Đã chọn",{exact:true}).waitFor();assert.equal(await page.getByRole("button",{name:"Chọn làm ứng viên",exact:true}).count(),0);
+ assert.equal(await page.getByRole("link",{name:"RT-030 →",exact:true}).getAttribute("href"),"/validation/regression/30");
  await page.getByRole("button",{name:/Lịch sử đợt chạy/}).click();await page.getByRole("button",{name:"Xem tối ưu",exact:true}).first().click();
- holdSelection=false;for(const release of pending.splice(0))release();await page.getByRole("cell",{name:"#101",exact:true}).waitFor();
- assert.equal(await page.getByText(/Đã chọn .* làm Ứng viên AEB/).count(),0,"Late selection from campaign 2 is not attached to campaign 1");
+ await page.getByRole("cell",{name:"#101",exact:true}).waitFor();
+ assert.equal(await page.getByText(/Đã chọn .* làm Ứng viên AEB/).count(),0,"Selection from campaign 2 is not attached to campaign 1");
+ holdSelection=true;await page.getByRole("button",{name:"Chọn làm ứng viên",exact:true}).click();
+ await page.getByRole("button",{name:"Đang lưu…",exact:true}).waitFor();
+ await page.getByRole("button",{name:/Lịch sử đợt chạy/}).click();await page.getByRole("button",{name:"Xem tối ưu",exact:true}).nth(1).click();
+ holdSelection=false;for(const release of pending.splice(0))release();await page.getByRole("cell",{name:"#201",exact:true}).waitFor();
+ assert.equal(await page.getByText(/Đã chọn .* làm Ứng viên AEB/).count(),0,"Late selection from campaign 1 is not attached to campaign 2");
  // Frozen FA cohort must survive navigation and be submitted with server-issued checksum.
  await page.goto(base+"/aeb?dataset_id=91");assert.equal(await page.getByRole("link",{name:"Bắt đầu",exact:true}).getAttribute("href"),"/aeb/mobo/new?dataset_id=91");
  await page.getByRole("link",{name:"Bắt đầu",exact:true}).click();await page.getByRole("heading",{name:"Tập đã chốt #91 · FA frozen fixture",exact:true}).waitFor();
@@ -211,7 +223,7 @@ try {
  for(const route of ["trials","pareto"]){await page.goto(base+"/aeb/mobo/"+route);await page.getByText("Chưa có đợt tối ưu",{exact:true}).waitFor();assert(await page.getByRole("button",{name:"Chọn đợt tối ưu hoá",exact:true}).isDisabled());}
  assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
  await page.goto(base+"/aeb/mobo");await page.getByText("Chưa có đợt tối ưu",{exact:true}).waitFor();
- assert.equal(writes.length,2);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+ assert.equal(writes.length,3);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
  await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",checks:["standalone and combined studio completed-only feasibility","tiny impact preserved without safety claim","mobile bounds","late response isolation","single candidate submission","candidate scoped to campaign including in-flight campaign change","exact regression detail navigation","FA dataset scenario/simulator/digest pinned in campaign request","stale/missing digest/source failure block without fallback; explicit retry","persisted campaign failure translated with exact frozen dataset source link","V3 explicit human context confirmation and reviewed controls in both partitions","V3 execution retry reuses stored context, blocked handoff has no dispatch link","V3 handoff partition and domain pinned in exclusive campaign request","V3 missing/checksum/project/overlap/domain/stale failures never fall back to V2","empty campaigns"],liveBackendVerified:false},null,2));
  console.log("PASS MOBO browser workflow; API fixtures only");
 } finally {for(const release of pending)release();await browser.close();}

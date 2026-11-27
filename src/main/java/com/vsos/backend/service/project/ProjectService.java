@@ -71,6 +71,10 @@ public class ProjectService {
     }
 
     public ProjectList list(long userId, String status, String query, int page, int pageSize) {
+        return list(userId, false, status, query, page, pageSize);
+    }
+
+    public ProjectList list(long userId, boolean workspaceOwner, String status, String query, int page, int pageSize) {
         if (!ACTIVE.equals(status) && !ARCHIVED.equals(status)) {
             throw new Vs.InvalidRequestException("status phải là ACTIVE hoặc ARCHIVED");
         }
@@ -78,6 +82,11 @@ public class ProjectService {
             throw new Vs.InvalidRequestException("page phải ≥ 1 và page_size trong khoảng 1–" + PAGE_SIZE_MAX);
         }
         String q = query == null ? "" : query.strip();
+        if (workspaceOwner) {
+            List<ProjectItem> items = projects.pageOwnedWorkspace(userId, status, q, pageSize, (page - 1) * pageSize).stream().map(this::toItem).toList();
+            return new ProjectList(items, projects.countOwnedWorkspace(userId, status, q), page, pageSize,
+                    projects.countOwnedWorkspace(userId, ACTIVE, q), projects.countOwnedWorkspace(userId, ARCHIVED, q));
+        }
         List<ProjectItem> items = projects.pagePersonal(userId, status, q, pageSize, (page - 1) * pageSize).stream().map(this::toItem).toList();
         return new ProjectList(items, projects.countPersonal(userId, status, q), page, pageSize, projects.countPersonal(userId, ACTIVE, q),
                 projects.countPersonal(userId, ARCHIVED, q));
@@ -307,7 +316,7 @@ public class ProjectService {
         return new ProjectItem(p.lng("id"), p.str("name"), p.str("description"), p.str("status"),
                 p.getLong("carla_vehicle_model_id"), p.str("vehicle_name"), p.str("baseline_label"),
                 p.getInt("family_count"), p.getInt("run_count"), p.getInt("regression_count"), p.lng("running_work") > 0,
-                p.ts("created_date"), p.ts("updated_at"), journeyOf(p.lng("id")));
+                p.ts("created_date"), p.ts("updated_at"), p.getLong("workspace_id"), journeyOf(p.lng("id")));
     }
 
     private ProjectJourney journeyOf(long projectId) {

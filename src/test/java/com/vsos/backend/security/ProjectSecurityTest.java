@@ -171,6 +171,13 @@ class ProjectSecurityTest {
     }
 
     @Test
+    void engineerListUsesWorkspaceOwnershipScope() throws Exception {
+        mvc.perform(request(HttpMethod.GET, BASE).with(user(as(RoleCode.ENGINEER))))
+                .andExpect(status().isOk());
+        org.mockito.Mockito.verify(projects).list(eq(7L), eq(true), eq("ACTIVE"), eq(""), eq(1), eq(9));
+    }
+
+    @Test
     void writesHonourTheQuotaButReadsDoNot() throws Exception {
         assertThat(statusOf(create(), RoleCode.EXPERIENCER)).isEqualTo(201);
         when(otp.hitRateLimit(eq("vs_project"), any(), anyInt())).thenReturn(true);

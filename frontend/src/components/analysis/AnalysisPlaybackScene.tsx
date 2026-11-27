@@ -3,7 +3,7 @@
 import { ScenarioMap } from "@/components/ScenarioMap";
 import type { Frame, MotionTelemetryPoint, Playback, SimEvent } from "@/types/vehicsim";
 import { finite } from "./analysisRunData";
-import { PLAYBACK_LAYERS, frameStatus, type PlaybackLayer } from "./playbackPresentation";
+import { PLAYBACK_LAYERS, frameStatus, type PlaybackAebMode, type PlaybackLayer } from "./playbackPresentation";
 import { formatMeasurement, speedKmh } from "./analysisMetricFormat";
 import styles from "./AnalysisPlayback.module.css";
 
@@ -37,8 +37,8 @@ export function PlaybackScene({ playback: pb, frame, time, path, trajectoryCompl
   </section>;
 }
 
-export function PlaybackFacts({ frame, time, motion, events }: { frame: Frame | null; time: number; motion?: MotionTelemetryPoint; events: SimEvent[] }) {
-  const status = frame ? frameStatus(frame, time, events) : null;
+export function PlaybackFacts({ frame, time, motion, events, mode }: { frame: Frame | null; time: number; motion?: MotionTelemetryPoint; events: SimEvent[]; mode?: PlaybackAebMode }) {
+  const status = frame ? frameStatus(frame, time, events, mode) : null;
   return <section className="analysis-panel" aria-label="Số đo khung playback">
     <div className={styles.factHeading}><h2>Số đo tại khung</h2>{status && <span className={status.cls}>{status.label}</span>}</div>
     <p className="analysis-caption mt-2">{frame ? `Khung ${frame.t.toFixed(2)} s · cursor ${time.toFixed(2)} s` : "Chưa có khung để đọc số đo."}</p>

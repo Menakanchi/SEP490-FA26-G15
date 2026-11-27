@@ -81,8 +81,8 @@ export default function AebMoboStudioPage() {
 
   // Pareto data
   const [paretoResult, setParetoResult] = useState<{ id: number; data: OptimizationTrial[] } | null>(null);
-  // Tải lại trạng thái "đã chọn" khi danh sách Pareto được tải lại (sau khi chọn ứng viên).
-  const trialSelections = useTrialSelections(paretoResult);
+  // Tải trạng thái đã chọn và cập nhật ngay khi chọn thành công.
+  const { selections: trialSelections, markSelected } = useTrialSelections(paretoResult);
   const paretoTrials = useMemo(() => paretoResult?.id === selectedRunId ? paretoResult.data.filter(isFeasibleTrial) : null, [paretoResult, selectedRunId]);
   const [selectingTrialId, setSelectingTrialId] = useState<number | null>(null);
   const [candidateResult, setCandidateResult] = useState<{
@@ -201,6 +201,7 @@ export default function AebMoboStudioPage() {
     setError(null);
     try {
       const res = await vehicsimApi.selectOptimizationCandidate(selectedRunId, trialId);
+      markSelected(res.candidate_aeb_version_id, res.regression_test_id);
       setCandidateResult({
         runId: selectedRunId,
         id: res.candidate_aeb_version_id,

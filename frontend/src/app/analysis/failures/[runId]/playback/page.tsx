@@ -79,7 +79,7 @@ function PlaybackContent() {
       const prepared = playbackPresentation(data);
       const query = new URLSearchParams(window.location.search);
       const rawTime = query.get("t"), requested = rawTime === null ? Number.NaN : Number(rawTime);
-      const focus = finite(requested) ? requested : prepared.events.find(event => event.kind === "aeb_decision")?.t ?? prepared.duration;
+      const focus = finite(requested) ? requested : (data.aeb_mode === "ON" ? prepared.events.find(event => event.kind === "aeb_decision")?.t : undefined) ?? prepared.duration;
       const rate = Number(query.get("rate"));
       setResult({ key: requestKey, data, view: prepared, error: null });
       dispatch({ type: "load", key: requestKey, time: focus, start: prepared.frames[0]?.t ?? 0,
@@ -148,15 +148,16 @@ function PlaybackContent() {
   }, [pb, view, duration]);
   // Ambiguous duplicate timestamps cannot establish an exact frame/projection join.
   const motion = frame ? motionIndex.get(frame.t) ?? undefined : undefined;
-  const chartMarkers = useMemo(() => events.map(event => ({ t: event.t, label: eventName(event), color: eventColor(event),
-    source: `events[kind=${event.kind}].t` })), [events]);
+  const chartMarkers = useMemo(() => events.map(event => ({ t: event.t, label: eventName(event, pb?.aeb_mode), color: eventColor(event),
+    source: `events[kind=${event.kind}].t` })), [events, pb?.aeb_mode]);
   const { related, paired } = relatedRun(pb, compareId);
   const detailHref = `/analysis/failures/${runId}?section=telemetry&t=${t}&signal=${signal}&${returnQuery}${compareQuery(compareId)}`;
   const enabled = Boolean(view?.durationValid && frames.length);
   const evaluated = pb ? classificationPresentation(pb).trusted : false;
+  const referenceCollision = pb?.aeb_mode === "OFF" && events.some(event => event.kind === "collision");
   return <VehicSimPage step={origin.testId !== null ? 5 : 3} title={validId === null ? "Lượt chạy không hợp lệ" : `Mô phỏng phát lại ${runCode(validId)}`}
     crumbs={[...origin.crumbs, { label: validId === null ? "Mã không hợp lệ" : `Lượt chạy ${runCode(validId)}`, href: detailHref }, { label: "Phát lại" }]}
-    badges={pb && <><AnalysisBadge value={pb.status} />{evaluated && <AnalysisBadge value={pb.outcome} />}{evaluated && pb.failure_class && <AnalysisBadge value={pb.failure_class} />}</>}
+    badges={pb && <><AnalysisBadge value={pb.status} />{(referenceCollision || (evaluated && (pb.aeb_mode !== "OFF" || ["COLLISION", "NEAR_MISS", "SAFE"].includes(pb.outcome)))) && <AnalysisBadge value={referenceCollision ? "COLLISION" : pb.outcome} />}{evaluated && pb.aeb_mode !== "OFF" && pb.failure_class && <AnalysisBadge value={pb.failure_class} />}</>}
     subtitle={pb ? `Xem lại diễn biến động học va chạm và phản ứng phanh trên ${pb.simulator ?? "bộ mô phỏng"}.` : "Đang đọc dữ liệu phát lại từ API."}
     actions={<>
       <PillButton disabled={!pb} title="Xuất OpenSCENARIO cùng cấu hình và seed của lượt này" onClick={() => {
@@ -170,7 +171,8 @@ function PlaybackContent() {
     {loading && <AnalysisLoading />}
     {pb && view && <>
       <section className={`analysis-panel ${styles.stack}`} aria-label="Nguồn dữ liệu playback">
-        <dl className={styles.meta}><div><dt>Biến thể / seed</dt><dd>{pb.variant} · seed {pb.seed}</dd></div><div><dt>Cấu hình AEB</dt><dd>{pb.config}</dd></div><div><dt>Phương tiện</dt><dd>{pb.vehicle}</dd></div><div><dt>Khung / sự kiện hợp lệ</dt><dd>{frames.length} khung · {events.length} sự kiện</dd></div></dl>
+        <dl className={styles.meta}><div><dt>Biến thể / seed</dt><dd>{pb.variant} · seed {pb.seed}</dd></div><div><dt>Chế độ AEB</dt><dd>{pb.aeb_mode === "OFF" ? "AEB TẮT" : pb.aeb_mode === "ON" ? "AEB BẬT" : "CHƯA RÕ CHẾ ĐỘ AEB"}</dd></div><div><dt>Cấu hình AEB</dt><dd>{pb.config}</dd></div><div><dt>Phương tiện</dt><dd>{pb.vehicle}</dd></div><div><dt>Khung / sự kiện hợp lệ</dt><dd>{frames.length} khung · {events.length} sự kiện</dd></div></dl>
+        {pb.aeb_mode === "OFF" && <p className="analysis-caption">AEB tắt: các mốc AEB/FCW là kết quả tính toán shadow; không áp dụng phanh AEB.</p>}
         <p className={styles.source} data-carla={pb.simulator?.startsWith("carla")}>Cảnh dựng từ tọa độ API, không phải video cảm biến. Sự kiện và số đo dùng kết quả đã ghi; gia tốc/jerk có thể do lõi xử lý, không mặc định là IMU thô.
           {pb.simulator?.startsWith("carla") && " Hiệu chuẩn CARLA phụ thuộc xe/profile; API chưa xác nhận calibration từng run; số liệu phục vụ quan sát/đối chiếu."}</p>
         {!evaluated && <p role="status" className="analysis-caption">Dữ liệu run chưa đủ điều kiện để kết luận AEB. Playback chỉ hiển thị dữ liệu đã ghi.</p>}
@@ -187,15 +189,15 @@ function PlaybackContent() {
       </section>
       <div className={styles.layout}>
         <div className={styles.stack}>
-          <PlaybackScene playback={pb} frame={frame} time={t} path={path} trajectoryComplete={trajectoryComplete} aebX={xAt(events.find(event => event.kind === "aeb_decision")?.t)} detectionX={xAt(events.find(event => event.kind === "detection")?.t)} events={events} layers={layers} onToggle={toggle} />
-          <PlaybackTimeline duration={duration} time={t} frameTime={frame?.t} playing={playing} speed={speed} enabled={enabled} canPlay={view.canPlay} start={frames[0]?.t ?? 0} backgroundPaused={clock.backgroundPaused} entries={view.entries} activeEvent={activeEvent}
+          <PlaybackScene playback={pb} frame={frame} time={t} path={path} trajectoryComplete={trajectoryComplete} aebX={pb.aeb_mode === "ON" ? xAt(events.find(event => event.kind === "aeb_decision")?.t) : null} detectionX={xAt(events.find(event => event.kind === "detection")?.t)} events={events} layers={layers} onToggle={toggle} />
+          <PlaybackTimeline duration={duration} time={t} frameTime={frame?.t} playing={playing} speed={speed} enabled={enabled} canPlay={view.canPlay} start={frames[0]?.t ?? 0} backgroundPaused={clock.backgroundPaused} entries={view.entries} activeEvent={activeEvent} mode={pb.aeb_mode}
             onSeek={seek} onJump={jump} onSpeed={rate => { dispatch({ type: "rate", key: requestKey, speed: rate }); replaceQuery({ rate }); }} onPlayPause={() => {
               if (!document.hidden) dispatch({ type: "toggle", key: requestKey });
             }} />
         </div>
         <div className={styles.stack}>
-          <PlaybackFacts frame={frame} time={t} motion={motion} events={events} />
-          <PlaybackEvents entries={view.entries} activeEvent={activeEvent} enabled={enabled} ignored={view.invalidEvents} onSeek={seek} />
+          <PlaybackFacts frame={frame} time={t} motion={motion} events={events} mode={pb.aeb_mode} />
+          <PlaybackEvents entries={view.entries} activeEvent={activeEvent} enabled={enabled} ignored={view.invalidEvents} mode={pb.aeb_mode} onSeek={seek} />
         </div>
       </div>
       <MotionTelemetryChart key={pb.run_id} timeEnd={duration} points={pb.motion_telemetry ?? []} markers={chartMarkers} cursor={t}
