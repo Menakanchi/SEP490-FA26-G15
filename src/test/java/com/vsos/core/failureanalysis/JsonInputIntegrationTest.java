@@ -51,6 +51,26 @@ class JsonInputIntegrationTest {
                 assertThat(at(report,"/input/seed/value")).isEqualTo(at(doc,"/seed"));
                 for(String key:CanonicalObjectiveReader.KEYS){assertThat(at(report,"/report/objectives/"+key+"/canonical_value/value")).isEqualTo(at(doc,"/outcome/metrics/"+key));assertThat(at(report,"/report/objectives/"+key+"/declared_metadata/value")).isEqualTo(at(doc,"/dataset/objectives/"+key));}
                 if("OFF".equals(EvidenceReport.mode(r).value())){off++;assertThat(at(report,"/report/failure_candidates")).isEqualTo(List.of());assertThat(at(report,"/report/functional_assessment/status")).isEqualTo("NOT_APPLICABLE");}else on++;
+                // Preserve the distinction between physical events, suspected symptoms and confirmed causes.
+                // These expectations characterize the supplied producer exports, not certified ground truth.
+                if ("2498".equals(r.runKey())) {
+                    assertThat(at(report,"/report/physical_outcome/status")).isEqualTo("UNKNOWN");
+                    assertThat(at(report,"/report/functional_assessment/value")).isEqualTo("NO_SUPPORTED_FAILURE");
+                    assertThat(list(report,"/report/failure_candidates")).isEmpty();
+                } else if ("2499".equals(r.runKey())) {
+                    assertThat(at(report,"/report/physical_outcome/value")).isEqualTo("COLLISION");
+                    assertThat(at(report,"/report/failure_candidates/0/type")).isEqualTo("INEFFECTIVE_BRAKING");
+                    assertThat(at(report,"/report/failure_candidates/0/status")).isEqualTo("SUSPECTED");
+                    String hypotheses=MiniJson.write(at(report,"/report/root_cause_hypotheses"));
+                    assertThat(hypotheses).contains("current pedestrian profile requires a sensor hit", "older profiles also accept overlap");
+                    Path carlaSession=Path.of("src/main/java/com/vsos/core/simulation/CarlaSession.java");
+                    if (Files.isRegularFile(carlaSession) && sha256(Files.readAllBytes(carlaSession)).equals("9ff0219e17be3f0d7bf8a4b3c41ace8d508f1102c31581e94aa09027902ac0fd"))
+                        assertThat(hypotheses).contains("fa-mechanism:CarlaSession:9ff0219e17be3f0d7bf8a4b3c41ace8d508f1102c31581e94aa09027902ac0fd");
+                } else if ("2500".equals(r.runKey())) {
+                    assertThat(at(report,"/report/physical_outcome/status")).isEqualTo("UNKNOWN");
+                    assertThat(at(report,"/report/failure_candidates/0/type")).isEqualTo("FALSE_BRAKING");
+                    assertThat(at(report,"/report/failure_candidates/0/status")).isEqualTo("SUSPECTED");
+                }
                 assertThat(at(report,"/report/confirmed_root_cause/value")).isNull();assertThat(report.get("content_digest")).isEqualTo(EvidenceReport.contentDigest(report));
                 for(String name:List.of("frames","ground_truth")){Artifact view=r.artifact(name);var cols=(List<?>)view.provenance().get("table_columns");for(int j=0;j<cols.size();j++){String field=cols.get(j).toString();assertThat(at(original,r.ref(name,"/0/"+field).locator())).isEqualTo(r.get(name,"/0/"+field));}
                     assertThat(at(view.provenance(),"/embedded_digest/status")).isEqualTo("MATCH");assertThat(view.integrity()).isEqualTo(Integrity.UNVERIFIED);}

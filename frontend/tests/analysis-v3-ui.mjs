@@ -20,7 +20,7 @@ try {
   const req=route.request(),url=new URL(req.url()),p=url.pathname.replace("/api/v1",""),project=Number(req.headers()["x-vehicsim-project"])||1;
   const reply=(body,status=200)=>route.fulfill({status,contentType:"application/json",body:JSON.stringify(body)});
   if(req.method()==="OPTIONS")return route.fulfill({status:204,headers:{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization,content-type,x-vehicsim-project","Access-Control-Allow-Methods":"GET,POST,OPTIONS"}});
-  requests.push({path:p,method:req.method(),project,body:req.postData()});
+  requests.push({path:p,query:url.search,method:req.method(),project,body:req.postData()});
   if(p==="/auth/me")return reply(actor);
   if(p==="/vehicsim/context")return reply({project:{id:project,name:`Project ${project}`},workspace:{id:1,name:"FE-R4 fixture"},vehicle:{id:2,name:"Fixture car"},system:{id:1,name:"AEB",baseline:{id:7,label:"v7"}},versions:[{id:7,label:"v7",status:"BASELINE"}],families:[{id:42,name:"Legacy fixture",code:"CP"}],parameters:[],reviewer_projects:[1,2].map(id=>({id,name:`Project ${id}`,workspace_name:"Fixture",can_decide:true}))});
     if (/^\/vehicsim\/analysis\/v3\/database\/(runs|collections)$/.test(p)) return reply({schema_version:"vehicsim.fa-db-input/v1",selection_kind:p.endsWith("collections")?"COLLECTION":"RUN",project_id:Number(route.request().headers()["x-vehicsim-project"]),items:[],limit:20,offset:0}); // Independent database source fixture.
@@ -28,6 +28,20 @@ try {
   if(p==="/vehicsim/regression")return reply({items:[],kpis:{total:0,passed:0,failed:0,running:0}});
   if(p==="/vehicsim/analysis/runs")return reply({total:1,page:1,page_size:10,counts:{COLLISION:1},items:[legacy.run],objective_groups:[],evaluation_version:"adr040-stored-aggregation/1"});
   if(p===`/vehicsim/analysis/runs/${legacy.run.run_id}`)return reply({run:legacy.run,detail:legacy.detail});
+  if(p==="/vehicsim/analysis/v3/explorer/scenarios") {
+   const rows=project===1?[{scenario_id:42,code:"CP",name:"Họ kiểm thử",category:"CP_CROSSING",variant_count:2,analyzed_count:1,confirmed_count:0,suspected_count:1,no_failure_count:null,unknown_count:0}]:[];
+   const q=url.searchParams.get("q")||"",items=rows.filter(row=>!q||["2499","1033",String(row.scenario_id),row.code,row.name].some(v=>v.toLocaleLowerCase("vi").includes(q.toLocaleLowerCase("vi"))));
+   return reply({project_id:project,items,total:items.length,limit:20,offset:Number(url.searchParams.get("offset")||0),summary:{scenario_count:items.length,variant_count:items.length*2,analyzed_count:items.length,confirmed_count:0,suspected_count:items.length,unknown_count:0}});
+  }
+  if(p==="/vehicsim/analysis/v3/explorer/scenarios/42/runs") {
+   const member=c.execution.members.find(item=>item.run_key==="2499"),report=c.reports[member.report_id];
+   const objectives=Object.fromEntries(Object.entries(report.report.objectives).map(([key,value])=>[key,{value:value.canonical_value.value,status:value.canonical_value.status,unit:value.canonical_value.unit,applicability:value.canonical_applicability}]));
+   const rows=project===1?[{project_id:project,scenario_id:42,scenario_version_id:1033,version_no:3,run_id:2499,random_seed:49033,repetition:1,attempt:1,simulator_type:"CARLA",simulator_version:"carla-test",aeb_mode:"ON",status:"COMPLETED",report_id:member.report_id,execution_id:c.execution.id,analysis_status:"ANALYZED",classification:"SUSPECTED",physical_outcome:"COLLISION",failure_candidates:[{type:"INEFFECTIVE_BRAKING",status:"SUSPECTED"}],root_cause_hypotheses:[{type:"INEFFECTIVE_BRAKING_MECHANISM_INVESTIGATION",status:"SUSPECTED"}],objectives}]:[];
+   const q=url.searchParams.get("q")||"",mode=url.searchParams.get("aeb_mode"),state=url.searchParams.get("classification"),type=url.searchParams.get("failure_type"),cause=url.searchParams.get("root_cause");
+   const items=rows.filter(row=>(!q||["2499","1033","42","CP","Họ kiểm thử"].some(v=>v.toLocaleLowerCase("vi").includes(q.toLocaleLowerCase("vi"))))&&(!mode||mode===row.aeb_mode)&&(!state||state===row.classification)&&(!type||row.failure_candidates.some(x=>x.type===type))&&(!cause||row.root_cause_hypotheses.some(x=>x.type===cause)));
+   return reply({project_id:project,items,total:items.length,limit:20,offset:Number(url.searchParams.get("offset")||0)});
+  }
+  if(p==="/vehicsim/analysis/v3/explorer/scenarios/42/variants") {const q=url.searchParams.get("q")||"",found=project===1&&["","CP","42","1034","4"].includes(q);return reply({project_id:project,items:found?[{scenario_id:42,scenario_version_id:1034,version_no:4,run_count:0}]:[],total:found?1:0,limit:20,offset:0});}
   const root="/vehicsim/analysis/v3";
   if(!p.startsWith(root))return reply({detail:"Outside fixture scope"},404);
   const tail=p.slice(root.length);
@@ -60,12 +74,37 @@ try {
  const select=async f=>{await workspace().locator("details").filter({has:page.getByText("Kết quả phân tích trước đây",{exact:true})}).locator("select").selectOption(f.source.id);await workspace().getByRole("button",{name:/^Xem lần phân tích 1/}).waitFor()};
  const analyze=async()=>{await page.getByRole("button",{name:"Phân tích lại",exact:true}).click();await page.getByRole("region",{name:"Kết quả các lượt chạy",exact:true}).waitFor()};
  const report=()=>page.getByRole("article",{name:"Kết quả phân tích",exact:true});
+ await page.goto(base+"/analysis/failures");
+ await page.getByRole("heading",{name:"Họ kịch bản",exact:true}).waitFor();
+ await page.getByRole("button",{name:"Họ kiểm thử · CP",exact:true}).waitFor();await shot("scenario-overview");
+ await page.getByRole("searchbox",{name:"Tìm kiếm",exact:true}).fill("2499");
+ await page.waitForURL(url=>url.searchParams.get("fa_q")==="2499");
+ await page.getByRole("button",{name:"Họ kiểm thử · CP",exact:true}).click();
+ await page.getByRole("button",{name:/Biến thể 3 · ID 1033/}).click();
+ assert.match(await page.getByRole("region",{name:"Bảng biến thể và lượt chạy"}).innerText(),/Phanh không hiệu quả/);
+ await shot("scenario-runs");
+ await page.getByRole("searchbox",{name:"Tìm kiếm",exact:true}).fill("CP");await page.waitForURL(url=>url.searchParams.get("fa_q")==="CP");
+ await page.getByText("Biến thể chưa có lượt chạy",{exact:true}).click();
+ await page.getByText("Biến thể 4 · ID 1034 — chưa có lượt chạy",{exact:true}).waitFor();
+ await page.getByRole("searchbox",{name:"Tìm kiếm",exact:true}).fill("2499");await page.waitForURL(url=>url.searchParams.get("fa_q")==="2499");
+ await page.getByText("Tìm kiếm nâng cao",{exact:true}).click();
+ await page.getByLabel("Đánh giá AEB").selectOption("SUSPECTED");
+ await page.waitForURL(url=>url.searchParams.get("fa_class")==="SUSPECTED");
+ const weatherRequest=page.waitForResponse(response=>response.url().includes("/explorer/scenarios/42/runs")&&new URL(response.url()).searchParams.get("weather")==="RAIN").catch(()=>null);
+ await page.getByRole("region",{name:"Khám phá họ kịch bản"}).locator("label").filter({hasText:"Thời tiết"}).locator("select").selectOption("RAIN");
+ assert(await weatherRequest,"Weather filter must reach the server: "+JSON.stringify(requests.slice(-5)));
+ await page.getByRole("button",{name:"Xem phân tích",exact:true}).click();await report().waitFor();await shot("diagnostic-detail");
+ await page.getByRole("button",{name:"← Chọn kết quả khác",exact:true}).click();
+ assert.equal(new URL(page.url()).searchParams.get("fa_q"),"2499");
+ assert.equal(new URL(page.url()).searchParams.get("fa_class"),"SUSPECTED");
+ assert.equal(new URL(page.url()).searchParams.get("fa_weather"),"RAIN");
+ checks.push("scenario explorer uses server search, filters and returns to the preserved scope");
  await home();await select(c);await analyze();assert.equal(new URL(page.url()).searchParams.get("fa_execution"),c.execution.id);
  assert.equal(await page.getByRole("button",{name:/^Xem kết quả /}).count(),2);
  await page.getByRole("button",{name:"Xem kết quả 2499",exact:true}).click();await report().waitFor();
  assert.match(await report().innerText(),/Nghi ngờ|Cần kiểm tra/);assert.match(await report().innerText(),/Nguyên nhân/);
  const deep=page.url();await page.reload();await report().waitFor();assert.equal(page.url(),deep);
- await page.getByRole("button",{name:"Xem kết quả 2511",exact:true}).click();await report().getByText("Lượt chạy 2511",{exact:true}).waitFor();assert.match(await report().innerText(),/AEB tắt/);
+ await page.getByRole("button",{name:"Xem kết quả 2511",exact:true}).click();await report().getByText(/Lượt chạy 2511/).waitFor();assert.match(await report().innerText(),/AEB tắt/);
  checks.push("saved source, collection execution, selected report and OFF reference remain available after reload");
  assert.match(await page.getByRole("region",{name:"Bước tiếp theo",exact:true}).innerText(),/chưa đủ điều kiện/);
  for(const name of ["partial","blocked"]){await home();await select(cases[name]);await analyze();assert.match(await workspace().innerText(),/chưa thể phân tích/)}

@@ -35,7 +35,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class FailureAnalysisDatabaseMysqlTest {
-    Path root=Path.of("target/fa-db-direct-runtime").toAbsolutePath();
+    @TempDir static Path root;
+    @TempDir static Path evidence;
     JdbcTemplate jdbc;FailureAnalysisService service;FailureAnalysisDatabaseAdapter adapter;RunService storage;
     final Map<Long,byte[]> originals=new LinkedHashMap<>();
     @BeforeAll void isolatedRestore()throws Exception {
@@ -65,9 +66,8 @@ class FailureAnalysisDatabaseMysqlTest {
             service.persistProducerResult(new com.vsos.backend.repository.common.Row(jdbc.queryForMap("SELECT * FROM simulation_runs WHERE id=?",entry.getKey())),entry.getValue());
         }
         adapter=new FailureAnalysisDatabaseAdapter(new FailureAnalysisDatabaseRepository(db),service);
-        Files.createDirectories(Path.of("target/fa-db-direct-evidence"));
-        Files.write(Path.of("target/fa-db-direct-evidence/run-list.json"),FailureAnalysisJson.bytes(adapter.list(4,false,20,0)));
-        Files.write(Path.of("target/fa-db-direct-evidence/collection-list.json"),FailureAnalysisJson.bytes(adapter.list(4,true,20,0)));
+        Files.write(evidence.resolve("run-list.json"),FailureAnalysisJson.bytes(adapter.list(4,false,20,0)));
+        Files.write(evidence.resolve("collection-list.json"),FailureAnalysisJson.bytes(adapter.list(4,true,20,0)));
     }
     @Test @Order(1) void realRunFromDatabaseNoUploadPreservesExactCanonicalValuesAndBytes()throws Exception {
         assertThat(((List<?>)adapter.list(4,false,20,0).get("items"))).hasSize(2);
@@ -95,7 +95,7 @@ class FailureAnalysisDatabaseMysqlTest {
         jdbc.update("UPDATE simulation_runs SET attempt=attempt+1 WHERE id=2511");
         try {
             var inspected=adapter.inspect(4,1033,true);assertThat(at(inspected,"/members/1/issues/0/field")).isEqualTo("fa_json_sources");
-            Files.write(Path.of("target/fa-db-direct-evidence/missing-run-inspection.json"),FailureAnalysisJson.bytes(adapter.inspect(4,2511,false)));
+            Files.write(evidence.resolve("missing-run-inspection.json"),FailureAnalysisJson.bytes(adapter.inspect(4,2511,false)));
             var e=adapter.analyze(4,7,1033,true,null);assertThat(((Number)e.get("missing")).intValue()).isEqualTo(1);assertThat(e.get("status")).isEqualTo("PARTIAL");
             var h=service.metadata(Kind.HANDOFF,4,e.get("handoff_id").toString());assertThat(h.get("status")).isEqualTo("BLOCKED");assertThat(h.get("content_digest")).isNull();
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM fa_json_handoffs WHERE id=?",Integer.class,h.get("id"))).isEqualTo(1);writeEvidence("missing-member",e,inspected);
@@ -241,6 +241,71 @@ class FailureAnalysisDatabaseMysqlTest {
             interactive1.get(25,TimeUnit.SECONDS);interactive2.get(25,TimeUnit.SECONDS);
         }
     }
+    @Test @Order(12) void explorerUsesCurrentProducerReportsAndScopesSearchAndFilters()throws Exception {
+        var direct=adapter.analyze(4,7,2499,false,null);adapter.analyze(4,7,2511,false,null);
+        String directReport=service.list(Kind.REPORT,4,direct.get("id").toString(),20,0).getFirst().get("id").toString();
+        var collection=adapter.analyze(4,7,1033,true,null);
+        String collectionReport=service.list(Kind.REPORT,4,collection.get("id").toString(),20,0).stream()
+                .filter(m->"2499".equals(m.get("run_key"))).findFirst().orElseThrow().get("id").toString();
+        var explorer=new FailureAnalysisExplorerRepository(new Db(jdbc));
+        var families=explorer.scenarios(4,"2499",20,0,"id_desc");
+        assertThat(((Number)families.get("total")).intValue()).isEqualTo(1);
+        assertThat(at(families,"/summary/scenario_count")).isEqualTo(1L);
+        assertThat(at(families,"/summary/confirmed_count")).isNull();
+        assertThat(at(families,"/summary/no_failure_count")).isNull();
+        assertThat(((Number)explorer.scenarios(2,"2499",20,0,"id_desc").get("total")).intValue()).isZero();
+        jdbc.update("INSERT INTO scenario_versions(id,scenario_id,version_no,source,parent_version_id,created_by_user_id,scenario_ir_json) VALUES(1040,26,13,'GENERATED',1033,7,'{}')");
+        var emptyVariants=explorer.variants(4,26,null,true,20,0,"id_desc");
+        assertThat(((Number)emptyVariants.get("total")).intValue()).isEqualTo(1);
+        var emptyVariant=((List<Map<String,Object>>)emptyVariants.get("items")).getFirst();
+        assertThat(((Number)emptyVariant.get("scenario_version_id")).longValue()).isEqualTo(1040L);
+        assertThat(((Number)emptyVariant.get("run_count")).longValue()).isZero();
+        for(String familyQuery:List.of("Real CARLA","CP-fixture","26"))
+            assertThat(((Number)explorer.variants(4,26,familyQuery,true,20,0,"id_desc").get("total")).intValue()).isEqualTo(1);
+        assertThat(((Number)explorer.variants(4,26,"1040",true,20,0,"id_desc").get("total")).intValue()).isEqualTo(1);
+        assertThat(((Number)explorer.variants(4,26,"other family",true,20,0,"id_desc").get("total")).intValue()).isZero();
+        var runs=explorer.runs(4,26,null,null,null,null,null,null,null,null,20,0,"id_asc");
+        assertThat(((Number)runs.get("total")).intValue()).isEqualTo(2);
+        var items=(List<Map<String,Object>>)runs.get("items");
+        assertThat(((Number)items.getFirst().get("run_id")).longValue()).isEqualTo(2499L);
+        assertThat(items.getFirst()).containsEntry("classification","SUSPECTED").containsEntry("report_id",collectionReport);
+        assertThat(items.getFirst()).containsEntry("context_freshness","UNVERIFIED").containsEntry("currentness_scope","PRODUCER_IDENTITY_ATTEMPT_AND_BYTES");
+        assertThat(((Number)at(items.getFirst(),"/objectives/rms_jerk_mps3/value")).doubleValue()).isEqualTo(17.68);
+        assertThat(at(items.getFirst(),"/objectives/rms_jerk_mps3/status")).isEqualTo("OBSERVED");
+        assertThat(items.getLast()).containsEntry("aeb_mode","OFF").containsEntry("classification","NOT_APPLICABLE");
+        assertThat(((Number)explorer.runs(4,26,null,1033L,null,"ON","SUSPECTED","INEFFECTIVE_BRAKING",null,"COLLISION",20,0,"id_desc").get("total")).intValue()).isEqualTo(1);
+        assertThat(((Number)explorer.runs(4,26,null,null,null,null,null,null,"INEFFECTIVE_BRAKING_MECHANISM_INVESTIGATION",null,20,0,"id_desc").get("total")).intValue()).isEqualTo(1);
+        jdbc.update("UPDATE simulation_runs SET run_config_json=JSON_OBJECT('weather','RAIN','ego_speed_kmh',50,'initial_distance_m',25) WHERE id=2499");
+        assertThat(((Number)explorer.runs(4,26,null,null,null,null,null,null,null,null,20,0,"id_desc","RAIN",40.0,60.0,20.0,30.0).get("total")).intValue()).isEqualTo(1);
+        assertThat(((Number)explorer.runs(4,26,null,null,null,null,null,null,null,null,20,0,"id_desc","CLEAR",null,null,null,null).get("total")).intValue()).isZero();
+        assertThatThrownBy(()->explorer.runs(4,26,null,null,null,null,null,null,null,null,20,0,"id_desc",null,60.0,40.0,null,null)).hasMessage("FA_REQUEST_ARGUMENT_INVALID");
+        assertThatThrownBy(()->explorer.runs(2,26,null,null,null,null,null,null,null,null,20,0,"id_desc")).hasMessage("DB_SELECTION_NOT_FOUND");
+        assertThatThrownBy(()->explorer.runs(4,26,null,null,null,null,"CONFIRMED",null,null,null,20,0,"id_desc")).hasMessage("FA_CONTEXT_CURRENTNESS_UNAVAILABLE");
+        String collectionSource=collection.get("source_id").toString();
+        byte[] metadata=jdbc.queryForObject("SELECT metadata_bytes FROM fa_json_sources WHERE id=?",byte[].class,collectionSource);
+        jdbc.update("UPDATE fa_json_sources SET metadata_bytes=? WHERE id=?","{}".getBytes(StandardCharsets.UTF_8),collectionSource);
+        try {assertThat(((List<Map<String,Object>>)explorer.runs(4,26,null,null,2499L,null,null,null,null,null,20,0,"id_desc").get("items")).getFirst())
+                .containsEntry("report_id",directReport);}
+        finally {jdbc.update("UPDATE fa_json_sources SET metadata_bytes=? WHERE id=?",metadata,collectionSource);}
+        jdbc.update("UPDATE simulation_runs SET attempt=attempt+1 WHERE id=2499");
+        try {assertThat(((List<Map<String,Object>>)explorer.runs(4,26,null,null,2499L,null,null,null,null,null,20,0,"id_desc").get("items")).getFirst())
+                .containsEntry("classification","NOT_ANALYZED").containsEntry("report_id",null);}
+        finally {jdbc.update("UPDATE simulation_runs SET attempt=attempt-1 WHERE id=2499");}
+        var access=mock(VehicSimAccess.class);when(access.projectId()).thenReturn(4L);
+        var controller=new FailureAnalysisController(service,access,adapter);controller.setExplorer(explorer);
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller).setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver()).build();
+        mvc.perform(get("/api/v1/vehicsim/analysis/v3/explorer/scenarios")).andExpect(status().isUnauthorized());
+        var person=FailureAnalysisRestTest.person(RoleCode.ENGINEER);
+        SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(person,null,person.getAuthorities()));
+        try {
+            mvc.perform(get("/api/v1/vehicsim/analysis/v3/explorer/scenarios/26/runs?variant_id=1033&aeb_mode=ON"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1)).andExpect(jsonPath("$.items[0].simulator_type").value("CARLA"));
+            mvc.perform(get("/api/v1/vehicsim/analysis/v3/explorer/scenarios/26/runs?weather=RAIN&ego_speed_min=40&ego_speed_max=60&initial_distance_min=20&initial_distance_max=30"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1));
+            when(access.projectId()).thenReturn(2L);
+            mvc.perform(get("/api/v1/vehicsim/analysis/v3/explorer/scenarios/26/runs")).andExpect(status().isNotFound());
+        } finally {SecurityContextHolder.clearContext();}
+    }
     @AfterAll void originalInputsUntouched()throws Exception {for(var e:originals.entrySet())assertThat(Files.readAllBytes(storage.runDir(e.getKey()).resolve("result.json"))).isEqualTo(e.getValue());}
     void assertReportValues(Map<String,Object> e) {
         for(var meta:service.list(Kind.REPORT,4,e.get("id").toString(),20,0)) {
@@ -250,7 +315,7 @@ class FailureAnalysisDatabaseMysqlTest {
         }
     }
     void writeEvidence(String name,Map<String,Object> e,Map<String,Object> inspection)throws Exception {
-        Path dir=Path.of("target/fa-db-direct-evidence");Files.createDirectories(dir);
+        Path dir=evidence;
         Files.write(dir.resolve(name+"-execution.json"),FailureAnalysisJson.bytes(e));Files.write(dir.resolve(name+"-inspection.json"),FailureAnalysisJson.bytes(inspection));
         Files.write(dir.resolve(name+"-reports.json"),FailureAnalysisJson.bytes(obj("items",service.list(Kind.REPORT,4,e.get("id").toString(),20,0),"limit",20,"offset",0)));
         for(var m:service.list(Kind.REPORT,4,e.get("id").toString(),20,0))Files.write(dir.resolve(name+"-report-"+m.get("run_key")+".json"),service.download(Kind.REPORT,4,m.get("id").toString()));

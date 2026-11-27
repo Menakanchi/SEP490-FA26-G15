@@ -207,7 +207,7 @@ function BaselineWorkspace() {
   return <VehicSimPage step={3} crumbs={[{ label: "Phân tích" }, { label: "Dữ liệu & kết quả" }]}
     subtitle="Chọn lượt chạy để xem kết quả đã lưu. Mở các công cụ bổ sung khi cần điều tra hoặc bàn giao."
     actions={<PillButton disabled={loading} onClick={() => setRefresh(x => x + 1)}>Tải lại kết quả</PillButton>}>
-    {ctx && <FailureAnalysisV3 project={ctx.project.id} canWrite={canWrite} />}
+    {ctx && <FailureAnalysisV3 project={ctx.project.id} canWrite={canWrite} families={ctx.families} />}
     <div hidden={Boolean(params.get("fa_execution") || params.get("fa_report"))}>
     <details className="analysis-disclosure" open={legacyOpen} onToggle={event => setLegacyOpen(event.currentTarget.open)}>
     <summary><span className="analysis-caption">Kết quả đã lưu và chuẩn bị tập bàn giao</span></summary>
