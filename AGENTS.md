@@ -112,7 +112,7 @@ chạy `.\mvnw.cmd clean` rồi build lại. Mô phỏng mặc định qua threa
    Project cá nhân không có Reviewer: chủ project tự chọn baseline theo đúng các điều kiện này (ADR-046, Proposed).
 6. Chỉ 4 tham số AEB chỉnh được theo ADR-040; seed Java/SQL khớp `AebParams`.
    Ba mục tiêu: RMS jerk, vận tốc va chạm, quãng phanh dừng; thống nhất ràng buộc tối ưu/regression.
-7. Không lộ email tồn tại; OTP hash, dùng một lần; mật khẩu tối đa 72 byte BCrypt.
+7. Không lộ email tồn tại (trừ bước xin mã đăng ký, ADR-070); OTP hash, dùng một lần; mật khẩu tối đa 72 byte BCrypt.
 8. Logic AEB, bộ mô phỏng và luật chấm chỉ ở `com.vsos.core` (`AebStack`, `Simulator`, `Evaluation`), dùng chung cho
    bộ động học và CARLA qua cầu nối; `worker/` không chứa logic AEB (`ArchitectureRulesTest#pythonWorkerHoldsNoAebLogic`).
    Lõi chỉ dùng JDK (`CoreIsolationTest`) và khớp kết quả Python cũ theo fixture ở `src/test/resources/parity`.
