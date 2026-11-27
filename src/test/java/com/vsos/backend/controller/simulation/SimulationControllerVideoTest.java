@@ -30,8 +30,10 @@ class SimulationControllerVideoTest {
     private MockMvc mvc(RunService runs) {
         VehicSimAccess access = mock(VehicSimAccess.class);
         when(access.projectId()).thenReturn(1L);
+        when(access.runViewScope(org.mockito.ArgumentMatchers.any())).thenReturn(com.vsos.backend.security.RunViewScope.project(1L));
         return MockMvcBuilders.standaloneSetup(new SimulationController(mock(SimulationViewService.class), runs, mock(TelemetryMetricsService.class), access,
                 mock(com.vsos.backend.service.simulation.RunCollectionService.class)))
+                .setCustomArgumentResolvers(new org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver())
                 .build();
     }
 
@@ -40,7 +42,7 @@ class SimulationControllerVideoTest {
         Path video = directory.resolve("video.mp4");
         Files.write(video, new byte[]{0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
         RunService runs = mock(RunService.class);
-        when(runs.carlaVideo(1L, 42L)).thenReturn(video);
+        when(runs.carlaVideo(com.vsos.backend.security.RunViewScope.project(1L), 42L)).thenReturn(video);
         MockMvc mvc = mvc(runs);
 
         mvc.perform(get("/api/v1/vehicsim/runs/42/carla-video"))
@@ -58,10 +60,20 @@ class SimulationControllerVideoTest {
     @Test
     void aRunWithoutVideoIsNotFound() throws Exception {
         RunService runs = mock(RunService.class);
-        when(runs.carlaVideo(1L, 7L)).thenThrow(new Vs.NotFoundException("CARLA video"));
+        when(runs.carlaVideo(com.vsos.backend.security.RunViewScope.project(1L), 7L)).thenThrow(new Vs.NotFoundException("CARLA video"));
         MockMvc mvc = mvc(runs);
         // standalone MockMvc không có @ControllerAdvice của app nên NotFoundException nổi lên nguyên vẹn; ở app thật advice đổi nó thành 404.
         assertThatThrownBy(() -> mvc.perform(get("/api/v1/vehicsim/runs/7/carla-video")))
                 .hasCauseInstanceOf(Vs.NotFoundException.class);
+    }
+
+    @Test
+    void signedUrlResponseIsNotCacheableAndCarriesCurrentProject() throws Exception {
+        RunService runs = mock(RunService.class);
+        when(runs.carlaVideoUrl(com.vsos.backend.security.RunViewScope.project(1L), 42L, false)).thenReturn("https://example.test/video?signature=temporary");
+        mvc(runs).perform(get("/api/v1/vehicsim/runs/42/carla-video-url"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(content().json("{\"url\":\"https://example.test/video?signature=temporary\"}"));
     }
 }

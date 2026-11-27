@@ -37,8 +37,6 @@ export default function RecommendationsPage() {
     <VehicSimPage
       step={6}
       crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Khuyến nghị" }]}
-      title="Hồ sơ khuyến nghị nâng cấp AEB"
-      subtitle="Tổng hợp các gói ứng viên đã vượt qua kiểm thử hồi quy, sẵn sàng cho Reviewer thẩm định và ban hành."
     >
       <ErrorNote message={error} />
       <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">

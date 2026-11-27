@@ -24,7 +24,7 @@ test("wrong identity/schema and incomplete partition payloads cannot become a re
   assert.throws(() => readSavedSelection({ schema: "vehicsim.analysis-dataset/v1" }), /lưu trữ/);
 });
 test("handoff comparison tolerates object key order and response flags, without modifying payload", () => {
-  const raw = fixture(), checked = { handoff_ready: true, baseline_current: true, ...Object.fromEntries(Object.entries(raw).reverse()) };
+  const raw = fixture(), checked = { handoff_ready: true, baseline_current: true, dataset_digest: "a".repeat(64), ...Object.fromEntries(Object.entries(raw).reverse()) };
   assert.equal(sameSavedSelection(readSavedSelection(raw), readSavedSelection(checked)), true);
   assert.equal(raw.handoff_ready, undefined);
 });

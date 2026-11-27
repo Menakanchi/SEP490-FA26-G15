@@ -108,7 +108,8 @@ class AnalysisApiContractTest {
         when(queries.aebValues(versionId)).thenReturn(codes);
         when(queries.parameterCatalog()).thenReturn(codes.keySet().stream().map(code -> new Row(Json.obj("code", code, "name", code,
                 "unit", code.equals("MAX_DECELERATION") ? "m/s2" : code.equals("BRAKE_BUILDUP_RATE") ? "m/s3" : "s"))).toList());
-        when(db.list(startsWith(AnalysisService.SELECT.replace(" AND r.purpose = 'BASELINE'", "")), any(Object[].class))).thenReturn(List.of(row));
+        when(db.list(startsWith(AnalysisService.SELECT.replace(" AND r.purpose = 'BASELINE'", "")
+                .replace(" AND r.aeb_mode = 'ON'", "")), any(Object[].class))).thenReturn(List.of(row));
         Map<String, Object> inspection = service.inspection(id);
         Map<String, Object> detail = Json.asMap(inspection.get("detail")), playback = views.playback(id);
         assertThat(detail).containsEntry("run_id", id).containsEntry("simulator", "vehicsim-kinematic-1.0");

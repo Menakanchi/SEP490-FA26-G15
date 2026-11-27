@@ -2,6 +2,8 @@ package com.vsos.backend.service.simulation;
 
 import com.vsos.backend.common.audit.AuditLog;
 import com.vsos.core.bridge.Bundle;
+import com.vsos.core.aeb.AebParams;
+import com.vsos.backend.service.analysis.FailureAnalysisService;
 import com.vsos.core.simulation.LeadVehicleCase;
 import com.vsos.core.simulation.CarlaSession;
 import com.vsos.core.evaluation.Evaluation;
@@ -12,13 +14,16 @@ import com.vsos.backend.common.Vs.InvalidRequestException;
 import com.vsos.backend.common.Vs.NotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +42,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -46,6 +52,7 @@ import com.vsos.backend.config.VehicSimProperties;
 import com.vsos.backend.repository.common.Db;
 import com.vsos.backend.repository.common.Queries;
 import com.vsos.backend.repository.common.Row;
+import com.vsos.backend.security.RunViewScope;
 import com.vsos.backend.service.scenario.FamilyService;
 
 /**
@@ -170,9 +177,35 @@ public class RunService {
     private final ApplicationEventPublisher events;
     private final TransactionTemplate tx;
     private final FamilyService families;
+    private final FailureAnalysisService resultStore;
+    private static final String ORIGINAL_RESULT_BYTES = "__module2_original_result_bytes";
+    private CarlaVideoStorage videoStorage;
+
+    @Autowired
+    void setVideoStorage(CarlaVideoStorage videoStorage) {
+        this.videoStorage = videoStorage;
+    }
+
+    private static final int RESULT_TRANSACTION_ATTEMPTS = 4;
+
+    /** Retry only rolled-back lock conflicts; the simulation result itself is never recomputed. */
+    private <T> T persistWithRetry(TransactionCallback<T> work) throws InterruptedException {
+        // A joined caller owns the transaction and must decide whether to retry it in its entirety.
+        boolean joined = TransactionSynchronizationManager.isActualTransactionActive();
+        for (int attempt = 1; ; attempt++) {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedException("result persistence interrupted");
+            try {
+                return tx.execute(work);
+            } catch (ConcurrencyFailureException e) {
+                if (joined || attempt >= RESULT_TRANSACTION_ATTEMPTS) throw e;
+                long baseMillis = 20L << (attempt - 1);
+                Thread.sleep(baseMillis + ThreadLocalRandom.current().nextLong(baseMillis));
+            }
+        }
+    }
 
     public RunService(Db db, Queries queries, VehicSimProperties props, @Qualifier("simulationExecutor") TaskExecutor simulationExecutor,
-                      ApplicationEventPublisher events, TransactionTemplate tx, FamilyService families) {
+                      ApplicationEventPublisher events, TransactionTemplate tx, FamilyService families, FailureAnalysisService resultStore) {
         this.db = db;
         this.queries = queries;
         this.props = props;
@@ -180,6 +213,7 @@ public class RunService {
         this.events = events;
         this.tx = tx;
         this.families = families;
+        this.resultStore = resultStore;
     }
 
     // ------------------------------------------------------------------ bộ mô phỏng cấu hình
@@ -457,7 +491,12 @@ public class RunService {
             }
             Map<String, Object> bundle = bundleForRun(run);
             Map<String, Object> result = runWorker(run, bundle);
-            tx.executeWithoutResult(status -> persist(run, result));
+            persistWithRetry(status -> {
+                if (cancelRequested.contains(runId)) throw new RunCancelledException();
+                persist(run, result);
+                removeUploadedVideoAfterCommit(runId, result);
+                return null;
+            });
         } catch (InterruptedException e) {
             // Tắt app giữa chừng: trả run về PENDING để lần khởi động sau nhặt lại, thay vì ghi FAILED.
             Thread.currentThread().interrupt();
@@ -537,7 +576,7 @@ public class RunService {
      * Phần {@code variant} của bundle từ cấu hình run. Biến thể người đi bộ giữ nguyên dạng cũ (không thêm khóa nào, bundle cũ tái lập y hệt);
      * biến thể xe phía trước (ADR-050) mang {@code category} và các trường của nó.
      */
-    static Map<String, Object> variantForBundle(Map<String, Object> ir, Object friction) {
+    public static Map<String, Object> variantForBundle(Map<String, Object> ir, Object friction) {
         Object category = ir.get("category");
         if (category != null && LeadVehicleCase.CATEGORIES.contains(category.toString())) {
             return Json.obj(
@@ -617,7 +656,18 @@ public class RunService {
                 CARLA_LOCK.unlock();
             }
         }
-        return runKinematic(run, bundle);
+        Map<String,Object> result=runKinematic(run,bundle);
+        // Preserve genuine Java simulator results through the same DB handoff as CARLA;
+        // no CARLA telemetry or physical attestations are generated for this profile.
+        Path temporary=Files.createTempDirectory("vsos-kinematic-producer-");
+        try {
+            Row version=db.first("SELECT id, project_id, version_no, label, status, source, parent_version_id FROM aeb_versions WHERE id=?",run.lng("aeb_version_id"));
+            Map<String,Object> dataset=RunDatasetWriter.build(run,bundle,version==null?null:Json.parseMap(Json.write(version.asMap())),result,temporary,RunDatasetWriter.gitCommit(repoRoot()));
+            Json.asMap(dataset.get("provenance")).put("core_bytecode_sha256",com.vsos.backend.common.analysis.FailureAnalysisJson.loadedCoreFingerprint());
+            result.put("dataset",dataset);
+            result.put(ORIGINAL_RESULT_BYTES,Json.write(result).getBytes(StandardCharsets.UTF_8));
+            return result;
+        } finally {Files.deleteIfExists(temporary);}
     }
 
     /**
@@ -640,6 +690,7 @@ public class RunService {
         document.put("engine", Bundle.ENGINE);
         Map<String, Object> result = Json.parseMap(Json.write(document)); // cùng kiểu dữ liệu như khi đọc result.json từ worker
         checkResult(result, run);
+        checkResultParameters(result, spec.params().asCodes());
         return result;
     }
 
@@ -693,23 +744,66 @@ public class RunService {
         }
         Map<String, Object> result = Json.parseMap(Files.readString(resultPath, StandardCharsets.UTF_8));
         checkResult(result, run);
+        checkResultParameters(result, Json.asMap(Json.asMap(bundle.get("aeb")).get("params")));
         // ADR-065: khối dataset cho Failure Analysis, không bao giờ làm run lỗi. Dòng aeb_versions chỉ để khai báo trạng thái phiên bản lúc ghi.
         Row aebVersion = db.first("SELECT id, project_id, version_no, label, status, source, parent_version_id FROM aeb_versions WHERE id = ?",
                 run.lng("aeb_version_id"));
-        RunDatasetWriter.attach(resultPath, result, run, bundle, aebVersion == null ? null : Json.parseMap(Json.write(aebVersion.asMap())), folder, repoRoot());
+        RunDatasetWriter.Attachment attachment = RunDatasetWriter.attach(resultPath, result, run, bundle,
+                aebVersion == null ? null : Json.parseMap(Json.write(aebVersion.asMap())), folder, repoRoot());
+        return prepareCarlaResult(run, result, resultPath, input, folder, attachment);
+    }
+
+    Map<String, Object> prepareCarlaResult(Row run, Map<String, Object> result, Path resultPath, Path input, Path folder,
+                                           RunDatasetWriter.Attachment attachment) throws IOException {
+        // Capture the final producer document verbatim before adding backend-only artifact paths.
+        result.put(ORIGINAL_RESULT_BYTES, attachment.bytes() != null ? attachment.bytes() : Files.readAllBytes(resultPath));
         Map<String, Object> artifacts = new LinkedHashMap<>();
-        artifacts.put("result", resultPath.toString());
+        if (attachment.written()) artifacts.put("result", resultPath.toString());
         if (input.toString().endsWith(".xosc")) {
             artifacts.put("scenario", input.toString());
         }
         artifacts.putAll(Json.asMap(result.get("artifacts")).entrySet().stream()
                 .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), String.valueOf(e.getValue())), Map::putAll));
+        if (!attachment.written()) artifacts.remove("result");
         Path video = folder.resolve(VIDEO_FILE); // worker/make_video.py ghép ảnh camera sau run; không ghi vào result.json nên không đổi identity run
         if (Files.isRegularFile(video)) {
-            artifacts.putIfAbsent("video", video.toString());
+            artifacts.put("video", storeVideo(run.lng("id"), video));
         }
         result.put("artifacts", artifacts);
         return result;
+    }
+
+    String storeVideo(long runId, Path video) {
+        if (videoStorage != null && videoStorage.enabled()) {
+            try {
+                return videoStorage.upload(runId, video);
+            } catch (RuntimeException e) {
+                // Không làm mất kết quả mô phỏng hay xóa bản local khi object storage tạm lỗi.
+                log.error("Không tải được video CARLA của run {} lên object storage; giữ bản local", runId, e);
+            }
+        }
+        return video.toString();
+    }
+
+    /** Giữ bản local khi upload hoặc transaction thất bại; chỉ xóa sau khi metadata đã commit. */
+    void removeUploadedVideoAfterCommit(long runId, Map<String, Object> result) {
+        Object location = Json.asMap(result.get("artifacts")).get("video");
+        if (!(location instanceof String remote) || videoStorage == null || !videoStorage.matches(runId, remote)
+                || !TransactionSynchronizationManager.isSynchronizationActive()
+                || !TransactionSynchronizationManager.isActualTransactionActive()) {
+            return;
+        }
+        Path video = runDir(runId).resolve(VIDEO_FILE);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    Files.deleteIfExists(video);
+                } catch (IOException | SecurityException e) {
+                    log.warn("Không xóa được video local của run {} sau khi lưu lên object storage", runId, e);
+                }
+            }
+        });
     }
 
     /** XML là artifact thực thi/tải xuống; bundle chỉ là giao tiếp nội bộ. Sinh trong tiến trình bằng lõi Java (ADR-042), cùng từng byte với bản Python cũ. */
@@ -772,8 +866,27 @@ public class RunService {
     }
 
     public List<Map<String, Object>> carlaRuns(long projectId) {
-        return db.list("SELECT id, status, scenario_id, aeb_version_id, simulator_version, aeb_mode, purpose, regression_test_id, optimization_trial_id, created_by_user_id, error_message, queued_at FROM simulation_runs "
-                + "WHERE project_id = ? AND simulator_type = 'CARLA' ORDER BY id DESC LIMIT 30", projectId).stream().map(Row::asMap).toList();
+        return carlaRuns(RunViewScope.project(projectId));
+    }
+
+    public List<Map<String, Object>> carlaRuns(RunViewScope scope) {
+        List<Object> args = new ArrayList<>();
+        String visible = scope.sql("", args);
+        return db.list("SELECT id, project_id, status, scenario_id, aeb_version_id, simulator_version, aeb_mode, purpose, regression_test_id, optimization_trial_id, created_by_user_id, error_message, queued_at FROM simulation_runs "
+                + "WHERE simulator_type = 'CARLA'" + visible + " ORDER BY id DESC LIMIT 30", args.toArray()).stream().map(Row::asMap).toList();
+    }
+
+    /** Project có lượt CARLA (mới chạy gần nhất trước), cho ADMIN chọn project muốn xem. */
+    public List<Map<String, Object>> carlaRunProjects() {
+        return db.list("SELECT p.id, p.name, p.status, COUNT(*) AS run_count FROM simulation_runs r JOIN projects p ON p.id = r.project_id "
+                + "WHERE r.simulator_type = 'CARLA' GROUP BY p.id, p.name, p.status ORDER BY MAX(r.id) DESC").stream().map(Row::asMap).toList();
+    }
+
+    /** Run CARLA mà request được xem theo {@link RunViewScope}; null nếu không thấy (gọi nơi trả 404, không lộ run tồn tại). */
+    private Row visibleCarlaRun(RunViewScope scope, long runId, String columns) {
+        List<Object> args = new ArrayList<>();
+        String visible = scope.sql("", args);
+        return db.first("SELECT " + columns + " FROM simulation_runs WHERE id = ? AND simulator_type = 'CARLA'" + visible, scope.with(args, runId));
     }
 
     /** Chạy lại đúng biến thể/AEB/xe/seed bằng profile mới; không gắn baseline_run_id khác simulator. */
@@ -1128,7 +1241,11 @@ public class RunService {
     }
 
     public Path carlaFile(long projectId, long runId, String name) {
-        Row run = db.first("SELECT id FROM simulation_runs WHERE id = ? AND project_id = ? AND simulator_type = 'CARLA'", runId, projectId);
+        return carlaFile(RunViewScope.project(projectId), runId, name);
+    }
+
+    public Path carlaFile(RunViewScope scope, long runId, String name) {
+        Row run = visibleCarlaRun(scope, runId, "id");
         if (run == null || !(List.of("frames.csv", "collisions.json", "ground_truth.csv").contains(name) || name.matches("[0-9]{8}\\.png"))) {
             throw new NotFoundException("CARLA artifact");
         }
@@ -1141,7 +1258,11 @@ public class RunService {
 
     /** Video xem lại của run CARLA (một file mp4 do worker ghép từ ảnh camera). Không có thì 404. */
     public Path carlaVideo(long projectId, long runId) {
-        Row run = db.first("SELECT id FROM simulation_runs WHERE id = ? AND project_id = ? AND simulator_type = 'CARLA'", runId, projectId);
+        return carlaVideo(RunViewScope.project(projectId), runId);
+    }
+
+    public Path carlaVideo(RunViewScope scope, long runId) {
+        Row run = visibleCarlaRun(scope, runId, "id");
         Path path = run == null ? null : runDir(runId).resolve(VIDEO_FILE);
         if (path == null || !Files.isRegularFile(path)) {
             throw new NotFoundException("CARLA video");
@@ -1149,13 +1270,33 @@ public class RunService {
         return path;
     }
 
+    /** URL ngắn hạn chỉ được cấp sau khi run thuộc project hiện tại; null giữ tương thích video local. */
+    public String carlaVideoUrl(long projectId, long runId, boolean download) {
+        return carlaVideoUrl(RunViewScope.project(projectId), runId, download);
+    }
+
+    public String carlaVideoUrl(RunViewScope scope, long runId, boolean download) {
+        Row run = visibleCarlaRun(scope, runId, "id");
+        if (run == null) throw new NotFoundException("CARLA video");
+        Row artifact = db.first("SELECT storage_url FROM simulation_artifacts WHERE simulation_run_id = ? AND artifact_type = 'VIDEO_MP4' ORDER BY id DESC LIMIT 1", runId);
+        if (artifact != null && videoStorage != null && videoStorage.matches(runId, artifact.str("storage_url"))) {
+            return videoStorage.viewingUrl(runId, download);
+        }
+        if (!Files.isRegularFile(runDir(runId).resolve(VIDEO_FILE))) throw new NotFoundException("CARLA video");
+        return null;
+    }
+
     public Map<String, Object> carlaData(long projectId, long runId, TelemetryMetricsService telemetry) throws IOException {
-        Path csv = carlaFile(projectId, runId, "frames.csv");
-        Path collisions = carlaFile(projectId, runId, "collisions.json");
+        return carlaData(RunViewScope.project(projectId), runId, telemetry);
+    }
+
+    public Map<String, Object> carlaData(RunViewScope scope, long runId, TelemetryMetricsService telemetry) throws IOException {
+        Path csv = carlaFile(scope, runId, "frames.csv");
+        Path collisions = carlaFile(scope, runId, "collisions.json");
         List<Map<String, Object>> hits = Json.parseList(Files.readString(collisions, StandardCharsets.UTF_8)).stream().map(Json::asMap).toList();
         // Quãng phanh còn lại được ngoại suy bằng đúng mức phanh 100% mà controller đã dùng cho xe này.
         Object measured = db.scalar("SELECT m.carla_full_brake_decel_mps2 FROM simulation_runs r JOIN carla_vehicle_models m ON m.id = r.carla_vehicle_model_id "
-                + "WHERE r.id = ? AND r.project_id = ?", runId, projectId);
+                + "WHERE r.id = ?", runId);
         double fullBrake = measured instanceof Number n ? n.doubleValue() : CarlaSession.DEFAULT_FULL_BRAKE_DECEL;
         var summary = telemetry.summarise(telemetry.parseCsvFrames(Files.readString(csv, StandardCharsets.UTF_8)), telemetry.parseCollisions(hits), fullBrake);
         List<String> images = List.of();
@@ -1165,7 +1306,12 @@ public class RunService {
                 images = files.map(p -> p.getFileName().toString()).filter(n -> n.matches("[0-9]{8}\\.png")).sorted().toList();
             }
         }
-        return Json.obj("run_id", runId, "summary", summary, "camera_frames", images, "has_video", Files.isRegularFile(runDir(runId).resolve(VIDEO_FILE)));
+        boolean hasVideo = Files.isRegularFile(runDir(runId).resolve(VIDEO_FILE));
+        if (!hasVideo && videoStorage != null && videoStorage.enabled()) {
+            Row artifact = db.first("SELECT storage_url FROM simulation_artifacts WHERE simulation_run_id = ? AND artifact_type = 'VIDEO_MP4' ORDER BY id DESC LIMIT 1", runId);
+            hasVideo = artifact != null && videoStorage.matches(runId, artifact.str("storage_url"));
+        }
+        return Json.obj("run_id", runId, "summary", summary, "camera_frames", images, "has_video", hasVideo);
     }
 
     private static void checkResult(Map<String, Object> result, Row run) {
@@ -1223,6 +1369,19 @@ public class RunService {
             }
         }
         throw new SimulatorException("result.json " + field + " không khớp run (yêu cầu " + expected + ")");
+    }
+
+    /** IDs alone cannot prove that the worker actually used the requested AEB parameters. */
+    private static void checkResultParameters(Map<String, Object> result, Map<String, ?> expected) {
+        Map<String, Object> actual = Json.asMap(Json.asMap(result.get("outcome")).get("params"));
+        for (String code : AebParams.CODES) {
+            String key = code.toLowerCase(java.util.Locale.ROOT);
+            if (!(expected.get(code) instanceof Number requested) || !Double.isFinite(requested.doubleValue())
+                    || !(actual.get(key) instanceof Number recorded) || !Double.isFinite(recorded.doubleValue())
+                    || Double.compare(requested.doubleValue(), recorded.doubleValue()) != 0) {
+                throw new SimulatorException("result.json outcome.params." + key + " không khớp cấu hình AEB của run");
+            }
+        }
     }
 
     private static void recordWorker(Path folder, Process proc) {
@@ -1405,15 +1564,28 @@ public class RunService {
      * bỏ — backend không ghi đường dẫn tới file nó không tạo.
      */
     public Map<String, Object> submitCarlaResult(long projectId, long runId, long userId, Map<String, Object> resultPayload) {
-        return submitCarlaResult(projectId, runId, userId, resultPayload, false);
+        return submitCarlaResult(projectId, runId, userId, resultPayload, false, null);
     }
 
     public Map<String, Object> submitCarlaResultFromUi(long projectId, long runId, long userId, Map<String, Object> resultPayload) {
-        return submitCarlaResult(projectId, runId, userId, resultPayload, true);
+        return submitCarlaResult(projectId, runId, userId, resultPayload, true, null);
     }
 
-    private Map<String, Object> submitCarlaResult(long projectId, long runId, long userId, Map<String, Object> resultPayload, boolean guardProject) {
-        Row imported = tx.execute(transaction -> {
+    /** Preserve the complete external producer document, including lexical bytes, without trusting artifact paths. */
+    public Map<String, Object> submitCarlaResultBytesFromUi(long projectId, long runId, long userId, byte[] raw) {
+        if (raw == null || raw.length == 0) throw new InvalidRequestException("thiếu result.json");
+        if (raw.length > com.vsos.backend.common.analysis.FailureAnalysisJson.SOURCE_BYTES)
+            throw new InvalidRequestException("result.json vượt giới hạn dung lượng");
+        Map<String,Object> payload;
+        try { payload = Json.parseMap(new String(raw, StandardCharsets.UTF_8)); }
+        catch (RuntimeException e) { throw new InvalidRequestException("result.json sai cấu trúc"); }
+        return submitCarlaResult(projectId, runId, userId, payload, true, raw.clone());
+    }
+
+    private Map<String, Object> submitCarlaResult(long projectId, long runId, long userId, Map<String, Object> resultPayload, boolean guardProject, byte[] originalBytes) {
+        Row imported;
+        try {
+            imported = persistWithRetry(transaction -> {
             if (guardProject) lockWritableProject(projectId, userId);
             Row run = db.first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ? FOR UPDATE", runId, projectId);
             if (run == null) {
@@ -1438,9 +1610,13 @@ public class RunService {
                 throw new InvalidRequestException("thiếu result.json");
             }
             Map<String, Object> result = new LinkedHashMap<>(resultPayload);
+            result.remove(ORIGINAL_RESULT_BYTES);
+            byte[] original = originalBytes == null ? Json.write(result).getBytes(StandardCharsets.UTF_8) : originalBytes;
             result.remove("artifacts");
+            result.put(ORIGINAL_RESULT_BYTES, original);
             try {
                 checkResult(result, run);
+                checkResultParameters(result, queries.aebValues(run.lng("aeb_version_id")));
             } catch (SimulatorException e) {
                 throw new InvalidRequestException(e.getMessage());
             }
@@ -1453,7 +1629,11 @@ public class RunService {
                 throw new InvalidRequestException("result.json sai cấu trúc: " + e.getMessage());
             }
             return run;
-        });
+            });
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Result persistence interrupted", e);
+        }
         // Giống executeRun: commit xong mới cho listener đọc run bằng transaction mới, không giữ snapshot của upload.
         AuditLog.event("run.carla_result", "success", "user_id", userId, "run_id", runId, "previous_status", imported.str("status"));
         events.publishEvent(new RunFinished(runId));
@@ -1484,8 +1664,20 @@ public class RunService {
                 "case", outcome.get("case"),
                 "params", outcome.get("params"),
                 "outcome", ev.get("outcome"),
+                "evaluation_version", ev.get("version"),
                 "headline", ev.get("headline"),
                 "chain", chain);
+
+        {
+            if (!(result.get(ORIGINAL_RESULT_BYTES) instanceof byte[] original))
+                throw new SimulatorException("Thiếu nội dung result.json gốc để lưu database; run chưa được hoàn tất");
+            try {
+                // saveSource joins this transaction: failed storage rolls back metrics and COMPLETED together.
+                resultStore.persistProducerResult(run, original);
+            } catch (IOException e) {
+                throw new SimulatorException("Không lưu được nội dung result.json vào database");
+            }
+        }
 
         if (Boolean.TRUE.equals(metrics.get("collision"))) {
             Map<String, Object> collision = Json.asList(outcome.get("events")).stream()
@@ -1531,7 +1723,9 @@ public class RunService {
         }
 
         for (Map.Entry<String, Object> artifact : Json.asMap(result.get("artifacts")).entrySet()) {
-            Path file = Path.of(String.valueOf(artifact.getValue()));
+            String location = String.valueOf(artifact.getValue());
+            Path file = "video".equals(artifact.getKey()) && location.startsWith("s3://")
+                    ? runDir(runId).resolve(VIDEO_FILE) : Path.of(location);
             String type = "result".equals(artifact.getKey()) ? "RESULT_FILE" : "video".equals(artifact.getKey()) ? "VIDEO_MP4" : "LOG";
             String mime = "result".equals(artifact.getKey()) ? "application/json" : "video".equals(artifact.getKey()) ? "video/mp4" : null;
             Long size = null;
@@ -1541,7 +1735,7 @@ public class RunService {
                 // kích thước chỉ để hiển thị
             }
             db.insert("INSERT INTO simulation_artifacts (simulation_run_id, artifact_type, file_name, storage_url, mime_type, file_size_bytes, created_date) VALUES (?,?,?,?,?,?,?)",
-                    runId, type, file.getFileName().toString(), file.toString(), mime, size, ts);
+                    runId, type, file.getFileName().toString(), location, mime, size, ts);
         }
 
         Map<String, Object> carlaCase = Json.asMap(Json.asMap(outcome.get("case")).get("carla"));
@@ -1614,6 +1808,10 @@ public class RunService {
 
     /** Nhặt lại run bỏ dở sau khi backend khởi động lại (hàng đợi trong bộ nhớ không sống qua restart). */
     public int recoverUnfinished() {
+        // Capture the interrupted campaigns before cleaning workers; newly submitted campaigns are not startup leftovers.
+        List<Long> interruptedCampaignIds = db.list("SELECT id FROM optimization_runs WHERE status IN ('PENDING','RUNNING')")
+                .stream().map(row -> row.lng("id")).toList();
+        List<Long> cleanedOrphans = new ArrayList<>();
         // Chỉ gọi lúc khởi động: không luồng nào của JVM này đang giữ run, nên mọi run RUNNING đều mồ côi (backend chết giữa run).
         // Worker mồ côi có thể còn sống (Windows không giết tiến trình con khi cha chết): dừng nó trước khi chạy lại để hai
         // runner không tranh quyền tick của một server CARLA. Không nhận result.json mồ côi: không xác minh được worker đã
@@ -1627,12 +1825,55 @@ public class RunService {
                 stopOrphan(id);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                break;
+                return 0; // Never dispatch another run while an orphan worker may still own CARLA.
             }
+            cleanedOrphans.add(id);
+        }
+        recoverInterruptedCampaignsAndCancelledTests(interruptedCampaignIds);
+        for (long id : cleanedOrphans) {
+            // Aborted parent work is already STOPPED, retaining its original start time; only resumable runs are requeued.
             db.update("UPDATE simulation_runs SET status = 'PENDING', started_at = NULL WHERE id = ? AND status = 'RUNNING'", id);
         }
-        List<Long> ids = db.list("SELECT id FROM simulation_runs WHERE status = 'PENDING' ORDER BY id").stream().map(r -> r.lng("id")).toList();
+        List<Long> ids = db.list("""
+                SELECT id FROM simulation_runs WHERE status = 'PENDING'
+                  AND NOT EXISTS (SELECT 1 FROM optimization_trials t JOIN optimization_runs o ON o.id = t.optimization_run_id
+                                   WHERE t.id = simulation_runs.optimization_trial_id AND o.status IN ('FAILED','CANCELLED'))
+                  AND NOT EXISTS (SELECT 1 FROM regression_tests t
+                                   WHERE t.id = simulation_runs.regression_test_id AND t.execution_status = 'CANCELLED')
+                ORDER BY id
+                """).stream().map(r -> r.lng("id")).toList();
         dispatch(ids);
         return ids.size();
+    }
+
+    /** No optimizer snapshot can safely resume a campaign after restart; preserve its completed evidence and close unfinished work. */
+    private void recoverInterruptedCampaignsAndCancelledTests(List<Long> interruptedCampaignIds) {
+        tx.executeWithoutResult(status -> {
+            LocalDateTime now = Vs.now();
+            if (!interruptedCampaignIds.isEmpty()) {
+                List<Object> args = new ArrayList<>();
+                args.add("Backend khởi động lại khi chiến dịch tối ưu chưa hoàn tất; không tự tiếp tục vì chưa có snapshot phục hồi. Hãy tạo chiến dịch mới.");
+                args.add(now);
+                args.addAll(interruptedCampaignIds);
+                db.update("UPDATE optimization_runs SET status = 'FAILED', error_message = ?, finished_at = ? WHERE status IN ('PENDING','RUNNING') AND id IN ("
+                        + Db.placeholders(interruptedCampaignIds.size()) + ")", args.toArray());
+            }
+            db.update("""
+                    UPDATE optimization_trials t JOIN optimization_runs o ON o.id = t.optimization_run_id
+                       SET t.status = CASE WHEN o.status = 'CANCELLED' THEN 'PRUNED' ELSE 'FAILED' END, t.completed_at = ?
+                     WHERE o.status IN ('FAILED','CANCELLED') AND t.status IN ('PENDING','RUNNING')
+                    """, now);
+            db.update("""
+                    UPDATE simulation_runs r JOIN optimization_trials t ON t.id = r.optimization_trial_id
+                         JOIN optimization_runs o ON o.id = t.optimization_run_id
+                       SET r.status = 'STOPPED', r.error_message = ?, r.ended_at = ?
+                     WHERE o.status IN ('FAILED','CANCELLED') AND r.status IN ('PENDING','RUNNING')
+                    """, "Chiến dịch tối ưu đã dừng hoặc bị gián đoạn; không chạy lại run khi khởi động backend.", now);
+            db.update("""
+                    UPDATE simulation_runs r JOIN regression_tests t ON t.id = r.regression_test_id
+                       SET r.status = 'STOPPED', r.error_message = ?, r.ended_at = ?
+                     WHERE t.execution_status = 'CANCELLED' AND r.status IN ('PENDING','RUNNING')
+                    """, "Regression test đã hủy; không chạy lại run khi khởi động backend.", now);
+        });
     }
 }

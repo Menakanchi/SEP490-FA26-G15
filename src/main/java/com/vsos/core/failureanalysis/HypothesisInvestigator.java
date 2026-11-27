@@ -13,7 +13,7 @@ public final class HypothesisInvestigator {
     private static final List<Source> INSPECTED=List.of(
             new Source("AebStack","aeb/AebStack.java","a1fd82ad829877da52dfb6c44a99d7af4aeb33e8a01d3c5793e89231ec8ac78f"),
             new Source("RadarTracker","aeb/RadarTracker.java","c4388f8d662559faf1ee1d8db22b455e0e255eb6b64ebad79af78a26c6c0ef03"),
-            new Source("CarlaSession","simulation/CarlaSession.java","9bacd1665412fb33689c532ac22e8eeb3c7e6c502ffba44d78ce94dc93b179f2"),
+            new Source("CarlaSession","simulation/CarlaSession.java","9ff0219e17be3f0d7bf8a4b3c41ace8d508f1102c31581e94aa09027902ac0fd"),
             new Source("Simulator","simulation/Simulator.java","e8b01649b57aaa1c8c9acf0f34b324426a24959fbf04b149370e755a1e5ce9c8"));
     private final Map<String,Artifact> sources;
     public HypothesisInvestigator(){this(Path.of("."));}
@@ -86,11 +86,11 @@ public final class HypothesisInvestigator {
                             "Writer-tagged demand, mapped pedal, consumed command frame, override masks and physical response with calibration",
                             "Attributed consumed demand precedes delayed or insufficient physical response beyond approved tolerance",
                             "Physical onset/ramp meets validated demand after correct clock alignment and permitted overrides","T01","T02","P02","Q02"),
-                    m("2D-crossing","PHYSICAL_GEOMETRY_OUTCOME","CarlaSession","step","Core overlap uses target disc against full longitudinal vehicle body and lateral width, or sensor hit. Longitudinal stopping alone may not eliminate crossing occupancy.",
+                    m("2D-crossing","PHYSICAL_GEOMETRY_OUTCOME","CarlaSession","step","Pedestrian overlap is an approximate geometry test. The current pedestrian profile requires a sensor hit for collision; older profiles also accept overlap. Longitudinal stopping alone may not eliminate crossing occupancy.",
                             "World bbox poses, target trajectory, uncertainty set, complete brake-action analysis and collision authority policy",
                             "Full-body 2D occupancy persists for the declared action set under validated uncertainty",
                             "A certified admissible brake action separates both bodies for the complete conflict interval","G01","G03","G04","P05"),
-                    m("mitigation-or-contact-authority","OUTCOME","CarlaSession","step/finish","Core termination accepts geometric overlap OR sensor hit; recorded relative pre-contact velocity is a separate observation. Contact can remain while mitigation meets the approved goal.",
+                    m("mitigation-or-contact-authority","OUTCOME","CarlaSession","step/finish","Pedestrian collision termination depends on simulator profile: the current profile requires a sensor hit, while older profiles also accept geometric overlap. Recorded pre-contact velocity is a separate observation. Contact can remain while mitigation meets the approved goal.",
                             "Matching authoritative contact records, aligned pre-contact velocities, valid paired OFF context and approved mitigation goal",
                             "Impact reduction meets the goal, or authority/clock disagreement prevents adjudicating goal violation",
                             "Authoritative aligned impact and controlled comparison establish an approved goal violation; that still does not isolate a cause","I01","T01","Q01"));

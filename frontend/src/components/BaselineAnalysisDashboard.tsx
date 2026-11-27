@@ -7,7 +7,6 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, PillButton } from "@/components/VehicSimUi";
 import { AnalysisDatasetPreparation } from "@/components/analysis/AnalysisDatasetPreparation";
-import { analysisListTitle } from "@/components/analysis/analysisRouteTitles";
 import { restoreSelection, selectionChecks, type ChosenRun } from "@/components/analysis/analysisSelectionData";
 import { AnalysisRunExplorer } from "@/components/analysis/AnalysisRunExplorer";
 import { overviewResponse } from "@/components/analysis/analysisOverviewData";
@@ -35,6 +34,14 @@ function BaselineWorkspace() {
   const router = useRouter();
   const params = useSearchParams();
   const view = ["runs", "failures", "dataset"].includes(params.get("view") ?? "") ? params.get("view")! : "overview";
+  const openLegacyForLink = view !== "overview" || [...params.keys()].some(key =>
+    (FILTER_KEYS as readonly string[]).includes(key) || ["dataset_id", "q", "sort", "page", "page_size", "d_q"].includes(key) || key.startsWith("f_"));
+  const [legacyOpen, setLegacyOpen] = useState(openLegacyForLink);
+  useEffect(() => {
+    // A link into the legacy workspace should open it; removing the last filter must not close it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync disclosure with deep links
+    if (openLegacyForLink) setLegacyOpen(true);
+  }, [openLegacyForLink]);
   const page = positive(params.get("page"), 1);
   const size = [10, 20, 30, 50].includes(Number(params.get("page_size"))) ? Number(params.get("page_size")) : 10;
   const filters: AnalysisFilters = {};
@@ -169,7 +176,7 @@ function BaselineWorkspace() {
   }
   function openOptimizer() {
     if (saved && saved.baseline_current === true && handoffCheck?.key === snapshotKey && !operationLock.current)
-      router.push(`/aeb?dataset_id=${saved.id}`);
+      router.push(`/aeb/mobo/new?dataset_id=${saved.id}`);
   }
   function clearDraft() {
     if (!canWrite || busy || !draftReady) return;
@@ -197,12 +204,13 @@ function BaselineWorkspace() {
   };
   const closeDataset = () => { update({ view: "runs" }); requestAnimationFrame(() => document.getElementById("analysis-prepare-trigger")?.focus()); };
   const optimizationFamily = ctx?.families.find(f => f.id === filters.scenario_id);
-  return <VehicSimPage step={3} title={analysisListTitle(view)} crumbs={[{ label: "Phân tích" }, { label: "Dữ liệu & kết quả" }]}
+  return <VehicSimPage step={3} crumbs={[{ label: "Phân tích" }, { label: "Dữ liệu & kết quả" }]}
     subtitle="Chọn lượt chạy để xem kết quả đã lưu. Mở các công cụ bổ sung khi cần điều tra hoặc bàn giao."
     actions={<PillButton disabled={loading} onClick={() => setRefresh(x => x + 1)}>Tải lại kết quả</PillButton>}>
-    {ctx && <FailureAnalysisV3 project={ctx.project.id} canWrite={canWrite} />}
+    {ctx && <FailureAnalysisV3 project={ctx.project.id} canWrite={canWrite} families={ctx.families} />}
     <div hidden={Boolean(params.get("fa_execution") || params.get("fa_report"))}>
-    <h2 className="analysis-caption">Kết quả đã lưu (legacy)</h2>
+    <details className="analysis-disclosure" open={legacyOpen} onToggle={event => setLegacyOpen(event.currentTarget.open)}>
+    <summary><span className="analysis-caption">Kết quả đã lưu và chuẩn bị tập bàn giao</span></summary>
     <ErrorNote message={error} />
     {error && <div><button className="analysis-button" onClick={() => setRefresh(x => x + 1)}>Thử tải lại</button></div>}
     {draftReady && (draft?.notice || draftNotice?.key === storageKey) && <p role="status" className="analysis-caption">{draft?.notice || draftNotice?.message}</p>}
@@ -214,12 +222,6 @@ function BaselineWorkspace() {
         <label>Trạng thái<select aria-label="Trạng thái" value={filters.status ?? ""} onChange={e => update({ status: e.target.value }, true)}><option value="">Tất cả</option>{["PENDING", "RUNNING", "PAUSED", "COMPLETED", "FAILED", "STOPPED"].map(value => <option key={value} value={value}>{analysisLabel(value)}</option>)}</select></label>
         <button className="analysis-button" onClick={() => update(Object.fromEntries(FILTER_KEYS.map(key => [key, undefined])), true)}>Xóa bộ lọc</button>
       </div>
-      <details open={Boolean(filters.aeb_version_id || filters.failure_class || filters.weather || filters.time_of_day || filters.variant_id || filters.vehicle_id || filters.simulator)}><summary>Lọc nâng cao</summary><div className="analysis-filters mt-4">
-        <label>Phiên bản baseline<select aria-label="Phiên bản baseline" value={filters.aeb_version_id ?? ""} onChange={e => update({ aeb_version_id: e.target.value }, true)}><option value="">Tất cả</option>{ctx?.versions.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}</select></label>
-        <label>Khâu được luật nhắc tới<select aria-label="Khâu lỗi" value={filters.failure_class ?? ""} onChange={e => update({ failure_class: e.target.value }, true)}><option value="">Tất cả</option>{["PERCEPTION", "DECISION", "CONTROL", "VEHICLE_DYNAMICS"].map(value => <option key={value} value={value}>{analysisLabel(value)}</option>)}</select></label>
-        {([["weather", "Thời tiết", ["CLEAR", "CLOUDY", "RAIN", "HEAVY_RAIN", "FOG"]], ["time_of_day", "Thời điểm", ["DAY", "DUSK", "NIGHT"]]] as const).map(([key, label, values]) => <label key={key}>{label}<select value={filters[key] ?? ""} onChange={e => update({ [key]: e.target.value }, true)}><option value="">Tất cả</option>{values.map(value => <option key={value} value={value}>{analysisLabel(value)}</option>)}</select></label>)}
-        {([["variant_id", "ID biến thể"], ["vehicle_id", "ID xe"], ["simulator", "Phiên bản simulator"]] as const).map(([key, label]) => <label key={key}>{label}<input type={key === "simulator" ? "text" : "number"} min={1} value={filters[key] ?? ""} onChange={e => update({ [key]: e.target.value }, true)} /></label>)}
-      </div></details>
       <p className="analysis-caption">Kết quả baseline đã lưu · thống kê và bảng dùng cùng bộ lọc. Đổi bộ lọc giữ nguyên lựa chọn bàn giao.</p>
     </section>
     <AnalysisOverview data={data} loading={loading} hasError={Boolean(error)} onFilterSimulator={simulator => update({ simulator }, true)} scope={activeFilters.map(filter => filter.label)} />
@@ -243,7 +245,7 @@ function BaselineWorkspace() {
         <div className="analysis-toolbar"><button className="analysis-button" onClick={closeDataset}>Đóng rà soát</button><PillButton disabled={!savedId || snapshotLoading || busy} onClick={() => setSnapshotRefresh(value => value + 1)}>Tải lại tập đã chốt</PillButton>
           {canWrite && optimizationFamily && <PillButton href={`/aeb/mobo?scenario_id=${optimizationFamily.id}&new=1`}>Mở tối ưu toàn họ {optimizationFamily.code}</PillButton>}</div>
         {canWrite && optimizationFamily && <p className="analysis-caption">Tối ưu toàn họ là tác vụ riêng, không sử dụng bản nháp đang chọn tại đây.</p>}
-        <AnalysisDatasetPreparation selection={selection} checks={checks} ready={draftReady} canWrite={canWrite} canSave={canSave}
+        <AnalysisDatasetPreparation project={ctx?.project.id ?? 0} selection={selection} checks={checks} ready={draftReady} canWrite={canWrite} canSave={canSave}
           operation={operation} operationError={mutationError} errorKind={operationError?.kind ?? null}
           snapshotId={savedId} hasSnapshot={rawDatasetId !== null} snapshot={saved} snapshotLoading={snapshotLoading} snapshotError={snapshotError}
           search={params.get("d_q") ?? ""} returnTo={returnTo} renderSelection={roleField}
@@ -251,6 +253,7 @@ function BaselineWorkspace() {
           onClear={clearDraft} onSave={() => void save()} onCheckHandoff={() => void checkHandoff()} onOpenOptimizer={openOptimizer}
           checkedAt={handoffCheck?.key === snapshotKey ? handoffCheck.time : null} onRetrySnapshot={() => setSnapshotRefresh(value => value + 1)} />
       </>}
+    </details>
     </details>
     </div>
   </VehicSimPage>;

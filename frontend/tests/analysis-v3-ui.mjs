@@ -20,7 +20,7 @@ try {
   const req=route.request(),url=new URL(req.url()),p=url.pathname.replace("/api/v1",""),project=Number(req.headers()["x-vehicsim-project"])||1;
   const reply=(body,status=200)=>route.fulfill({status,contentType:"application/json",body:JSON.stringify(body)});
   if(req.method()==="OPTIONS")return route.fulfill({status:204,headers:{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization,content-type,x-vehicsim-project","Access-Control-Allow-Methods":"GET,POST,OPTIONS"}});
-  requests.push({path:p,method:req.method(),project,body:req.postData()});
+  requests.push({path:p,query:url.search,method:req.method(),project,body:req.postData()});
   if(p==="/auth/me")return reply(actor);
   if(p==="/vehicsim/context")return reply({project:{id:project,name:`Project ${project}`},workspace:{id:1,name:"FE-R4 fixture"},vehicle:{id:2,name:"Fixture car"},system:{id:1,name:"AEB",baseline:{id:7,label:"v7"}},versions:[{id:7,label:"v7",status:"BASELINE"}],families:[{id:42,name:"Legacy fixture",code:"CP"}],parameters:[],reviewer_projects:[1,2].map(id=>({id,name:`Project ${id}`,workspace_name:"Fixture",can_decide:true}))});
     if (/^\/vehicsim\/analysis\/v3\/database\/(runs|collections)$/.test(p)) return reply({schema_version:"vehicsim.fa-db-input/v1",selection_kind:p.endsWith("collections")?"COLLECTION":"RUN",project_id:Number(route.request().headers()["x-vehicsim-project"]),items:[],limit:20,offset:0}); // Independent database source fixture.
@@ -28,6 +28,20 @@ try {
   if(p==="/vehicsim/regression")return reply({items:[],kpis:{total:0,passed:0,failed:0,running:0}});
   if(p==="/vehicsim/analysis/runs")return reply({total:1,page:1,page_size:10,counts:{COLLISION:1},items:[legacy.run],objective_groups:[],evaluation_version:"adr040-stored-aggregation/1"});
   if(p===`/vehicsim/analysis/runs/${legacy.run.run_id}`)return reply({run:legacy.run,detail:legacy.detail});
+  if(p==="/vehicsim/analysis/v3/explorer/scenarios") {
+   const rows=project===1?[{scenario_id:42,code:"CP",name:"Họ kiểm thử",category:"CP_CROSSING",variant_count:2,analyzed_count:1,confirmed_count:0,suspected_count:1,no_failure_count:null,unknown_count:0}]:[];
+   const q=url.searchParams.get("q")||"",items=rows.filter(row=>!q||["2499","1033",String(row.scenario_id),row.code,row.name].some(v=>v.toLocaleLowerCase("vi").includes(q.toLocaleLowerCase("vi"))));
+   return reply({project_id:project,items,total:items.length,limit:20,offset:Number(url.searchParams.get("offset")||0),summary:{scenario_count:items.length,variant_count:items.length*2,analyzed_count:items.length,confirmed_count:0,suspected_count:items.length,unknown_count:0}});
+  }
+  if(p==="/vehicsim/analysis/v3/explorer/scenarios/42/runs") {
+   const member=c.execution.members.find(item=>item.run_key==="2499"),report=c.reports[member.report_id];
+   const objectives=Object.fromEntries(Object.entries(report.report.objectives).map(([key,value])=>[key,{value:value.canonical_value.value,status:value.canonical_value.status,unit:value.canonical_value.unit,applicability:value.canonical_applicability}]));
+   const rows=project===1?[{project_id:project,scenario_id:42,scenario_version_id:1033,version_no:3,run_id:2499,random_seed:49033,repetition:1,attempt:1,simulator_type:"CARLA",simulator_version:"carla-test",aeb_mode:"ON",status:"COMPLETED",report_id:member.report_id,execution_id:c.execution.id,analysis_status:"ANALYZED",classification:"SUSPECTED",physical_outcome:"COLLISION",failure_candidates:[{type:"INEFFECTIVE_BRAKING",status:"SUSPECTED"}],root_cause_hypotheses:[{type:"INEFFECTIVE_BRAKING_MECHANISM_INVESTIGATION",status:"SUSPECTED"}],objectives}]:[];
+   const q=url.searchParams.get("q")||"",mode=url.searchParams.get("aeb_mode"),state=url.searchParams.get("classification"),type=url.searchParams.get("failure_type"),cause=url.searchParams.get("root_cause");
+   const items=rows.filter(row=>(!q||["2499","1033","42","CP","Họ kiểm thử"].some(v=>v.toLocaleLowerCase("vi").includes(q.toLocaleLowerCase("vi"))))&&(!mode||mode===row.aeb_mode)&&(!state||state===row.classification)&&(!type||row.failure_candidates.some(x=>x.type===type))&&(!cause||row.root_cause_hypotheses.some(x=>x.type===cause)));
+   return reply({project_id:project,items,total:items.length,limit:20,offset:Number(url.searchParams.get("offset")||0)});
+  }
+  if(p==="/vehicsim/analysis/v3/explorer/scenarios/42/variants") {const q=url.searchParams.get("q")||"",found=project===1&&["","CP","42","1034","4"].includes(q);return reply({project_id:project,items:found?[{scenario_id:42,scenario_version_id:1034,version_no:4,run_count:0}]:[],total:found?1:0,limit:20,offset:0});}
   const root="/vehicsim/analysis/v3";
   if(!p.startsWith(root))return reply({detail:"Outside fixture scope"},404);
   const tail=p.slice(root.length);
@@ -56,41 +70,49 @@ try {
  page=await ctx.newPage();page.setDefaultTimeout(15000);page.on("pageerror",e=>errors.push(e.message));
  const workspace=()=>page.getByRole("region",{name:"Phân tích dữ liệu",exact:true});
  const shot=async name=>{await page.screenshot({path:path.join(output,name+".png"),fullPage:true});screenshots.push(name+".png")};
- const home=async()=>{await page.goto(base+"/analysis/failures?view=runs&scenario_id=42&q=kept");await page.getByText("Nguồn JSON đã lưu / nhập nâng cao",{exact:true}).click();await page.getByLabel("Nguồn JSON đã lưu",{exact:true}).locator("option[value='"+c.source.id+"']").waitFor({state:"attached"})};
- const select=async f=>{await page.getByLabel("Nguồn JSON đã lưu",{exact:true}).selectOption(f.source.id);await workspace().getByText(/Đã lưu:/).waitFor()};
- const analyze=async()=>{await page.getByRole("button",{name:"Phân tích",exact:true}).click();await page.getByRole("region",{name:"Thành viên lần phân tích",exact:true}).waitFor()};
- const report=()=>page.getByRole("article",{name:"Kết quả phân tích chuyên sâu V3.1",exact:true});
- await home();assert.equal(await page.getByRole("heading",{name:"Phân tích dữ liệu",exact:true}).count(),1);await shot("workspace-desktop");await page.setViewportSize({width:375,height:900});await shot("workspace-mobile");assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.setViewportSize({width:1440,height:1000});await select(c);checks.push("01 saved sources separate from legacy runs; actual source identities, upload secondary");
- await analyze();assert.equal(new URL(page.url()).searchParams.get("fa_execution"),c.execution.id);assert.match(await workspace().innerText(),/Dự kiến 2 · Tiếp nhận 2 · Đã phân tích 2 · Bị chặn 0 · Lỗi 0 · Thiếu 0/);assert.equal(await page.getByRole("button",{name:/^Xem run /}).count(),2);checks.push("02 bodyless collection POST commits execution, preserves two ON/OFF members");
- await page.getByRole("button",{name:"Xem run 2499",exact:true}).click();await report().waitFor();const first=c.reportsPage.items.find(m=>m.run_key==="2499"),core=c.reports[first.id];
- for(const [key,name] of [["rms_jerk_mps3","RMS jerk"],["impact_speed_mps","Tốc độ impact canonical"],["stopping_distance_m","Quãng đường dừng canonical"]]){const ev=core.report.objectives[key].canonical_value;assert.match(await report().getByRole("region",{name,exact:true}).innerText(),new RegExp(String(ev.value)))}
- assert.match(await report().innerText(),/SUSPECTED/);assert.match(await report().innerText(),/Nguyên nhân đã xác nhận:.*UNKNOWN/);assert.equal(await report().locator("details[open]").count(),0);checks.push("03 actual core objectives and SUSPECTED/root UNKNOWN; technical disclosures closed");
- await shot("result-desktop");await report().getByText(/Giả thuyết nguyên nhân \(/).click();await report().getByText("Bằng chứng hỗ trợ",{exact:true}).first().click();assert.match(await report().innerText(),/Kế hoạch phản chứng là đề xuất/);await shot("investigation-desktop");checks.push("04 evidence support/counter/alternatives/missing/falsification available; no invented execution");
- const deep=page.url();await page.reload();await report().waitFor();assert.equal(page.url(),deep);await page.getByRole("button",{name:"Xem run 2511",exact:true}).click();await page.getByRole("heading",{name:"Kết quả run 2511",exact:true}).waitFor();assert.match(await report().innerText(),/AEB: OFF/);const off=c.reports[c.reportsPage.items.find(m=>m.run_key==="2511").id];if(off.report.objectives.rms_jerk_mps3.canonical_value.value===null)assert.match(await report().getByRole("region",{name:"RMS jerk",exact:true}).innerText(),/Chưa có giá trị/);checks.push("05 hard refresh/UUID deep link preserves legacy query; OFF actual report/null separate");
- await page.getByRole("button",{name:"Xem run 2499",exact:true}).click();await report().waitFor();
- for(const [name,expected] of [["Tải Diagnostic Report JSON",Buffer.from(c.reportBytesBase64[first.id],"base64")],["Tải Handoff JSON",Buffer.from(c.handoffBase64,"base64")]]) { const pending=page.waitForEvent("download");await page.getByRole("button",{name,exact:true}).click();const download=await pending;assert.match(download.suggestedFilename(),/^(report|handoff)-[a-f0-9-]+\.json$/);assert.deepEqual(await fs.readFile(await download.path()),expected); }
- await page.getByText("Nguồn và chi tiết lần phân tích",{exact:true}).click();const download=page.waitForEvent("download");await page.getByRole("button",{name:"Tải JSON nguồn gốc",exact:true}).click();assert.deepEqual(await fs.readFile(await (await download).path()),Buffer.from(c.sourceBase64,"base64"));checks.push("06 authenticated source/report/handoff download bytes exact; safe UUID names");
- assert.match(await page.getByRole("region",{name:"Báo cáo bàn giao",exact:true}).innerText(),/dispatch_allowed=false/);await page.getByText("Xem lý do và khả năng tương thích",{exact:true}).click();assert.match(await workspace().innerText(),/NOT_DIRECTLY_CONSUMABLE|BLOCKED/);assert(!requests.some(r=>/optimization|mobo/.test(r.path)));checks.push("07 diagnostic-only handoff reasons visible; zero optimizer requests");
- await home();await select(c);await analyze();assert.equal(new URL(page.url()).searchParams.get("fa_execution"),c.execution.id);checks.push("08 duplicate execution reuses committed UUID");
- {
-  await home();await select(c);await workspace().getByText("Kết quả đã phân tích",{exact:true}).click();
-  let seen;const requested=new Promise(r=>{seen=r});const promise=new Promise(r=>{release=r});hold={seen,promise};
-  await page.getByRole("button",{name:"Phân tích",exact:true}).click();await requested;
-  await page.getByRole("button",{name:/^Mở kết quả 1/}).click();await page.getByRole("button",{name:"Xem run 2499",exact:true}).click();await report().waitFor();
-  release();await page.waitForTimeout(300);assert.equal(new URL(page.url()).searchParams.get("fa_report"),first.id);
-  checks.push("08b late POST cannot clear a report explicitly opened while pending");
- }
- for(const name of ["partial","blocked"]){await home();await select(cases[name]);await analyze();const e=cases[name].execution;assert.match(await workspace().innerText(),new RegExp(`Bị chặn ${e.blocked} · Lỗi ${e.failed} · Thiếu ${e.missing}`));assert.equal(await page.getByRole("button",{name:/^Xem run /}).count(),e.analyzed);assert.match(await workspace().innerText(),/Thiếu là một phần của Bị chặn/);assert.equal(await page.getByRole("button",{name:"Tải Handoff JSON",exact:true}).count(),0);await shot(name+"-desktop")}
- checks.push("09 real service PARTIAL/BLOCKED outputs from explicit input deletion; missing subset not double-counted");
- await home();await select(cases.standalone);await analyze();assert.equal(await page.getByRole("button",{name:/^Xem run /}).count(),1);checks.push("10 actual standalone execution supported");
- await home();await workspace().getByText("Chưa có nguồn? Tải JSON từ Module 2",{exact:true}).click();await page.getByLabel("Tệp JSON",{exact:true}).setInputFiles({name:"original.json",mimeType:"application/json",buffer:Buffer.from(uploadCase.sourceBase64,"base64")});await page.waitForFunction(id=>document.querySelector('select[aria-label="Nguồn JSON đã lưu"]').value===id,uploadCase.source.id);const upload=requests.findLast(r=>r.method==="POST"&&r.path.endsWith("/v3/sources"));assert.equal(upload.body,Buffer.from(uploadCase.sourceBase64,"base64").toString("utf8"));checks.push("11 upload original bytes, uses persisted returned source ID");
- for(const status of [400,403,404,409,413,422,429,500,503]){await home();await select(c);nextStatus=status;await page.getByRole("button",{name:"Phân tích",exact:true}).click();const alert=workspace().getByRole("alert");await alert.waitFor();await alert.getByText("Chi tiết lỗi",{exact:true}).click();assert.match(await alert.innerText(),new RegExp(`HTTP ${status}`));assert.equal(new URL(page.url()).searchParams.get("fa_execution"),null)}checks.push("12 distinct HTTP errors, no unsafe retries or success navigation");
- await home();await select(c);let seen;const requested=new Promise(r=>{seen=r});const promise=new Promise(r=>{release=r});hold={seen,promise};await page.getByRole("button",{name:"Phân tích",exact:true}).click();await requested;assert(await page.getByRole("button",{name:"Đang gửi yêu cầu…",exact:true}).isDisabled());await page.getByLabel("Project đang xem",{exact:true}).selectOption("2");await page.waitForURL(u=>u.pathname==="/");release();await page.waitForTimeout(500);assert.equal(new URL(page.url()).searchParams.get("fa_execution"),null);checks.push("13 real shared project switch while POST pending cannot navigate old result");
- await page.getByLabel("Project đang xem",{exact:true}).selectOption("1");await home();await select(c);await analyze();await page.getByRole("button",{name:"Xem run 2499",exact:true}).click();await report().waitFor();
- for(const width of [320,375,768,1440]){await page.setViewportSize({width,height:900});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));if(width===375)await shot("result-mobile")}
- const details=report().getByText("Timeline và hành vi",{exact:true});await details.focus();await page.keyboard.press("Enter");assert(await details.evaluate(el=>el.parentElement.open));checks.push("14 320/375/768/1440 reflow; keyboard technical disclosure");
- await page.getByRole("button",{name:"← Chọn dữ liệu / kết quả đã lưu",exact:true}).click();await page.getByText("Nguồn JSON đã lưu / nhập nâng cao",{exact:true}).click();await page.getByLabel("Nguồn JSON đã lưu",{exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.get("q"),"kept");assert(await page.getByRole("heading",{name:"Kết quả đã lưu (legacy)",exact:true}).isVisible());checks.push("15 return preserves legacy filters and legacy explorer");
- await select(c);nextStatus=401;await page.getByRole("button",{name:"Phân tích",exact:true}).click();await page.waitForFunction(()=>!localStorage.getItem("vehicsim_access_token"));assert.equal(new URL(page.url()).searchParams.get("fa_execution"),null);checks.push("16 actual shared transport 401 expires session, no success report");
- assert.deepEqual(errors,[]);assert(requests.filter(r=>r.path.includes("/analysis/v3/")).every(r=>r.project===1));
- await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",checks,screenshots,errors,liveBackendVerified:false,carlaRuntimeVerified:false,fixtureProvenance:"Actual service/core outputs with test memory storage; partial/blocked explicitly synthetic input deletion"},null,2));console.log("PASS FE-R4 17 browser acceptance groups; BROWSER_FIXTURE_ONLY");
-} catch(error) {await page?.screenshot({path:path.join(output,"failure.png"),fullPage:true});await fs.writeFile(path.join(output,"failure.json"),JSON.stringify({error:String(error),requests,errors,text:await page?.locator("body").innerText()},null,2));throw error;} finally {release?.();await browser.close()}
+ const home=async()=>{await page.goto(base+"/analysis/failures?view=runs&scenario_id=42&q=kept");await page.getByText("Kết quả phân tích trước đây",{exact:true}).click();await workspace().locator("details").filter({has:page.getByText("Kết quả phân tích trước đây",{exact:true})}).locator("select").locator("option[value='"+c.source.id+"']").waitFor({state:"attached"})};
+ const select=async f=>{await workspace().locator("details").filter({has:page.getByText("Kết quả phân tích trước đây",{exact:true})}).locator("select").selectOption(f.source.id);await workspace().getByRole("button",{name:/^Xem lần phân tích 1/}).waitFor()};
+ const analyze=async()=>{await page.getByRole("button",{name:"Phân tích lại",exact:true}).click();await page.getByRole("region",{name:"Kết quả các lượt chạy",exact:true}).waitFor()};
+ const report=()=>page.getByRole("article",{name:"Kết quả phân tích",exact:true});
+ await page.goto(base+"/analysis/failures");
+ await page.getByRole("heading",{name:"Họ kịch bản",exact:true}).waitFor();
+ await page.getByRole("button",{name:"Họ kiểm thử · CP",exact:true}).waitFor();await shot("scenario-overview");
+ await page.getByRole("searchbox",{name:"Tìm kiếm",exact:true}).fill("2499");
+ await page.waitForURL(url=>url.searchParams.get("fa_q")==="2499");
+ await page.getByRole("button",{name:"Họ kiểm thử · CP",exact:true}).click();
+ await page.getByRole("button",{name:/Biến thể 3 · ID 1033/}).click();
+ assert.match(await page.getByRole("region",{name:"Bảng biến thể và lượt chạy"}).innerText(),/Phanh không hiệu quả/);
+ await shot("scenario-runs");
+ await page.getByRole("searchbox",{name:"Tìm kiếm",exact:true}).fill("CP");await page.waitForURL(url=>url.searchParams.get("fa_q")==="CP");
+ await page.getByText("Biến thể chưa có lượt chạy",{exact:true}).click();
+ await page.getByText("Biến thể 4 · ID 1034 — chưa có lượt chạy",{exact:true}).waitFor();
+ await page.getByRole("searchbox",{name:"Tìm kiếm",exact:true}).fill("2499");await page.waitForURL(url=>url.searchParams.get("fa_q")==="2499");
+ await page.getByText("Tìm kiếm nâng cao",{exact:true}).click();
+ await page.getByLabel("Đánh giá AEB").selectOption("SUSPECTED");
+ await page.waitForURL(url=>url.searchParams.get("fa_class")==="SUSPECTED");
+ const weatherRequest=page.waitForResponse(response=>response.url().includes("/explorer/scenarios/42/runs")&&new URL(response.url()).searchParams.get("weather")==="RAIN").catch(()=>null);
+ await page.getByRole("region",{name:"Khám phá họ kịch bản"}).locator("label").filter({hasText:"Thời tiết"}).locator("select").selectOption("RAIN");
+ assert(await weatherRequest,"Weather filter must reach the server: "+JSON.stringify(requests.slice(-5)));
+ await page.getByRole("button",{name:"Xem phân tích",exact:true}).click();await report().waitFor();await shot("diagnostic-detail");
+ await page.getByRole("button",{name:"← Chọn kết quả khác",exact:true}).click();
+ assert.equal(new URL(page.url()).searchParams.get("fa_q"),"2499");
+ assert.equal(new URL(page.url()).searchParams.get("fa_class"),"SUSPECTED");
+ assert.equal(new URL(page.url()).searchParams.get("fa_weather"),"RAIN");
+ checks.push("scenario explorer uses server search, filters and returns to the preserved scope");
+ await home();await select(c);await analyze();assert.equal(new URL(page.url()).searchParams.get("fa_execution"),c.execution.id);
+ assert.equal(await page.getByRole("button",{name:/^Xem kết quả /}).count(),2);
+ await page.getByRole("button",{name:"Xem kết quả 2499",exact:true}).click();await report().waitFor();
+ assert.match(await report().innerText(),/Nghi ngờ|Cần kiểm tra/);assert.match(await report().innerText(),/Nguyên nhân/);
+ const deep=page.url();await page.reload();await report().waitFor();assert.equal(page.url(),deep);
+ await page.getByRole("button",{name:"Xem kết quả 2511",exact:true}).click();await report().getByText(/Lượt chạy 2511/).waitFor();assert.match(await report().innerText(),/AEB tắt/);
+ checks.push("saved source, collection execution, selected report and OFF reference remain available after reload");
+ assert.match(await page.getByRole("region",{name:"Bước tiếp theo",exact:true}).innerText(),/chưa đủ điều kiện/);
+ for(const name of ["partial","blocked"]){await home();await select(cases[name]);await analyze();assert.match(await workspace().innerText(),/chưa thể phân tích/)}
+ checks.push("partial and blocked executions remain visible and cannot be silently promoted");
+ await home();await select(c);nextStatus=403;await page.getByRole("button",{name:"Phân tích lại",exact:true}).click();await workspace().getByRole("alert").waitFor();assert.equal(new URL(page.url()).searchParams.get("fa_execution"),null);
+ checks.push("execution error is visible and does not navigate to a report");
+ await home();await select(c);await analyze();await page.getByRole("button",{name:"Xem kết quả 2499",exact:true}).click();await report().waitFor();
+ for(const width of [320,375,768,1440]){await page.setViewportSize({width,height:900});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"overflow "+width)}
+ assert.deepEqual(errors,[]);await shot("current-report");
+ await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",checks,screenshots,errors,liveBackendVerified:false,carlaRuntimeVerified:false},null,2));console.log("PASS V3 current browser flow; BROWSER_FIXTURE_ONLY");
+} catch(error) {await page?.screenshot({path:path.join(output,"failure.png"),fullPage:true}).catch(()=>{});await fs.writeFile(path.join(output,"failure.json"),JSON.stringify({error:String(error),requests,errors,text:await page?.locator("body").innerText().catch(()=>"")},null,2));throw error;} finally {release?.();await browser.close()}

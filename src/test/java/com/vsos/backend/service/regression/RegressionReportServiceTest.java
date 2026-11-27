@@ -82,7 +82,7 @@ class RegressionReportServiceTest {
         when(repo.findVersion(anyLong())).thenAnswer(inv -> row("id", inv.getArgument(0), "label", ((Long) inv.getArgument(0)) == BASELINE ? "v1.0" : "v1.1"));
         when(repo.findScenario(20L)).thenReturn(row("id", 20L, "code", "SC-A", "name", "Họ A"));
         when(repo.vehicleInfo(3L)).thenReturn(new VehicleInfo("vehicle.audi.etron", "Audi e-tron", 2595.0, 8.0));
-        when(repo.candidateSource(CANDIDATE)).thenReturn(new CandidateSource("MANUAL", null, null, null, null));
+        when(repo.candidateSource(CANDIDATE)).thenReturn(new CandidateSource("MANUAL", null, null, null, null, null));
         when(repo.runInfo(any())).thenReturn(Map.of(2001L, new RunInfo(2001L, 48_101L, 0.05, 12.0)));
         when(regression.recommendationFor(TEST)).thenReturn(new RecommendationRow(77L, TEST, CANDIDATE, "ACCEPTED", 5L, 9L,
                 LocalDateTime.of(2026, 10, 20, 10, 0), "đủ bằng chứng", "theo dõi thêm", null));

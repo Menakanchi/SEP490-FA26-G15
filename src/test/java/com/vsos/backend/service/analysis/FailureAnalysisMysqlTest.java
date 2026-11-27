@@ -41,6 +41,9 @@ class FailureAnalysisMysqlTest {
         // These four tables have just been created in this empty disposable DB; no historical rows exist.
         for(String table:List.of("fa_json_handoffs","fa_json_reports","fa_json_executions","fa_json_sources"))jdbc.execute("DROP TABLE "+table);
         try(var connection=ds.getConnection()) {ScriptUtils.executeSqlScript(connection,new org.springframework.core.io.FileSystemResource("database/mysql/migrations/020_2026-11-25_failure_analysis_json.sql"));}
+        try(var connection=ds.getConnection()) {
+            ScriptUtils.executeSqlScript(connection,new org.springframework.core.io.FileSystemResource("database/mysql/migrations/024_2026-11-26_fa-db-collection-2mib.sql"));
+        }
         jdbc.update("INSERT INTO users(id,email,password_hash,role_id,last_name,first_name) SELECT 7,'fa-test@example.invalid','unused',id,'Test','FA' FROM roles WHERE code='ENGINEER'");
         jdbc.update("INSERT INTO projects(id,name,created_by_user_id) VALUES (1,'FA test A',7),(2,'FA test B',7)");
         store=new FailureAnalysisStore(new Db(jdbc),new DataSourceTransactionManager(ds));service=new FailureAnalysisService(store);
@@ -65,6 +68,16 @@ class FailureAnalysisMysqlTest {
         }
         String hid=execution.get("handoff_id").toString();assertThat(reload.download(Kind.HANDOFF,1,hid)).isEqualTo(service.download(Kind.HANDOFF,1,hid));
         assertThatThrownBy(()->reload.download(Kind.HANDOFF,2,hid)).hasMessage("RESOURCE_NOT_FOUND");
+    }
+    @Test void upgradedDatabasePersistsLargerDbCollectionButNotLargeUpload()throws Exception {
+        byte[] original=FailureAnalysisServiceTest.input("vsos-collections-2026-11-24/vehicsim-variant-1033-collection.json");
+        byte[] larger=Arrays.copyOf(original,FailureAnalysisJson.SOURCE_BYTES+128);
+        Arrays.fill(larger,original.length,larger.length,(byte)' ');
+        var provenance=Map.<String,Object>of("origin","DATABASE_ARTIFACT_STORAGE","selection_kind","COLLECTION");
+        var source=service.ingestDatabase(1,7,larger,provenance);
+        assertThat(service.download(Kind.SOURCE,1,source.get("id").toString())).isEqualTo(larger);
+        assertThatThrownBy(()->service.ingest(1,7,new ByteArrayInputStream(larger),larger.length,null))
+                .hasMessage("SOURCE_BYTES_EXCEEDED");
     }
     @Test void databaseUniqueConstraintSerializesConcurrentDuplicates()throws Exception {
         byte[] raw=(new String(FailureAnalysisServiceTest.input("result_run2499_full_dataset.json"),StandardCharsets.UTF_8)+"\n\n\n").getBytes(StandardCharsets.UTF_8);

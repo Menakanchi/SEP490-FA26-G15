@@ -6,6 +6,7 @@ import com.vsos.backend.config.*;
 import com.vsos.backend.controller.analysis.FailureAnalysisController;
 import com.vsos.backend.entity.enums.RoleCode;
 import com.vsos.backend.entity.user.*;
+import com.vsos.backend.repository.analysis.FailureAnalysisExplorerRepository;
 import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.security.*;
 import com.vsos.backend.service.auth.OtpService;
@@ -48,6 +49,7 @@ class FailureAnalysisRestTest {
     @MockitoBean OtpService otp;
     @MockitoBean ProjectAccess projects;
     @MockitoBean FailureAnalysisDatabaseAdapter database;
+    @MockitoBean FailureAnalysisExplorerRepository explorer;
     static CustomUserDetails person(RoleCode role){return new CustomUserDetails(User.builder().id(7L).email("fa@example.com").passwordHash("x").isActive(true)
             .firstName("A").lastName("B").role(Role.builder().code(role).name(role.name()).build()).build());}
     @BeforeEach void init(){store.rows.clear();store.failWrites=false;store.projectStatus="ACTIVE";store.workspaceStatus="ACTIVE";

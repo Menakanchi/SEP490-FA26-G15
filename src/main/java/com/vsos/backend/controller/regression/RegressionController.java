@@ -1,6 +1,7 @@
 package com.vsos.backend.controller.regression;
 
 import com.vsos.backend.common.Vs.NotFoundException;
+import com.vsos.backend.common.Csv;
 import com.vsos.backend.config.OpenApiConfig;
 import com.vsos.backend.dto.regression.RegressionRequests.CreateRegressionRequest;
 import com.vsos.backend.dto.regression.RegressionRequests.DecisionRequest;
@@ -40,7 +41,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -138,7 +138,7 @@ public class RegressionController {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("text/csv; charset=utf-8"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + RegressionCodes.testCode(testId) + ".csv\"")
-                .body(reports.exportCsv(testId).getBytes(StandardCharsets.UTF_8));
+                .body(Csv.utf8WithBom(reports.exportCsv(testId)));
     }
 
     @Operation(summary = "Lịch sử quyết định của Reviewer và chuỗi baseline")

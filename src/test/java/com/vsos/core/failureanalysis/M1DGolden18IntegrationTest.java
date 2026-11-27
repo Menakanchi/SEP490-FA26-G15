@@ -31,15 +31,20 @@ class M1DGolden18IntegrationTest {
         assertThat(at(m,"/artifact_digest/value")).isEqualTo(run.artifact("result").sha256());assertThat(at(m,"/mode/value")).isEqualTo(EvidenceReport.mode(run).value());
     }));}
     @Test void actualGoldenSchemaAndDigestPassButNeverDirectlyConsumable(){assertThat(at(compatibility,"/input_validation/schema")).isEqualTo("VERIFIED");
-        assertThat(at(compatibility,"/input_validation/integrity")).isEqualTo("VERIFIED");assertThat(compatibility.get("overall")).isEqualTo("NOT_DIRECTLY_CONSUMABLE");assertThat(compatibility.get("dispatch_allowed")).isEqualTo(false);}
+        assertThat(at(compatibility,"/input_validation/integrity")).isEqualTo("VERIFIED");assertThat(compatibility.get("overall")).isEqualTo(source.audited()?"NOT_DIRECTLY_CONSUMABLE":"BLOCKED");assertThat(compatibility.get("dispatch_allowed")).isEqualTo(false);}
     @Test void noFakeOperationalCohortOrBaseline(){assertThat(list(at(compatibility,"/identity_partition_compatibility/optimization_bindings"))).isEmpty();
         assertThat(at(compatibility,"/baseline_consistency/score_availability")).isEqualTo("UNKNOWN");assertThat(at(compatibility,"/freshness/status")).isEqualTo("UNKNOWN");}
     @Test void preserveAllCountsAndCase091Context(){assertThat(runs).hasSize(72);assertThat(runs.values().stream().map(Run::caseKey).distinct()).hasSize(18);
         assertThat(runs.values().stream().filter(r->"OFF".equals(EvidenceReport.mode(r).value()))).hasSize(18);
         for(Object m:list(handoff.get("members")))if(str(at(m,"/run_key")).contains("G4-091"))assertThat(at(m,"/actual_parameters/TTC_THRESHOLD/value")).isEqualTo(.6);}
     @Test void sourceGapsAndActualConsumerDivergenceAreReported(){var codes=list(compatibility.get("findings")).stream().map(f->at(f,"/code")).toList();
-        assertThat(codes).contains("DATASET_CONSUMPTION_MISSING","CUSTOM_BOUNDS_IGNORED","BASELINE_STATS_OBJECTIVES_MISSING","SEALED_VALIDATION_NOT_CONSUMED");
-        assertThat(at(compatibility,"/canonical_metric_parity/consumer_probe/status")).isEqualTo("VERIFIED");}
+        if(source.audited()) {
+            assertThat(codes).contains("DATASET_CONSUMPTION_MISSING","CUSTOM_BOUNDS_IGNORED","BASELINE_STATS_OBJECTIVES_MISSING","SEALED_VALIDATION_NOT_CONSUMED");
+            assertThat(at(compatibility,"/canonical_metric_parity/consumer_probe/status")).isEqualTo("VERIFIED");
+        } else {
+            assertThat(codes).contains("CONSUMER_SOURCE_CHANGED_OR_MISSING");
+            assertThat(at(compatibility,"/canonical_metric_parity/consumer_probe/status")).isEqualTo("UNKNOWN");
+        }}
     @Test void goldenNoHintGateIsWeakened(){assertThat(list(handoff.get("parameter_hints"))).isEmpty();assertThat(at(compatibility,"/validation_isolation/suspected_hints")).isEqualTo(0);
         for(Object range:map(handoff.get("search_ranges")).values())assertThat(at(range,"/suggested_range/value")).isNull();}
     @Test void compatibilitySerializationAndReportSample()throws Exception{var parsed=MiniJson.parseObject(MiniJson.write(compatibility));

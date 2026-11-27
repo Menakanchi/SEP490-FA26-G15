@@ -26,7 +26,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -168,7 +167,7 @@ public class AnalysisController {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("text/csv; charset=utf-8"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"failure_cases.csv\"")
-                .body(csv.toString().getBytes(StandardCharsets.UTF_8));
+                .body(Csv.utf8WithBom(csv.toString()));
     }
 
     @Operation(summary = "Chi tiết một lần chạy: số đo, chuỗi nguyên nhân, telemetry, cảnh, ca tương tự")

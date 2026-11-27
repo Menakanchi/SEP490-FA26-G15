@@ -34,6 +34,7 @@ import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 import com.vsos.backend.common.Json;
+import com.vsos.backend.security.RunViewScope;
 import com.vsos.backend.security.VehicSimAccess;
 import com.vsos.backend.service.simulation.RunCollectionService;
 import com.vsos.backend.service.simulation.RunService;
@@ -164,40 +165,62 @@ public class SimulationController {
         return runs.carlaStatus();
     }
 
-    @Operation(summary = "Các lượt chạy CARLA gần nhất của project")
+    @Operation(summary = "Các lượt chạy CARLA gần nhất mà người dùng được xem: EXPERIENCER chỉ lượt của mình, cả workspace xem chung, ADMIN xem hết hoặc lọc theo project_id")
     @GetMapping("/carla/runs")
-    public List<Map<String, Object>> carlaRuns() {
-        return runs.carlaRuns(access.projectId());
+    public List<Map<String, Object>> carlaRuns(@RequestParam(name = "project_id", required = false) Long projectId,
+                                               @AuthenticationPrincipal UserDetails user) {
+        // Chỉ ADMIN được chọn project; role khác bỏ qua tham số và giữ phạm vi của mình.
+        if (projectId != null && "ADMIN".equals(VehicSimAccess.roleOf(user))) {
+            return runs.carlaRuns(RunViewScope.project(projectId));
+        }
+        return runs.carlaRuns(access.runViewScope(user));
+    }
+
+    @Operation(summary = "ADMIN: các project có lượt CARLA, để chọn xem từng project")
+    @GetMapping("/carla/run-projects")
+    public List<Map<String, Object>> carlaRunProjects(@AuthenticationPrincipal UserDetails user) {
+        VehicSimAccess.requireAdmin(user);
+        return runs.carlaRunProjects();
     }
 
     @Operation(summary = "Số đo sensor và danh sách ảnh RGB đã ghi của run CARLA")
     @GetMapping("/runs/{runId}/carla-data")
-    public Map<String, Object> carlaData(@PathVariable long runId) throws IOException {
-        return runs.carlaData(access.projectId(), runId, telemetryService);
+    public Map<String, Object> carlaData(@PathVariable long runId, @AuthenticationPrincipal UserDetails user) throws IOException {
+        return runs.carlaData(access.runViewScope(user), runId, telemetryService);
     }
 
     @Operation(summary = "Tải frames.csv, collisions.json hoặc ảnh RGB của run CARLA")
     @GetMapping("/runs/{runId}/carla-files/{name}")
-    public ResponseEntity<byte[]> carlaFile(@PathVariable long runId, @PathVariable String name) throws IOException {
-        var file = runs.carlaFile(access.projectId(), runId, name);
+    public ResponseEntity<byte[]> carlaFile(@PathVariable long runId, @PathVariable String name,
+                                            @AuthenticationPrincipal UserDetails user) throws IOException {
+        var file = runs.carlaFile(access.runViewScope(user), runId, name);
         String mime = name.endsWith(".png") ? "image/png" : name.endsWith(".csv") ? "text/csv; charset=utf-8" : "application/json";
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(mime)).body(Files.readAllBytes(file));
     }
 
     @Operation(summary = "Video mp4 xem lại của run CARLA (có Range để tua); 404 khi run không có video")
     @GetMapping("/runs/{runId}/carla-video")
-    public ResponseEntity<Resource> carlaVideo(@PathVariable long runId) {
-        var file = runs.carlaVideo(access.projectId(), runId);
+    public ResponseEntity<Resource> carlaVideo(@PathVariable long runId, @AuthenticationPrincipal UserDetails user) {
+        var file = runs.carlaVideo(access.runViewScope(user), runId);
         return ResponseEntity.ok().contentType(MediaType.parseMediaType("video/mp4")).header(HttpHeaders.ACCEPT_RANGES, "bytes")
                 .body(new FileSystemResource(file));
     }
 
+    @Operation(summary = "URL có thời hạn để xem video CARLA; null khi video lưu local")
+    @GetMapping("/runs/{runId}/carla-video-url")
+    public ResponseEntity<Map<String, Object>> carlaVideoUrl(@PathVariable long runId,
+                                                             @RequestParam(defaultValue = "false") boolean download,
+                                                             @AuthenticationPrincipal UserDetails user) {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(Json.obj("url", runs.carlaVideoUrl(access.runViewScope(user), runId, download)));
+    }
+
     @Operation(summary = "Nộp result.json của run CARLA chạy ngoài backend (chỉ run CARLA đang PENDING/FAILED, regression chưa chốt)")
     @PostMapping("/runs/{runId}/carla-result")
-    public Map<String, Object> submitCarlaResult(@PathVariable long runId, @RequestBody Map<String, Object> body, @AuthenticationPrincipal UserDetails user) {
+    public Map<String, Object> submitCarlaResult(@PathVariable long runId, @RequestBody byte[] body, @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "carla_result");
-        return runs.submitCarlaResultFromUi(access.projectId(), runId, uid, body);
+        return runs.submitCarlaResultBytesFromUi(access.projectId(), runId, uid, body);
     }
 
     /**

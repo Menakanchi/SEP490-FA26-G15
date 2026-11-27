@@ -1,5 +1,9 @@
 # FE-R4 fixture provenance
 
+`http-*.json` are the five original HTTP responses used by analysis-v3.mjs,
+moved byte-for-byte from generated backend documentation on 2026-11-26.
+These are test resources with test-only IDs/timestamps, never production inputs.
+
 These are **BROWSER_FIXTURE_ONLY**, not a deployed REST/MySQL environment and not
 production-ready datasets. The original producer inputs and historical results are unchanged.
 

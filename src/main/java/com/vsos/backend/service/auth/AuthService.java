@@ -62,6 +62,9 @@ public class AuthService {
     @PostConstruct
     void resolveRegistrationMode() {
         registrationMode = RegistrationMode.resolve(props.registrationMode(), appEnv);
+        if (registrationMode == RegistrationMode.CLOSED) {
+            log.info("Đăng ký công khai đã tắt (REGISTRATION_MODE=closed); tài khoản do quản trị tạo.");
+        }
         if (registrationMode == RegistrationMode.OTP && !mailService.isConfigured()) {
             log.warn("Đăng ký bằng OTP đang bật nhưng SMTP chưa cấu hình (SMTP_USER / SMTP_PASSWORD) — không ai nhận được mã, nên không ai đăng ký được.");
         }
@@ -73,6 +76,13 @@ public class AuthService {
 
     public RegistrationMode registrationMode() {
         return registrationMode;
+    }
+
+    /** Chế độ {@code closed}: không có đường tự đăng ký nào; tài khoản do quản trị tạo. */
+    private void requireRegistrationOpen() {
+        if (registrationMode == RegistrationMode.CLOSED) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Đăng ký công khai đang tắt. Hãy liên hệ quản trị viên để được cấp tài khoản.");
+        }
     }
 
     // ------------------------------------------------------------------ đăng nhập
@@ -127,6 +137,7 @@ public class AuthService {
      */
     @Transactional
     public AuthResponse register(RegisterRequest request, String clientIp) {
+        requireRegistrationOpen();
         if (registrationMode == RegistrationMode.OTP) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Đăng ký một bước đã tắt. Hãy đăng ký bằng mã xác minh gửi qua email.");
         }
@@ -161,6 +172,7 @@ public class AuthService {
 
     /** Bước 1 đăng ký: chỉ gửi mã khi email chưa có tài khoản; không gửi thì vẫn trả như đã gửi. */
     public void requestRegistration(String email, String clientIp) {
+        requireRegistrationOpen();
         checkOtpRequestRate(clientIp);
         String normalized = normalize(email);
         if (userRepository.existsByEmail(normalized)) {
@@ -176,6 +188,7 @@ public class AuthService {
      */
     @Transactional
     public AuthResponse completeRegistration(String email, String code, String fullName, String password) {
+        requireRegistrationOpen();
         requirePasswordFitsBcrypt(password);
         String normalized = normalize(email);
         if (!otpService.verify(OtpService.Purpose.REGISTER, normalized, code)) {

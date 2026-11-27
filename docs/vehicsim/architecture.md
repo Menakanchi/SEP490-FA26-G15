@@ -5,11 +5,13 @@ code hiện tại hỗ trợ CP_CROSSING và CCRS/CCRM/CCRB (ADR-050).
 Scenario Forge đã gỡ ngày 04/10/2026 (ADR-032); bộ xuất OpenSCENARIO hiện ở
 `src/main/java/com/vsos/core/xosc/XoscExport.java` (ADR-042).
 
-> Đối chiếu Admin/Analysis ngày 17/11/2026: [technical handover](admin-analysis-handover.md)
-> và [Final QA](../exec-plans/completed/2026-11-17-admin-analysis-phase-20-handover.md).
+> Hướng dẫn Admin/Analysis đã gộp trong [tài liệu tổng hợp](../failure-analysis-v3/README.md),
+> gồm bản đồ code, hợp đồng dữ liệu, cách kiểm thử và giới hạn hiện hành.
 > Các bảng tên Python/Forge bên dưới là lịch sử; không phải API đang tồn tại.
 > Admin chỉ có ba trang quản trị, không có Overview riêng. Reviewer theo membership workspace;
-> Engineer vẫn dùng project nhóm chung (TD-30), không tuyên bố cách ly mọi workspace.
+> Engineer và Reviewer theo membership workspace (ADR-064); ADMIN/MANAGER còn dùng project nhóm mặc định (TD-30).
+
+> **Cập nhật 26/11/2026 sau merge:** đã có `OptimizationService` / `core/mobo/MoboEngine`, trial/Pareto và API hủy run/họ/regression/campaign. Snapshot FA chưa được nối vào campaign; Sensitivity/Robustness còn mở. Profile CARLA hiện tại là `carla-0.9.16-xosc16` (ADR-066), động học `1.4`; các định danh v15 ở phần lịch sử bên dưới không dùng cho run mới. Worker trả lỗi khi CARLA không sẵn sàng. Xem [báo cáo kiểm chứng](../LOGIC_AUDIT_REPORT.md).
 
 > Nguồn sự thật: schema DB là [`database/mysql/01_schema.sql`](../../database/mysql/01_schema.sql)
 > (code Java đọc/ghi bằng SQL thuần, không có bản mirror); lý do quyết định là ADR-023 →
@@ -38,7 +40,7 @@ Scenario Forge đã gỡ ngày 04/10/2026 (ADR-032); bộ xuất OpenSCENARIO hi
 |---|---|---|---|---|
 | 1. Mô tả kịch bản | Câu tiếng Việt → xem/sửa Scenario IR | `/scenarios/new` | `POST /scenarios/describe` | `describe.py` |
 | 2. Sinh biến thể | Lưới tham số → họ kịch bản | `/scenarios/new`, `/scenarios` | `POST /families` | `family.py` |
-| 3. Chạy baseline | Xem xe/AEB/bộ mô phỏng → chạy biến thể → theo dõi → Phân tích (mang `scenario_id`); chưa có API hủy (TD-37) | `/scenarios`, `/analysis/carla` | `GET /context`, `POST /families/{id}/run` | `RunService`, thread pool Java |
+| 3. Chạy baseline | Xem xe/AEB/bộ mô phỏng → chạy biến thể → theo dõi/hủy → Phân tích (mang `scenario_id`) | `/scenarios`, `/analysis/carla` | `GET /context`, `POST /families/{id}/run`, `POST /runs/{id}/cancel`, `POST /families/{id}/cancel` | `RunService`, thread pool Java |
 | 4. Phân tích lỗi | Danh sách → detail/evidence → playback; JSON động học hoặc `.xosc` CARLA | `/analysis/failures/**` | `GET /failures`, `/analysis/runs`, `/analysis/runs/{id}`, `/runs/{id}/playback`, `/runs/{id}/bundle`, `/runs/{id}/xosc` | `AnalysisService`, `AnalysisViewService`, `Evaluation` |
 | 5. Cấu hình mới & chạy lại | Tạo candidate AEB → regression cùng seed | `/aeb`, `/validation/regression/new` | `POST /aeb/versions`, `GET /regression/preview`, `POST /regression` | `aeb.py`, `regression.py` |
 | 6. So sánh & quyết định | Kết quả regression → khuyến nghị → **Reviewer** Accept/Reject/Request more tests | `/validation/**` | `GET /regression/{id}`, `/recommendations/{id}`, `POST /recommendations/{id}/decision` | `regression.py`, `views.py` |
@@ -302,7 +304,7 @@ không được đưa lại vào API hiện tại. CPLA/TURNING/CUT_IN chưa tri
 - Đăng ký và quên mật khẩu: email → mã 6 số (TTL 600 s, tối đa 5 lần nhập sai,
   gửi lại sau 60 s, giới hạn theo IP). Mã lưu **HMAC** trong Redis, không lưu MySQL.
 - Không tiết lộ email có tồn tại: luồng OTP phản hồi và thời gian như nhau (gửi mail chạy nền).
-- Hai cách đăng ký, backend chọn bằng `REGISTRATION_MODE` (`auto` | `one_step` | `otp`; `GET /auth/register/mode` cho
+- Hai cách đăng ký, backend chọn bằng `REGISTRATION_MODE` (`auto` | `one_step` | `otp` | `closed`; `GET /auth/register/mode` cho
   frontend biết): `otp` = `POST /auth/register/request` rồi `/verify` (chỉ chủ email mới đăng ký được, cần SMTP);
   `one_step` = `POST /auth/register` tạo tài khoản luôn, không xác minh email. `auto` chọn `otp` ở production và `one_step`
   ở dev (chưa cần SMTP). Ở chế độ `otp` route một bước trả 403; backend cảnh báo lúc khởi động nếu `otp` mà chưa có SMTP,
@@ -342,6 +344,10 @@ không được đưa lại vào API hiện tại. CPLA/TURNING/CUT_IN chưa tri
 - Project đang mở: frontend gửi header `X-VehicSim-Project`; `security/ProjectScope` (bean theo request) chọn project cho
   `ProjectAccess.currentProject()` (Reviewer đi qua `ReviewerScope`, mục dưới). EXPERIENCER chỉ mở được project `ACTIVE` của mình, không gửi header thì mở project hoạt động cập nhật gần
   nhất; role khác bỏ qua header và giữ project nhóm `ACTIVE` đầu tiên.
+- Phạm vi xem lượt chạy CARLA (`GET /carla/runs`, `/runs/{id}/carla-data`, `carla-files`, `carla-video`, `carla-video-url`) theo `security/RunViewScope`:
+  EXPERIENCER chỉ thấy lượt do chính mình chạy trong project đang mở; ENGINEER/REVIEWER thấy mọi lượt của project thuộc workspace mình là thành viên
+  (cả workspace xem chung, project ngoài workspace bị `ReviewerScope` chặn); ADMIN thấy mọi lượt ở mọi project, không cần project đang mở, và có thể chọn xem từng project (`GET /carla/runs?project_id=<id>`; `GET /carla/run-projects` liệt kê các project có lượt, chỉ ADMIN; role khác bỏ qua `project_id`).
+  Lượt ngoài phạm vi trả 404 (không lộ lượt có tồn tại). Màn phân tích, regression và tối ưu vẫn giới hạn theo project đang mở như trước.
 - Lỗi project trả `{"code": "<TÊN_LỖI>", "detail": "<câu tiếng Việt>"}` (`exception/project/ProjectError`); lỗi khác giữ `{"detail"}`.
 
 ## Trang chủ Reviewer, công việc và phạm vi dữ liệu (UC-62/UC-63)
@@ -500,7 +506,7 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | `JWT_SECRET`, `ACCESS_TOKEN_TTL_MINUTES` | Phiên đăng nhập (`JWT_SECRET`: Base64 ≥ 256 bit) |
 | `CORS_ORIGINS` | Origin của frontend được gọi API |
 | `OTP_TTL_SECONDS`, `OTP_MAX_ATTEMPTS`, `OTP_RESEND_COOLDOWN_SECONDS` | Mã 6 số |
-| `REGISTRATION_MODE` | `auto` (mặc định: production → `otp`, còn lại → `one_step`), `one_step`, `otp` |
+| `REGISTRATION_MODE` | `auto` (mặc định: production → `otp`, còn lại → `one_step`), `one_step`, `otp`, `closed` (tắt đăng ký công khai; tài khoản do quản trị tạo, 403 ở mọi route đăng ký) |
 | `FORWARD_HEADERS_STRATEGY` | `none` (mặc định) hoặc `native` khi đứng sau reverse proxy (TD-36) |
 | `RATE_LIMIT_WINDOW_SECONDS`, `LOGIN_ATTEMPTS_PER_IP`, `LOGIN_ATTEMPTS_PER_ACCOUNT`, `OTP_REQUESTS_PER_IP`, `REGISTER_REQUESTS_PER_IP` | Giới hạn tần suất xác thực |
 | `LLM_PROVIDER`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY` | Lớp LLM dùng chung (chỉ bước 1 "Sinh từ mô tả" gọi LLM) |

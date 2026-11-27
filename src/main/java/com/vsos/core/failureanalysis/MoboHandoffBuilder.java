@@ -8,6 +8,9 @@ import static com.vsos.core.failureanalysis.HandoffSnapshots.*;
 
 /** Read-only M1C boundary. Normalized offline snapshots are not backend DTOs or an optimizer API. */
 public final class MoboHandoffBuilder {
+    public static List<String> schemaViolations(Map<String,Object> handoff){
+        return HandoffSchemaValidator.validate(handoff).stream().map(v->v.code()+":"+v.path()).toList();
+    }
     public static final String SCHEMA="vehicsim.failure-analysis-mobo-handoff/v1";
     public static final String BUILD="failure-analysis-m1c/1.0.1";
     public record MemberInput(Run run,Map<String,Object> evidenceReport,Map<String,Object> diagnosticReport,
@@ -32,7 +35,7 @@ public final class MoboHandoffBuilder {
         boolean frozen=selectionVerified&&"FROZEN".equals(at(selected,"/selection_status"))&&Boolean.TRUE.equals(at(selected,"/reviewed"))
                 &&Boolean.TRUE.equals(at(selected,"/baseline_current"))&&id(at(selected,"/snapshot_id"))&&id(at(selected,"/project_id"))
                 &&id(at(selected,"/scenario_id"))&&id(at(selected,"/baseline_version_id"))&&cited(at(selected,"/review_refs"))
-                &&"vehicsim.analysis-dataset/v2".equals(at(selected,"/snapshot_schema"))&&timestamp(at(selected,"/exported_at"));
+                &&Set.of("vehicsim.analysis-dataset/v2","vehicsim.fa-v3-sealed-dataset/v1").contains(Objects.toString(at(selected,"/snapshot_schema"),""))&&timestamp(at(selected,"/exported_at"));
         if(!frozen)global.add("REVIEWED_FROZEN_SELECTION_UNKNOWN");
         boolean policyApproved=verified(policy,"vehicsim.handoff-quality-policy/v1")&&selectionVerified
                 &&"APPROVED".equals(at(policy.data(),"/status"))&&"MOBO_HANDOFF".equals(at(policy.data(),"/scope"))
@@ -185,7 +188,7 @@ public final class MoboHandoffBuilder {
                 "role_basis",row.getOrDefault("role_basis","UNKNOWN"),"role_evidence_refs",selection==null?List.of():List.of(new SourceRef(selection.id(),"/members").json()),
                 "run_status",sample==null?unknownJson("DB_RUN_STATUS_UNKNOWN"):observed(sample.status(),sampleArtifact,"/sample/status",null),
                 "end_reason",run.read("result","/outcome/end_reason",null,null).json(),"simulator",run.read("result","/simulator",null,null).json(),
-                "dt",run.read("result","/outcome/case/carla/fixed_delta_seconds","s",null).json(),"actual_parameters",actual,
+                "dt",memberStep(run),"actual_parameters",actual,
                 "artifact_digest",run.artifact("result").sha256()==null?unknownJson("ARTIFACT_HASH_MISSING"):observed(run.artifact("result").sha256(),run.artifact("result"),"","sha256"),
                 "artifact_digest_profile","SHA256_BYTES","configuration_digest",hash(row.get("configuration_digest"))&&selection!=null?observed(row.get("configuration_digest"),selection,"/members","sha256"):unknownJson("CONFIGURATION_DIGEST_UNKNOWN"),
                 "diagnostic_report_ref",validReport?value(at(report,"/content_digest"),Status.OBSERVED,null,null,List.of(new SourceRef("report:"+run.runKey(),"/content_digest"))).json():unknownJson("REPORT_UNVERIFIED"),
@@ -257,15 +260,31 @@ public final class MoboHandoffBuilder {
     }
     private static boolean provenanceValid(Artifact snapshot,Run r){
         if(!verified(snapshot,"vehicsim.canonical-sample-snapshot/v1"))return false;Object p=at(snapshot.data(),"/provenance");
+        boolean database=JsonInputAdapter.supports(r)&&"PERSISTED_CANONICAL_RESULT".equals(at(p,"/provenance_scope"));
+        var descriptor=MetricProvenanceResolver.descriptor(r);
+        Object expectedDt=database?descriptor.dt():r.get("result","/outcome/case/carla/fixed_delta_seconds");
         if(!AnalysisMetrics.VERSION.equals(at(p,"/aggregation_version"))||!"SIMULATOR_RESULT".equals(at(p,"/metric_source"))
                 ||!Objects.equals(at(p,"/simulator"),r.get("result","/simulator"))||!Objects.equals(at(p,"/producer"),r.get("result","/engine"))
-                ||!sameNumber(at(p,"/dt"),r.get("result","/outcome/case/carla/fixed_delta_seconds"))||!finiteNonnegative(at(p,"/dt"))
+                ||!sameNumber(at(p,"/dt"),expectedDt)||!finiteNonnegative(at(p,"/dt"))
                 ||((Number)at(p,"/dt")).doubleValue()==0||!id(at(p,"/vehicle_id")))return false;
-        for(String key:List.of("core_jar_sha256","worker_sha256","scenario_runner_sha256"))if(!hash(at(p,"/"+key)))return false;
-        if(!text(at(p,"/core_source_commit"))||!text(at(p,"/scenario_runner_version"))||!cited(at(p,"/source_refs")))return false;
-        Object jar=r.get("lifecycle","/core/sha256"),commit=r.get("environment","/git_commit");
-        if(jar==null||commit==null||!Objects.equals(jar,at(p,"/core_jar_sha256"))||!Objects.equals(commit,at(p,"/core_source_commit")))return false;
-        if(r.artifact("vsos-core")!=null&&!Objects.equals(r.artifact("vsos-core").sha256(),at(p,"/core_jar_sha256")))return false;
+        if(database){
+            Object identity=r.get("result","/dataset/identity"),db=at(p,"/database_source");
+            if(!descriptor.supported()||r.artifact("result").integrity()!=Integrity.VERIFIED
+                    ||!Objects.equals(r.artifact("result").sha256(),at(r.artifact("result").provenance(),"/independently_expected_container_sha256"))
+                    ||!Objects.equals(r.artifact("result").sha256(),at(db,"/source_sha256"))||!text(at(db,"/source_id"))
+                    ||!Boolean.TRUE.equals(at(p,"/canonical_targets_only"))||!Boolean.TRUE.equals(at(p,"/calibration_not_applicable"))
+                    ||!cited(at(p,"/canonical_review_refs")))return false;
+            for(String key:List.of("project_id","run_id","attempt"))if(!Objects.toString(at(identity,"/"+key)).equals(Objects.toString(at(db,"/"+key))))return false;
+            Object jar=r.get("result","/dataset/provenance/core_jar_sha256"),binary=r.get("result","/dataset/provenance/core_bytecode_sha256"),commit=r.get("result","/dataset/provenance/git_commit");
+            if(!hash(jar)&&!hash(binary)||!text(commit)||!Objects.equals(commit,at(p,"/core_source_commit"))
+                    ||!Objects.equals(jar,at(p,"/core_jar_sha256"))||!Objects.equals(binary,at(p,"/core_bytecode_sha256")))return false;
+        }else{
+            for(String key:List.of("core_jar_sha256","worker_sha256","scenario_runner_sha256"))if(!hash(at(p,"/"+key)))return false;
+            if(!text(at(p,"/core_source_commit"))||!text(at(p,"/scenario_runner_version"))||!cited(at(p,"/source_refs")))return false;
+            Object jar=r.get("lifecycle","/core/sha256"),commit=r.get("environment","/git_commit");
+            if(jar==null||commit==null||!Objects.equals(jar,at(p,"/core_jar_sha256"))||!Objects.equals(commit,at(p,"/core_source_commit")))return false;
+            if(r.artifact("vsos-core")!=null&&!Objects.equals(r.artifact("vsos-core").sha256(),at(p,"/core_jar_sha256")))return false;
+        }
         if(!list(at(p,"/metric_source_hashes")).stream().allMatch(x->text(at(x,"/path"))&&hash(at(x,"/sha256"))&&text(at(x,"/commit")))
                 ||list(at(p,"/metric_source_hashes")).isEmpty())return false;
         for(String key:CanonicalObjectiveReader.KEYS){Object profile=at(p,"/objectives/"+key);
@@ -282,6 +301,12 @@ public final class MoboHandoffBuilder {
         if(JsonInputAdapter.supports(r))return JsonInputAdapter.declaredIdentity(r).get(rep?"repetition":"attempt");
         var m=java.util.regex.Pattern.compile("/rep(\\d+)_a(\\d+)$").matcher(r.directory());
         return m.find()?new Value(Long.valueOf(m.group(rep?1:2)),Status.DERIVED,null,null,List.of(r.ref("result","")),List.of(),"fa-artifact-directory-replication/1").json():unknownJson("REPLICATION_IDENTITY_UNKNOWN");
+    }
+    private static Map<String,Object> memberStep(Run run){
+        var descriptor=MetricProvenanceResolver.descriptor(run);
+        if(JsonInputAdapter.supports(run)&&descriptor.supported()&&!descriptor.carla())
+            return new MetricProvenanceResolver().resolve(run).fields().get("dt").json();
+        return run.read("result","/outcome/case/carla/fixed_delta_seconds","s",null).json();
     }
     private static boolean reviewedNonhazard(Member m,Artifact policy,boolean approved){
         Object v=approved?at(policy.data(),"/members/"+m.input.run().runKey()+"/nonhazard_review"):null;
@@ -312,7 +337,7 @@ public final class MoboHandoffBuilder {
         if(params.size()>1)reasons.add("MIXED_BASELINE_PARAMETERS");if(contexts.size()>1)reasons.add("MIXED_COHORT_PROVENANCE");
     }
     private static Map<String,Object> context(Object p){Map<String,Object> out=new TreeMap<>();
-        for(String k:List.of("simulator","producer","dt","vehicle_id","core_jar_sha256","core_source_commit","worker_sha256","scenario_runner_version","scenario_runner_sha256","aggregation_version","objectives"))out.put(k,at(p,"/"+k));
+        for(String k:List.of("simulator","producer","dt","vehicle_id","core_jar_sha256","core_bytecode_sha256","provenance_scope","core_source_commit","worker_sha256","scenario_runner_version","scenario_runner_sha256","aggregation_version","objectives"))out.put(k,at(p,"/"+k));
         // Per-run locators differ; the metric definitions must not.
         Map<String,Object> defs=new TreeMap<>();for(String key:CanonicalObjectiveReader.KEYS){Object def=at(p,"/objectives/"+key);defs.put(key,obj("signal",at(def,"/signal"),"filter",at(def,"/filter"),"window",at(def,"/window")));}
         out.put("objectives",defs);return out;}

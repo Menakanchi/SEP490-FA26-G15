@@ -10,6 +10,7 @@ import java.util.*;
 import static com.vsos.backend.common.Vs.*;
 import com.vsos.backend.common.Json;
 import com.vsos.backend.common.Vs;
+import com.vsos.backend.common.RunEvidence;
 import com.vsos.backend.repository.common.Db;
 import com.vsos.backend.repository.common.Queries;
 import com.vsos.backend.repository.common.Row;
@@ -28,7 +29,7 @@ public class AnalysisService {
     // Scalar projection: dashboard never fetches the whole telemetry for every run.
     static final String SELECT = "SELECT r.id, r.scenario_id, r.scenario_version_id, r.aeb_version_id, "
             + "r.carla_vehicle_model_id, r.simulator_type, r.simulator_version, r.fixed_delta_seconds, "
-            + "r.random_seed, r.status, r.end_reason, r.verdict, r.collision_occurred, r.is_false_positive, r.is_false_negative, "
+            + "r.random_seed, r.aeb_mode, r.status, r.end_reason, r.verdict, r.collision_occurred, r.is_false_positive, r.is_false_negative, "
             + "r.aeb_activated, r.rms_jerk_mps3, r.impact_speed_mps, r.stopping_distance_m, r.min_distance_m, r.min_ttc_s, "
             + "r.error_message, r.queued_at, s.code, s.name, s.category, sv.version_no, pc.category AS failure_class, "
             + "JSON_UNQUOTE(JSON_EXTRACT(r.run_config_json, '$.weather')) AS weather, "
@@ -46,23 +47,14 @@ public class AnalysisService {
         if (value != null && !value.toString().isBlank()) { sql.append(" AND ").append(column).append(" = ?"); args.add(value); }
     }
     public static AnalysisMetrics.Sample sample(Row row) {
-        Boolean braked = row.get("brake_onset") != null && !"null".equals(row.str("brake_onset")) ? Boolean.TRUE
-                : row.dbl("rms_jerk_mps3") != null || row.dbl("stopping_distance_m") != null ? Boolean.TRUE
-                : Boolean.FALSE.equals(row.boolOrNull("aeb_activated")) ? Boolean.FALSE : null;
-        boolean traceAvailable = row.asMap().containsKey("trace_frames")
-                ? row.getInt("trace_frames") != null && row.getInt("trace_frames") > 0
-                : !Json.asList(row.json("telemetry_json").get("frames")).isEmpty();
-        String qualityStatus = "COMPLETED".equals(row.str("status")) && !traceAvailable ? "INCOMPLETE" : row.str("status");
-        return new AnalysisMetrics.Sample(qualityStatus, row.str("end_reason"),
-                row.boolOrNull("collision_occurred"), row.boolOrNull("is_false_positive"),
-                row.boolOrNull("is_false_negative"), row.str("verdict"), braked,
-                row.dbl("rms_jerk_mps3"), row.dbl("impact_speed_mps"), row.dbl("stopping_distance_m"));
+        return RunEvidence.sample(row);
     }
     static String outcome(Row row) {
         if ("TIMEOUT".equals(row.str("end_reason"))) return "TIMEOUT";
         if ("STOPPED".equals(row.str("status"))) return "CANCELLED";
         if ("FAILED".equals(row.str("status")) || "ERROR".equals(row.str("end_reason"))) return "ERROR";
         if (!"COMPLETED".equals(row.str("status"))) return "NOT_FINISHED";
+        if ("OFF".equals(row.str("aeb_mode"))) return "REFERENCE";
         if (!AnalysisMetrics.valid(sample(row)) || !AnalysisMetrics.evidenceComplete(List.of(sample(row)))) return "INCOMPLETE";
         if (row.bool("collision_occurred")) return "COLLISION";
         if (row.bool("is_false_positive")) return "FALSE_BRAKING";
@@ -89,12 +81,14 @@ public class AnalysisService {
                         "stopping_distance_m", r.dbl("stopping_distance_m")),
                 "created_at", Vs.iso(r.ts("queued_at")));
         out.put("revision",digest(out));
+        // Preserve the existing ON snapshot/revision contract; mark reference runs explicitly.
+        if ("OFF".equals(r.str("aeb_mode"))) out.put("aeb_mode", "OFF");
         return out;
     }
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Map<String, Object> dashboard(Filters filters, int page, int pageSize) {
         long projectId = projects.currentProject().lng("id");
-        StringBuilder sql = new StringBuilder(SELECT);
+        StringBuilder sql = new StringBuilder(filters.variantId() == null ? SELECT : SELECT.replace(" AND r.aeb_mode = 'ON'", ""));
         List<Object> args = new ArrayList<>(List.of(projectId));
         condition(sql,args,"r.scenario_id",filters.scenarioId());
         condition(sql,args,"r.scenario_version_id",filters.variantId());
@@ -105,13 +99,17 @@ public class AnalysisService {
         condition(sql,args,"JSON_UNQUOTE(JSON_EXTRACT(r.run_config_json, '$.time_of_day'))",filters.timeOfDay());
         condition(sql,args,"r.status",filters.status());
         condition(sql,args,"pc.category",filters.failureClass());
-        List<Row> rows = db.list(sql + " ORDER BY r.id DESC", args.toArray());
+        // Sort projected rows in Java: MySQL filesort can exhaust its buffer when
+        // the projection includes JSON-derived fields from large CARLA telemetry.
+        List<Row> rows = db.list(sql.toString(), args.toArray()).stream()
+                .sorted(Comparator.comparingLong((Row row) -> row.lng("id")).reversed()).toList();
         Map<String, Long> counts = new LinkedHashMap<>();
         for (String key : List.of("SAFE","COLLISION","FALSE_BRAKING","NEAR_MISS","MISSED_BRAKING","OTHER_FAILURE",
-                "ERROR","CANCELLED","TIMEOUT","INCOMPLETE","NOT_FINISHED")) counts.put(key,0L);
+                "ERROR","CANCELLED","TIMEOUT","INCOMPLETE","NOT_FINISHED","REFERENCE")) counts.put(key,0L);
         rows.forEach(row -> counts.merge(outcome(row),1L,Long::sum));
         Map<String,List<Row>> groups = new LinkedHashMap<>();
-        rows.forEach(row -> groups.computeIfAbsent(identity(row), k -> new ArrayList<>()).add(row));
+        rows.stream().filter(row -> !"OFF".equals(row.str("aeb_mode")))
+                .forEach(row -> groups.computeIfAbsent(identity(row), k -> new ArrayList<>()).add(row));
         List<Map<String,Object>> summaries = new ArrayList<>();
         groups.forEach((key, group) -> summaries.add(Json.obj("identity",key,"simulator",group.get(0).str("simulator_version"),
                 "baseline_id",group.get(0).lng("aeb_version_id"),"vehicle_id",group.get(0).lng("carla_vehicle_model_id"),
@@ -124,11 +122,12 @@ public class AnalysisService {
     private List<Row> selected(List<Long> ids, long projectId) {
         if (ids.isEmpty()) return List.of();
         List<Object> args = new ArrayList<>(List.of(projectId)); args.addAll(ids);
-        return db.list(SELECT + " AND r.id IN (" + Db.placeholders(ids.size()) + ") ORDER BY r.id", args.toArray());
+        return db.list(SELECT + " AND r.id IN (" + Db.placeholders(ids.size()) + ")", args.toArray()).stream()
+                .sorted(Comparator.comparingLong(row -> row.lng("id"))).toList();
     }
     @Transactional(readOnly = true)
     public Map<String,Object> inspection(long runId) {
-        List<Row> found = db.list(SELECT.replace(" AND r.purpose = 'BASELINE'", "")
+        List<Row> found = db.list(SELECT.replace(" AND r.purpose = 'BASELINE'", "").replace(" AND r.aeb_mode = 'ON'", "")
                 + " AND r.id = ?", projects.currentProject().lng("id"), runId);
         if (found.isEmpty()) throw new NotFoundException("baseline run");
         Row row = found.get(0);
@@ -184,8 +183,8 @@ public class AnalysisService {
             throw new InvalidRequestException("Analysis optimization objectives are incomplete");
         Row first = rows.get(0);
         Map<String,Object> contract = Json.obj("version",AnalysisMetrics.VERSION,"source","SIMULATOR_RESULT",
-                "per_run_definition","ADR040_LEGACY_UNCHANGED","filter","AS_RECORDED",
-                "impact","EGO_SPEED_NOT_RELATIVE","stopping_distance","MAY_INCLUDE_EXTRAPOLATION",
+                "per_run_definition","AS_RECORDED_BY_SIMULATOR_PROFILE","filter","AS_RECORDED",
+                "impact",impactDefinition(first.str("simulator_version")),"stopping_distance","MAY_INCLUDE_EXTRAPOLATION",
                 "identity",identity(first),"carla_observational_only",first.str("simulator_version").startsWith("carla-"));
         Map<String,Object> snapshot = Json.obj("schema","vehicsim.analysis-dataset/v2","evaluation",contract,
                 "scenario",Json.obj("id",body.scenarioId(),"code",first.str("code"),"name",first.str("name"),"category",first.str("category")),
@@ -198,7 +197,8 @@ public class AnalysisService {
         // Preserve actual scenario/run/vehicle/AEB snapshots as well as their IDs.
         List<Object> args = new ArrayList<>(List.of(projectId)); args.addAll(all);
         List<Row> manifests = db.list("SELECT id, run_config_json, telemetry_json FROM simulation_runs WHERE project_id = ? AND id IN ("
-                + Db.placeholders(all.size()) + ") ORDER BY id",args.toArray());
+                + Db.placeholders(all.size()) + ")",args.toArray()).stream()
+                .sorted(Comparator.comparingLong(row -> row.lng("id"))).toList();
         if (manifests.size() != rows.size() || manifests.stream().anyMatch(row -> !validTrace(row.json("telemetry_json"))))
             throw new InvalidRequestException("Analysis selection contains invalid runs or missing telemetry");
         snapshot.put("manifests",manifests.stream().map(row -> {
@@ -215,6 +215,17 @@ public class AnalysisService {
                 Json.obj("schema","vehicsim.analysis-dataset/v2","evaluation",contract),snapshot,userId);
         snapshot.put("id",id); snapshot.put("baseline_current",true); snapshot.put("handoff_ready",true);
         return snapshot;
+    }
+
+    static String impactDefinition(String simulator) {
+        if (simulator == null) return "UNKNOWN";
+        if (Set.of("vehicsim-kinematic-1.1","vehicsim-kinematic-1.2","vehicsim-kinematic-1.3","vehicsim-kinematic-1.4",
+                "carla-0.9.16-xosc9","carla-0.9.16-xosc10","carla-0.9.16-xosc11","carla-0.9.16-xosc12",
+                "carla-0.9.16-xosc13","carla-0.9.16-xosc14","carla-0.9.16-xosc15","carla-0.9.16-xosc16").contains(simulator))
+            return "RELATIVE_SPEED_CORE_COLLISION_TICK";
+        if ("vehicsim-kinematic-1.0".equals(simulator) || simulator.matches("carla-0\\.9\\.16-xosc[1-8]"))
+            return "EGO_SPEED_NOT_RELATIVE";
+        return "UNKNOWN";
     }
     static boolean validTrace(Map<String,Object> raw) {
         List<Object> frames = Json.asList(raw.get("frames"));
@@ -233,6 +244,8 @@ public class AnalysisService {
     }
 
     static boolean sameValue(Object a, Object b) {
+        if (a instanceof Record) a = Json.parseMap(Json.write(a));
+        if (b instanceof Record) b = Json.parseMap(Json.write(b));
         if (a instanceof Number x && b instanceof Number y)
             return new java.math.BigDecimal(x.toString()).compareTo(new java.math.BigDecimal(y.toString())) == 0;
         if (a instanceof Map<?,?> x && b instanceof Map<?,?> y)
@@ -242,6 +255,7 @@ public class AnalysisService {
         return Objects.equals(a,b);
     }
     private static Object canonical(Object value) {
+        if (value instanceof Record) return canonical(Json.parseMap(Json.write(value)));
         if (value instanceof Map<?,?> map) {
             Map<String,Object> sorted = new TreeMap<>();
             map.forEach((key,item)->sorted.put(String.valueOf(key),canonical(item)));
@@ -260,13 +274,43 @@ public class AnalysisService {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Map<String,Object> handoff(long datasetId) {
-        Map<String,Object> saved = views.savedAnalysisDataset(datasetId);
+        return validateHandoff(views.savedAnalysisDataset(datasetId), projects.currentProject().lng("id"));
+    }
+
+    /** Background campaigns have no request project context; always bind their saved selection explicitly. */
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public Map<String,Object> handoff(long projectId, long datasetId) {
+        Row row = db.first("SELECT id, aeb_version_id, summary_json FROM analysis_results "
+                        + "WHERE id = ? AND project_id = ? AND analysis_type = 'BASELINE_DATASET' "
+                        + "AND method = 'IMMUTABLE_SNAPSHOT' AND status = 'COMPLETED'", datasetId, projectId);
+        if (row == null) throw new NotFoundException("analysis dataset");
+        Map<String,Object> saved = new LinkedHashMap<>(row.json("summary_json"));
+        Row baseline = queries.baselineVersion(projectId);
+        saved.put("id", datasetId);
+        saved.put("baseline_current", baseline != null && baseline.lng("id") == row.lng("aeb_version_id"));
+        return validateHandoff(saved, projectId);
+    }
+
+    /** Hash persisted business content only, independently of timestamps and request-derived readiness flags. */
+    public static String datasetDigest(Map<String,Object> saved) {
+        Map<String,Object> content = new LinkedHashMap<>(saved);
+        List.of("id", "created_at", "baseline_current", "handoff_ready", "dataset_digest").forEach(content::remove);
+        return digest(content);
+    }
+
+    private Map<String,Object> validateHandoff(Map<String,Object> saved, long projectId) {
         if (!"vehicsim.analysis-dataset/v2".equals(saved.get("schema")))
             throw new InvalidRequestException("Legacy analysis dataset requires a new selection");
         if (!Boolean.TRUE.equals(saved.get("baseline_current"))) throw new InvalidRequestException("Analysis baseline changed");
         List<Long> ids = Json.asList(saved.get("runs")).stream().map(Json::asMap)
                 .map(row -> ((Number)row.get("run_id")).longValue()).toList();
-        List<Row> current = selected(ids,projects.currentProject().lng("id"));
+        List<Long> optimization = ids(Json.asList(saved.get("optimization_run_ids")).stream().map(id -> ((Number)id).longValue()).toList());
+        List<Long> validation = ids(Json.asList(saved.get("validation_run_ids")).stream().map(id -> ((Number)id).longValue()).toList());
+        List<Long> partitionIds = new ArrayList<>(optimization); partitionIds.addAll(validation);
+        if (new HashSet<>(partitionIds).size() != partitionIds.size() || ids.size() != partitionIds.size()
+                || !new HashSet<>(ids).equals(new HashSet<>(partitionIds)))
+            throw new InvalidRequestException("Analysis dataset partitions changed");
+        List<Row> current = selected(ids,projectId);
         if (current.size() != ids.size()) throw new InvalidRequestException("Analysis source runs are unavailable");
         for (Row row : current) {
             Map<String,Object> recorded = Json.asList(saved.get("runs")).stream().map(Json::asMap)
@@ -275,14 +319,46 @@ public class AnalysisService {
                     || !sameValue(item(row), recorded))
                 throw new InvalidRequestException("Analysis source runs changed or telemetry is missing");
         }
+        List<Row> opt = current.stream().filter(row -> optimization.contains(row.lng("id"))).toList();
+        List<Row> val = current.stream().filter(row -> validation.contains(row.lng("id"))).toList();
+        checkSet(opt); checkSet(val);
+        Set<Long> optVariants = opt.stream().map(row -> row.lng("scenario_version_id")).collect(java.util.stream.Collectors.toSet());
+        if (val.stream().anyMatch(row -> optVariants.contains(row.lng("scenario_version_id"))))
+            throw new InvalidRequestException("Analysis dataset partitions contain the same variant");
+        if (current.stream().map(AnalysisService::identity).distinct().count() != 1)
+            throw new InvalidRequestException("Analysis dataset mixes vehicle or simulator identities");
+        if (current.stream().map(row -> row.lng("scenario_version_id")+"|"+row.getLong("random_seed")).distinct().count() != current.size())
+            throw new InvalidRequestException("Analysis dataset repeats a variant and seed");
+        if (!AnalysisMetrics.objectivesAvailable(opt.stream().map(AnalysisService::sample).toList()))
+            throw new InvalidRequestException("Analysis optimization objectives are incomplete");
+        if (!AnalysisMetrics.evidenceComplete(val.stream().map(AnalysisService::sample).toList()))
+            throw new InvalidRequestException("Analysis validation evidence is incomplete");
+        // MySQL's JSON parser can round a serialized double by one ULP. Compare the
+        // recomputed objectives after the same JSON conversion as summary_json,
+        // without relaxing the source revision or artifact integrity checks.
+        Map<String,Object> recomputed = Json.obj(
+                "optimization", AnalysisMetrics.aggregate(opt.stream().map(AnalysisService::sample).toList()),
+                "validation", AnalysisMetrics.aggregate(val.stream().map(AnalysisService::sample).toList()));
+        Object normalizedJson = db.scalar("SELECT CAST(? AS JSON)", Json.write(recomputed));
+        if (normalizedJson == null) throw new IllegalStateException("Could not normalize analysis objectives as MySQL JSON");
+        Map<String,Object> normalized = Json.parseMap(normalizedJson.toString());
+        if (!sameValue(saved.get("optimization_objectives"), normalized.get("optimization")))
+            throw new InvalidRequestException("Analysis optimization objectives changed");
+        if (!sameValue(saved.get("validation_objectives"), normalized.get("validation")))
+            throw new InvalidRequestException("Analysis validation objectives changed");
+        List<Object> manifests = Json.asList(saved.get("manifests"));
+        if (manifests.size() != ids.size() || !manifests.stream().map(Json::asMap).map(m -> ((Number)m.get("run_id")).longValue())
+                .collect(java.util.stream.Collectors.toSet()).equals(new HashSet<>(ids)))
+            throw new InvalidRequestException("Analysis dataset manifests are incomplete");
         for (Object value : Json.asList(saved.get("manifests"))) {
             Map<String,Object> manifest = Json.asMap(value);
             Row source = db.first("SELECT telemetry_json, run_config_json FROM simulation_runs WHERE id = ? AND project_id = ?",
-                    ((Number)manifest.get("run_id")).longValue(), projects.currentProject().lng("id"));
+                    ((Number)manifest.get("run_id")).longValue(), projectId);
             if (source == null || !Objects.equals(manifest.get("artifact_digest"),digest(source.json("telemetry_json")))
                     || !Objects.equals(manifest.get("config_digest"),digest(source.json("run_config_json"))))
                 throw new InvalidRequestException("Analysis source runs changed or telemetry is missing");
         }
+        saved.put("dataset_digest",datasetDigest(saved));
         saved.put("handoff_ready",true); return saved;
     }
 }

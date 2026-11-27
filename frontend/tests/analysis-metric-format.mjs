@@ -8,6 +8,22 @@ const source = await readFile(new URL("../src/components/analysis/analysisMetric
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
 const { formatMetric, formatObjective, formatMeasurement, formatRunImpact, speedKmh, objectiveState } = await import("data:text/javascript;base64," + Buffer.from(compiled).toString("base64"));
 
+test("new OFF and vehicle-limit explanations retain physical observations in Vietnamese", async () => {
+  const source = await readFile(new URL("../src/components/vehicsimI18n.ts", import.meta.url), "utf8");
+  const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
+  const { vi } = await import("data:text/javascript;base64," + Buffer.from(js).toString("base64"));
+  assert.match(vi("AEB OFF reference: collision observed. AEB intervention assessment is not applicable."), /AEB tắt: có va chạm/);
+  assert.match(vi("Available vehicle braking capped deceleration at 3.0 m/s² vs 8.0 requested."), /Khả năng phanh của xe.*3.0.*8.0/);
+  assert.match(vi("Optimization baseline is missing selected variant runs"), /Baseline chưa có đủ lượt chạy/);
+  assert.match(vi("Optimization candidate is missing selected variant runs"), /Ứng viên chưa có đủ lượt chạy/);
+  assert.match(vi("Analysis dataset partitions contain the same variant"), /biến thể trùng/);
+  assert.match(vi("Analysis dataset mixes vehicle or simulator identities"), /không cùng xe/);
+  assert.match(vi("Analysis dataset repeats a variant and seed"), /seed bị lặp/);
+  assert.match(vi("Analysis validation evidence is incomplete"), /Tập xác minh chưa đủ/);
+  assert.match(vi("Analysis optimization objectives changed"), /Chỉ số của tập tối ưu/);
+  assert.match(vi("Analysis validation objectives changed"), /Chỉ số của tập xác minh/);
+});
+
 test("m/s frame conversion preserves raw precision; API km/h is formatted directly", () => {
   assert.equal(speedKmh(10), 36);
   assert.equal(formatMeasurement(speedKmh(10), "km/h"), "36.0 km/h");

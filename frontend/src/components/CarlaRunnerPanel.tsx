@@ -9,7 +9,7 @@ import { Card, ErrorNote, PillButton, StatCard, Tag, cx, runCode, simulatorLabel
 import { vi } from "@/components/vehicsimI18n";
 import { useAuth } from "@/context/AuthContext";
 import { vehicsimApi } from "@/services/vehicsim";
-import type { CarlaData, CarlaRun, CarlaStatus } from "@/types/vehicsim";
+import type { CarlaData, CarlaRun, CarlaRunProject, CarlaStatus } from "@/types/vehicsim";
 
 import { formatObjective } from "./analysis/analysisMetricFormat";
 
@@ -42,7 +42,15 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
   const [modalOpen, setModalOpen] = useState(false);
   const [sensorAttempt, setSensorAttempt] = useState(0);
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const loadRuns = useCallback(() => vehicsimApi.carlaRuns().then(rows => { setRuns(rows); return rows; }), []);
+  // ADMIN xem lượt của từng project theo ý mình ("" = mọi project); role khác bỏ qua, backend giữ phạm vi của họ.
+  const isAdmin = user?.roleCode === "ADMIN";
+  const [projectFilter, setProjectFilter] = useState("");
+  const [runProjects, setRunProjects] = useState<CarlaRunProject[]>([]);
+  useEffect(() => {
+    if (isAdmin) void vehicsimApi.carlaRunProjects().then(setRunProjects).catch(() => setRunProjects([]));
+  }, [isAdmin]);
+  const projectName = (id?: number) => runProjects.find(p => p.id === id)?.name;
+  const loadRuns = useCallback(() => vehicsimApi.carlaRuns(isAdmin && projectFilter ? Number(projectFilter) : null).then(rows => { setRuns(rows); return rows; }), [isAdmin, projectFilter]);
   const checkConnection = useCallback(() => vehicsimApi.carlaStatus().then(setConnection), []);
   useEffect(() => {
     const run = Number(new URLSearchParams(window.location.search).get("run"));
@@ -110,7 +118,6 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
 
   // Chỉ kết quả baseline lỗi / đã hủy, do chính mình tạo (ADMIN: của mọi người) mới xoá được; lượt hoàn thành là số liệu thật nên luôn giữ.
   // Backend kiểm lại toàn bộ; mốc của regression bị từ chối ở đó.
-  const isAdmin = user?.roleCode === "ADMIN";
   const deletable = (run: CarlaRun) => canEditRuns && run.purpose === "BASELINE" && !run.regression_test_id && !run.optimization_trial_id
     && (run.status === "FAILED" || run.status === "STOPPED")
     && (isAdmin || (user != null && String(run.created_by_user_id) === user.id));
@@ -203,10 +210,22 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="text-[15px] font-bold text-vehicsim-ink">Lượt chạy gần đây</h3>
-            <p className="mt-1 text-[12px] text-vehicsim-muted">Tối đa 30 lượt CARLA gần nhất trong project.</p>
+            <p className="mt-1 text-[12px] text-vehicsim-muted">
+              {isAdmin ? "Tối đa 30 lượt CARLA gần nhất của project bạn chọn, hoặc của mọi project." : "Tối đa 30 lượt CARLA gần nhất trong project."}
+            </p>
           </div>
           {familyDone && <PillButton href={`/analysis/failures?scenario_id=${familyId}`}>Phân tích kết quả</PillButton>}
         </div>
+        {isAdmin && (
+          <label className="mt-4 flex max-w-lg flex-col gap-1.5 text-[13px] font-semibold text-vehicsim-ink">
+            Xem lượt chạy của project
+            <select aria-label="Xem lượt chạy của project" value={projectFilter} onChange={e => { setRuns(null); setProjectFilter(e.target.value); }}
+              className="min-h-11 w-full min-w-0 rounded-lg border border-vehicsim-line bg-vehicsim-surface px-3 text-[13px] font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vehicsim-primary">
+              <option value="">Tất cả project</option>
+              {runProjects.map(p => <option key={p.id} value={p.id}>{p.name} ({p.run_count} lượt)</option>)}
+            </select>
+          </label>
+        )}
         <label className="mt-4 flex max-w-lg flex-col gap-1.5 text-[13px] font-semibold text-vehicsim-ink">
           Họ kịch bản để quản lý
           <select aria-label="Họ kịch bản để quản lý" value={familyId} onChange={e => setFamily(e.target.value)}
@@ -236,6 +255,7 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="mr-1 font-bold tabular-nums text-vehicsim-ink">{runCode(run.id)}</span>
               <Tag tone={run.status === "FAILED" ? "danger" : run.status === "COMPLETED" ? "ok" : "neutral"}>{statusLabel[run.status]}</Tag>
+              {isAdmin && projectName(run.project_id) && <Tag tone="neutral">{projectName(run.project_id)}</Tag>}
               {run.aeb_mode === "OFF" && <Tag tone="neutral">AEB tắt</Tag>}
               {run.regression_test_id != null && <Tag tone="neutral">Hồi quy</Tag>}
               {run.optimization_trial_id != null && <Tag tone="neutral">Tối ưu</Tag>}
@@ -273,8 +293,9 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
         </div>
         <ErrorNote message={sensorError} />
       {!data && !sensorError && <p role="status" className="text-[13px] text-vehicsim-muted">Đang đọc dữ liệu cảm biến…</p>}
+      {selected !== null && (data?.has_video || (!data && sensorError)) &&
+        <CarlaRunVideo key={selected} runId={selected} onError={setSensorError} />}
       {data && data.run_id === selected && <>
-        {data.has_video && <CarlaRunVideo key={data.run_id} runId={data.run_id} onError={setSensorError} />}
         {image && <Image src={image} alt={`Ảnh camera CARLA ${runCode(data.run_id)}`} width={1280} height={720} unoptimized className="w-full rounded-xl" />}
         {data.camera_frames.length > 1 && <label className="text-[12px] text-vehicsim-muted">Ảnh {frame + 1} / {data.camera_frames.length}
           <input aria-label="Khung camera CARLA" type="range" min={0} max={data.camera_frames.length - 1} value={frame}

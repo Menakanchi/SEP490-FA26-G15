@@ -40,6 +40,32 @@ class RegressionCodesTest {
         assertThat(RegressionCodes.recommendationStatus(test("COMPLETED", "PASSED"), recommendation("ACCEPTED"))).isEqualTo("ACCEPT");
     }
 
+    /** REC-001 hiện "Chờ duyệt" dù candidate đã thành bản cơ sở qua REC-002 (backend từ chối duyệt): nay là SUPERSEDED. */
+    @Test
+    void aPendingRecommendationWhoseCandidateWasDecidedElsewhereIsSuperseded() {
+        RegressionTestRow passed = test("COMPLETED", "PASSED");
+        assertThat(RegressionCodes.recommendationStatus(passed, recommendation("PENDING_REVIEW"), "ARCHIVED", "BASELINE")).isEqualTo("SUPERSEDED");
+        assertThat(RegressionCodes.recommendationStatus(passed, null, "BASELINE", "REJECTED")).isEqualTo("SUPERSEDED");
+        assertThat(RegressionCodes.recommendationStatus(test("COMPLETED", "REGRESSED"), null, "BASELINE", "BASELINE"))
+                .as("test trượt nhưng candidate đã được quyết định ở test khác").isEqualTo("SUPERSEDED");
+    }
+
+    @Test
+    void aPendingRecommendationAfterTheBaselineChangedSaysSo() {
+        assertThat(RegressionCodes.recommendationStatus(test("COMPLETED", "PASSED"), null, "ARCHIVED", "CANDIDATE")).isEqualTo("BASELINE_CHANGED");
+    }
+
+    @Test
+    void decidedOrStillValidRecommendationsKeepTheirStatus() {
+        assertThat(RegressionCodes.recommendationStatus(test("COMPLETED", "PASSED"), recommendation("ACCEPTED"), "ARCHIVED", "BASELINE"))
+                .as("chính khuyến nghị đã Accept vẫn là ACCEPT").isEqualTo("ACCEPT");
+        assertThat(RegressionCodes.recommendationStatus(test("COMPLETED", "PASSED"), null, "BASELINE", "CANDIDATE")).isEqualTo("PENDING");
+        assertThat(RegressionCodes.recommendationStatus(test("COMPLETED", "FAILED"), null, "BASELINE", "CANDIDATE")).isEqualTo("BLOCKED");
+        assertThat(RegressionCodes.recommendationStatus(test("COMPLETED", "PASSED"), null, null, null)).as("thiếu phiên bản: giữ cũ").isEqualTo("PENDING");
+        assertThat(RegressionCodes.recommendationStatusLabel("SUPERSEDED", "PENDING")).isEqualTo("Superseded");
+        assertThat(RegressionCodes.recommendationStatusLabel("BASELINE_CHANGED", "PENDING")).isEqualTo("Baseline changed");
+    }
+
     @Test
     void theStatusLabelSaysBlockedOnlyWhenBlocked() {
         assertThat(RegressionCodes.recommendationStatusLabel("BLOCKED", "PENDING")).isEqualTo("Blocked");

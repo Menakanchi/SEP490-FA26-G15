@@ -7,7 +7,9 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { EmptyState, ErrorNote, Pagination, PillButton, Tag, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
-import { AebNav } from "@/components/aeb/AebNav";
+import { VehicSimSelect } from "@/components/VehicSimSelect";
+import { formatMetric, formatObjective } from "@/components/analysis/analysisMetricFormat";
+import { hasCompleteTrialEvidence, isFeasibleTrial } from "@/components/aeb/optimizationEvidence";
 
 export default function AebMoboTrialsPage() {
   const router = useRouter();
@@ -15,32 +17,38 @@ export default function AebMoboTrialsPage() {
 
   const [runs, setRuns] = useState<OptimizationRun[] | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
-  const [trials, setTrials] = useState<OptimizationTrial[] | null>(null);
+  const [trialResult, setTrialResult] = useState<{ runId: number; items: OptimizationTrial[] } | null>(null);
+  const trials = trialResult?.runId === selectedRunId ? trialResult.items : null;
   const [filterMode, setFilterMode] = useState<"ALL" | "PARETO" | "FEASIBLE">("ALL");
   const [error, setError] = useState<string | null>(null);
 
   const queryRunId = Number(searchParams.get("run_id"));
 
   useEffect(() => {
+    let active = true;
     vehicsimApi
       .optimizationRuns()
       .then((data) => {
+        if (!active) return;
         setRuns(data);
         if (data.length > 0) {
           const matched = Number.isInteger(queryRunId) && data.some((r) => r.id === queryRunId);
           setSelectedRunId(matched ? queryRunId : data[0].id);
         }
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách đợt tối ưu"));
+      .catch((err) => { if (active) setError(err instanceof Error ? err.message : "Không tải được danh sách đợt tối ưu"); });
+    return () => { active = false; };
   }, [queryRunId]);
 
   useEffect(() => {
+    let active = true;
     if (selectedRunId !== null) {
       vehicsimApi
         .optimizationTrials(selectedRunId)
-        .then(setTrials)
-        .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách trials"));
+        .then(items => { if (active) { setTrialResult({ runId: selectedRunId, items }); setError(null); } })
+        .catch((err) => { if (active) setError(err instanceof Error ? err.message : "Không tải được danh sách lượt thử"); });
     }
+    return () => { active = false; };
   }, [selectedRunId]);
 
   const activeRun = runs?.find((r) => r.id === selectedRunId) ?? null;
@@ -49,8 +57,8 @@ export default function AebMoboTrialsPage() {
   const PAGE_SIZE = 12;
 
   const filteredTrials = (trials ?? []).filter((t) => {
-    if (filterMode === "PARETO") return t.is_pareto_optimal;
-    if (filterMode === "FEASIBLE") return !t.constraint_violated;
+    if (filterMode === "PARETO") return t.is_pareto_optimal && isFeasibleTrial(t);
+    if (filterMode === "FEASIBLE") return isFeasibleTrial(t);
     return true;
   });
 
@@ -64,9 +72,8 @@ export default function AebMoboTrialsPage() {
       crumbs={[
         { label: "Cải tiến AEB", href: "/aeb" },
         { label: "Tối ưu MOBO", href: "/aeb/mobo" },
-        { label: "Dữ liệu Trials" },
+        { label: "Dữ liệu thử nghiệm" },
       ]}
-      title="Tra cứu lượt thử nghiệm (Trials)"
       actions={
         <div className="flex items-center gap-2">
           <PillButton href={`/aeb/mobo/pareto${selectedRunId ? `?run_id=${selectedRunId}` : ""}`} variant="dark">
@@ -79,39 +86,40 @@ export default function AebMoboTrialsPage() {
       }
     >
       <ErrorNote message={error} />
-      <AebNav active="mobo_trials" />
 
       {/* Bộ chọn đợt chạy và Bộ lọc */}
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-sm">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-4">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
             <label className="text-[13px] font-bold text-vehicsim-ink">Đợt chạy:</label>
-            <select
+            <VehicSimSelect
               aria-label="Chọn đợt tối ưu hoá"
-              value={selectedRunId ?? ""}
-              onChange={(e) => {
-                const newId = Number(e.target.value);
+              value={selectedRunId}
+              onChange={(newId) => {
                 setSelectedRunId(newId);
+                setError(null);
                 setPage(1);
                 router.replace(`/aeb/mobo/trials?run_id=${newId}`);
               }}
-              className="h-10 rounded-xl border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[14px] font-bold text-vehicsim-ink"
-            >
-              {(runs ?? []).map((r) => (
-                <option key={r.id} value={r.id}>
-                  Run #{r.id} · {r.name} ({r.completed_trials} trials)
-                </option>
-              ))}
-            </select>
+              options={(runs ?? []).map((r) => ({
+                value: r.id,
+                label: `Run #${r.id} · ${r.name}`,
+                sublabel: `${r.completed_trials} lượt thử`,
+              }))}
+              className="min-w-0 max-w-md"
+              disabled={runs?.length === 0}
+            />
           </div>
 
-          <div className="flex items-center rounded-lg border border-solid border-vehicsim-line p-1 bg-vehicsim-soft">
+          <div className="flex items-center rounded-lg border border-solid border-slate-200 dark:border-slate-700 p-1 bg-slate-100 dark:bg-slate-800">
             <button
               type="button"
               onClick={() => { setFilterMode("ALL"); setPage(1); }}
               className={cx(
-                "rounded-md px-3 py-1.5 text-[12px] font-bold transition",
-                filterMode === "ALL" ? "bg-vehicsim-surface text-vehicsim-ink shadow-xs" : "text-vehicsim-muted hover:text-vehicsim-ink"
+                "rounded-md px-3 py-1.5 text-[12px] font-bold transition-all",
+                filterMode === "ALL"
+                  ? "bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-white"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700"
               )}
             >
               Tất cả ({trials?.length ?? 0})
@@ -120,21 +128,25 @@ export default function AebMoboTrialsPage() {
               type="button"
               onClick={() => { setFilterMode("PARETO"); setPage(1); }}
               className={cx(
-                "rounded-md px-3 py-1.5 text-[12px] font-bold transition",
-                filterMode === "PARETO" ? "bg-vehicsim-surface text-vehicsim-ok shadow-xs" : "text-vehicsim-muted hover:text-vehicsim-ink"
+                "rounded-md px-3 py-1.5 text-[12px] font-bold transition-all",
+                filterMode === "PARETO"
+                  ? "bg-emerald-600 text-white shadow-xs"
+                  : "text-slate-600 hover:text-emerald-800 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-emerald-300 dark:hover:bg-emerald-950/40"
               )}
             >
-              Biên Pareto ({trials?.filter((t) => t.is_pareto_optimal).length ?? 0})
+              Biên Pareto ({trials?.filter((t) => t.is_pareto_optimal && isFeasibleTrial(t)).length ?? 0})
             </button>
             <button
               type="button"
               onClick={() => { setFilterMode("FEASIBLE"); setPage(1); }}
               className={cx(
-                "rounded-md px-3 py-1.5 text-[12px] font-bold transition",
-                filterMode === "FEASIBLE" ? "bg-vehicsim-surface text-vehicsim-decision shadow-xs" : "text-vehicsim-muted hover:text-vehicsim-ink"
+                "rounded-md px-3 py-1.5 text-[12px] font-bold transition-all",
+                filterMode === "FEASIBLE"
+                  ? "bg-slate-800 text-white shadow-xs dark:bg-slate-700 dark:text-white"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700"
               )}
             >
-              Hợp lệ ({trials?.filter((t) => !t.constraint_violated).length ?? 0})
+              Hợp lệ ({trials?.filter(isFeasibleTrial).length ?? 0})
             </button>
           </div>
         </div>
@@ -152,12 +164,12 @@ export default function AebMoboTrialsPage() {
           <div className="flex items-center gap-2">
             <ListFilter className="size-5 text-vehicsim-decision" />
             <h3 className="text-[16px] font-bold text-vehicsim-ink">
-              Dữ liệu thử nghiệm ({filteredTrials.length} trials)
+              Dữ liệu thử nghiệm ({filteredTrials.length} lượt thử)
             </h3>
           </div>
         </div>
 
-        {filteredTrials.length === 0 ? (
+        {runs?.length === 0 ? <div className="p-10"><EmptyState title="Chưa có đợt tối ưu">Tạo đợt tối ưu để xem các lượt thử.</EmptyState></div> : trials === null ? <p role="status" className="p-5 text-[13px] text-vehicsim-muted">{error ? "Chưa tải được lượt thử." : "Đang tải lượt thử…"}</p> : filteredTrials.length === 0 ? (
           <div className="p-10">
             <EmptyState title="Không có lượt thử nghiệm nào khớp bộ lọc">
               Hãy chọn bộ lọc khác hoặc kiểm tra lại tiến độ đợt chạy.
@@ -168,54 +180,48 @@ export default function AebMoboTrialsPage() {
             <table className="w-full min-w-[960px] text-left text-[13px]">
               <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
                 <tr className="h-12">
-                  <th className="w-12 px-3 py-3.5 text-center">STT</th>
-                  <th className="px-4 py-3.5">Trial #</th>
-                  <th className="px-4 py-3.5">Nguồn sinh mẫu</th>
-                  <th className="px-4 py-3.5 font-mono">Hàm thu thập qEHVI</th>
-                  <th className="px-4 py-3.5 text-vehicsim-decision">RMS Jerk (m/s³)</th>
-                  <th className="px-4 py-3.5 text-vehicsim-danger">Va chạm (km/h)</th>
-                  <th className="px-4 py-3.5 text-vehicsim-ink">Quãng phanh (m)</th>
-                  <th className="px-4 py-3.5">Ràng buộc</th>
-                  <th className="px-4 py-3.5 text-right">Biên Pareto</th>
+                  <th className="pl-5 pr-4 py-3.5 whitespace-nowrap">Lượt thử</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Nguồn sinh mẫu</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Điểm tiềm năng (qEHVI)</th>
+                  <th className="px-4 py-3.5 text-emerald-300 whitespace-nowrap">RMS Jerk (m/s³)</th>
+                  <th className="px-4 py-3.5 text-rose-300 whitespace-nowrap">Va chạm (m/s)</th>
+                  <th className="px-4 py-3.5 text-slate-200 whitespace-nowrap">Quãng phanh (m)</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Ràng buộc</th>
+                  <th className="px-4 py-3.5 text-right whitespace-nowrap">Biên Pareto</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
-                {pagedTrials.map((t, idx) => (
+                {pagedTrials.map((t) => (
                   <tr key={t.id} className={cx("hover:bg-vehicsim-row transition-colors", t.is_pareto_optimal && "bg-vehicsim-ok-bg/25")}>
-                    <td className="w-12 px-3 py-4 text-center font-mono text-[12px] font-bold text-vehicsim-faint tabular-nums">
-                      {(safePage - 1) * PAGE_SIZE + idx + 1}
-                    </td>
-                    <td className="px-4 py-3.5 font-mono font-bold text-vehicsim-ink">{t.trial_number}</td>
+                    <td className="pl-5 pr-4 py-3.5 font-mono font-bold text-vehicsim-ink">#{t.trial_number}</td>
                     <td className="px-4 py-3.5">
                       <Tag tone={t.sampling_source === "INITIAL_DESIGN" ? "neutral" : "info"}>
                         {t.sampling_source === "INITIAL_DESIGN" ? "Khởi tạo Sobol/Random" : "qEHVI Bayes"}
                       </Tag>
                     </td>
                     <td className="px-4 py-3.5 font-mono text-[12px] text-vehicsim-muted">
-                      {t.acquisition_value !== null ? t.acquisition_value.toFixed(5) : "—"}
+                      {formatMetric(t.acquisition_value, 5)}
                     </td>
                     <td className="px-4 py-3.5 font-semibold text-vehicsim-decision">
-                      {t.rms_jerk_mps3 !== null ? `${t.rms_jerk_mps3.toFixed(2)}` : "—"}
+                      {formatObjective(t.rms_jerk_mps3)}
                     </td>
                     <td className="px-4 py-3.5 font-semibold text-vehicsim-danger">
-                      {t.impact_speed_mps !== null
-                        ? t.impact_speed_mps <= 0.001
-                          ? "0.0 (Tránh va chạm)"
-                          : (t.impact_speed_mps * 3.6).toFixed(1)
-                        : "—"}
+                      {formatMetric(t.impact_speed_mps, 3, true)}
                     </td>
                     <td className="px-4 py-3.5 font-semibold text-vehicsim-ink">
-                      {t.stopping_distance_m !== null ? `${t.stopping_distance_m.toFixed(2)}` : "—"}
+                      {formatObjective(t.stopping_distance_m)}
                     </td>
                     <td className="px-4 py-3.5">
-                      {t.constraint_violated ? (
+                      {!hasCompleteTrialEvidence(t) ? (
+                        <span className="text-vehicsim-muted">Chưa đánh giá</span>
+                      ) : t.constraint_violated ? (
                         <span className="font-bold text-vehicsim-danger">Vi phạm</span>
                       ) : (
                         <span className="font-bold text-vehicsim-ok">Thỏa mãn</span>
                       )}
                     </td>
                     <td className="px-4 py-3.5 text-right">
-                      {t.is_pareto_optimal ? (
+                      {t.is_pareto_optimal && isFeasibleTrial(t) ? (
                         <span className="rounded-full bg-vehicsim-ok-bg px-2.5 py-0.5 text-[10px] font-bold text-vehicsim-ok">
                           PARETO
                         </span>

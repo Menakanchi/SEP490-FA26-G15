@@ -5,8 +5,7 @@ import { PillButton } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 
 /**
- * Video xem lại của một run CARLA (mp4 do worker ghép từ ảnh camera). Video cần token nên tải về dạng blob rồi phát; clip ngắn (vài giây,
- * vài MB). Dùng `key={runId}` ở nơi gọi để chuyển run thì trình phát dựng lại từ đầu.
+ * Video trên object storage phát bằng URL ngắn hạn sau khi backend kiểm tra quyền; video local cũ dùng blob có token.
  */
 export function CarlaRunVideo({ runId, onError }: { runId: number; onError: (message: string) => void }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -15,7 +14,12 @@ export function CarlaRunVideo({ runId, onError }: { runId: number; onError: (mes
   useEffect(() => {
     let current = true;
     let objectUrl: string | undefined;
-    void vehicsimApi.carlaVideo(runId).then(blob => {
+    void vehicsimApi.carlaVideoUrl(runId).then(async result => {
+      if (result.url) {
+        if (current) setUrl(result.url);
+        return;
+      }
+      const blob = await vehicsimApi.carlaVideo(runId);
       if (!current) return;
       objectUrl = URL.createObjectURL(blob);
       setUrl(objectUrl);
@@ -33,11 +37,17 @@ export function CarlaRunVideo({ runId, onError }: { runId: number; onError: (mes
     <div className="flex flex-col gap-2">
       {/* Clip camera CARLA không có lời thoại nên không có phụ đề; số đo đi kèm nằm ở các thẻ phía trên. */}
       <video src={url} controls playsInline preload="metadata" aria-label={`Video camera CARLA lượt ${runId}`}
+        onError={() => { setFailed(true); onError("Không phát được video; hãy mở lại để thử lần nữa."); }}
         className="w-full rounded-[16px] bg-black">
         <track kind="captions" />
       </video>
       <div>
-        <PillButton onClick={() => void vehicsimApi.downloadCarlaVideo(runId).catch(e => onError(e instanceof Error ? e.message : "Không tải được video"))}>
+        <PillButton onClick={() => void vehicsimApi.carlaVideoUrl(runId, true).then(result => {
+          if (!result.url) return vehicsimApi.downloadCarlaVideo(runId);
+          const link = document.createElement("a");
+          link.href = result.url;
+          link.click();
+        }).catch(e => onError(e instanceof Error ? e.message : "Không tải được video"))}>
           Tải video (.mp4)
         </PillButton>
       </div>

@@ -34,6 +34,8 @@ public class TelemetryMetricsService {
     public static final double MAX_PLAUSIBLE_REL_VELOCITY_MS = 70.0;
     public static final double MAX_PLAUSIBLE_ACCEL_MS2 = 50.0;
     public static final double BRAKE_ACTIVE_THRESHOLD = 0.05;
+    /** Bàn đạp phải giữ trên ngưỡng ít nhất chừng này giây mới tính là bắt đầu phanh (loại xung một khung lúc khởi tạo). */
+    public static final double BRAKE_ONSET_MIN_HOLD_S = 0.05;
     public static final double STOP_VELOCITY_THRESHOLD_MS = 0.05;
 
     public record RadarDetection(
@@ -157,13 +159,7 @@ public class TelemetryMetricsService {
         }
 
         // Tìm thời điểm bắt đầu phanh thực tế (first brake time)
-        Double firstBrakeTime = null;
-        for (TelemetryFrame r : before) {
-            if (r.brake() != null && r.brake() > BRAKE_ACTIVE_THRESHOLD) {
-                firstBrakeTime = r.simTimeS();
-                break;
-            }
-        }
+        Double firstBrakeTime = brakeOnset(before);
 
         // Lọc các giá trị số đo
         Double minTtc = null;
@@ -229,6 +225,32 @@ public class TelemetryMetricsService {
                 tHit != null ? round3(tHit) : null,
                 impactPeakAccel != null ? round3(impactPeakAccel) : null
         );
+    }
+
+    /**
+     * Mốc bắt đầu phanh: khung đầu tiên có bàn đạp trên ngưỡng và còn trên ngưỡng ở mọi khung trong {@link #BRAKE_ONSET_MIN_HOLD_S}
+     * kế tiếp. Xung bàn đạp một khung (CARLA đặt lại xe lúc khởi tạo, ví dụ 0,067 ở t = 0,5 s) không phải phanh thật; nếu lấy nó
+     * làm mốc thì quãng phanh dừng và cửa sổ RMS jerk bị kéo dài tới hàng giây trước lúc AEB thực sự phanh.
+     */
+    static Double brakeOnset(List<TelemetryFrame> frames) {
+        for (int i = 0; i < frames.size(); i++) {
+            TelemetryFrame r = frames.get(i);
+            if (r.brake() == null || r.brake() <= BRAKE_ACTIVE_THRESHOLD) {
+                continue;
+            }
+            boolean held = true;
+            for (int j = i + 1; j < frames.size() && frames.get(j).simTimeS() - r.simTimeS() <= BRAKE_ONSET_MIN_HOLD_S + 1e-9; j++) {
+                Double b = frames.get(j).brake();
+                if (b == null || b <= BRAKE_ACTIVE_THRESHOLD) {
+                    held = false;
+                    break;
+                }
+            }
+            if (held) {
+                return r.simTimeS();
+            }
+        }
+        return null;
     }
 
     /**

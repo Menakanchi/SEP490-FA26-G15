@@ -8,8 +8,10 @@ import com.vsos.core.evaluation.AnalysisMetrics;
 import com.vsos.core.evaluation.RunDataset;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
@@ -60,8 +62,20 @@ final class RunDatasetWriter {
      *
      * @param aebVersion dòng {@code aeb_versions} của run đọc lúc ghi (null nếu không có); chỉ để khai báo trạng thái phiên bản (C06)
      */
-    static void attach(Path resultPath, Map<String, Object> result, Row run, Map<String, Object> bundle, Map<String, Object> aebVersion,
-                       Path folder, Path repoRoot) {
+    record Attachment(byte[] bytes, boolean written) { }
+
+    @FunctionalInterface
+    interface ResultWriter {
+        void write(Path path, String content) throws IOException;
+    }
+
+    static Attachment attach(Path resultPath, Map<String, Object> result, Row run, Map<String, Object> bundle, Map<String, Object> aebVersion,
+                             Path folder, Path repoRoot) {
+        return attach(resultPath, result, run, bundle, aebVersion, folder, repoRoot, RunDatasetWriter::writeAtomically);
+    }
+
+    static Attachment attach(Path resultPath, Map<String, Object> result, Row run, Map<String, Object> bundle, Map<String, Object> aebVersion,
+                             Path folder, Path repoRoot, ResultWriter writer) {
         Map<String, Object> block;
         try {
             block = build(run, bundle, aebVersion, result, folder, gitCommit(repoRoot));
@@ -72,12 +86,36 @@ final class RunDatasetWriter {
             block.put("status", Json.obj("build", state("INVALID", "không dựng được khối dataset: " + e.getClass().getSimpleName() + ": " + e.getMessage())));
         }
         result.put("dataset", block);
+        String content;
         try {
             Map<String, Object> onDisk = MiniJson.parseObject(Files.readString(resultPath, StandardCharsets.UTF_8));
             onDisk.put("dataset", block);
-            Files.writeString(resultPath, MiniJson.write(onDisk), StandardCharsets.UTF_8);
+            content = MiniJson.write(onDisk);
         } catch (IOException | RuntimeException e) {
-            log.warn("Không ghi được khối dataset vào {}: {}", resultPath, e.toString());
+            log.warn("Không tạo được nội dung result.json kèm dataset từ {}: {}", resultPath, e.toString());
+            return new Attachment(null, false);
+        }
+        try {
+            writer.write(resultPath, content);
+            return new Attachment(content.getBytes(StandardCharsets.UTF_8), true);
+        } catch (IOException | RuntimeException e) {
+            log.warn("Không ghi được khối dataset vào {}; lưu nội dung đã bổ sung trong database: {}", resultPath, e.toString());
+            return new Attachment(content.getBytes(StandardCharsets.UTF_8), false);
+        }
+    }
+
+    /** Keep the producer result intact if writing its optional dataset fails midway. */
+    static void writeAtomically(Path resultPath, String content) throws IOException {
+        Path temporary = Files.createTempFile(resultPath.toAbsolutePath().getParent(), "result-dataset-", ".tmp");
+        try {
+            Files.writeString(temporary, content, StandardCharsets.UTF_8);
+            try {
+                Files.move(temporary, resultPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(temporary, resultPath, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temporary);
         }
     }
 
@@ -840,7 +878,7 @@ final class RunDatasetWriter {
         return Math.round(v * 1e6) / 1e6;
     }
 
-    private static String gitCommit(Path repoRoot) {
+    static String gitCommit(Path repoRoot) {
         String cached = cachedGit;
         if (cached != null) {
             return cached.isEmpty() ? null : cached;

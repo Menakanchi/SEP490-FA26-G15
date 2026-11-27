@@ -1,12 +1,95 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs/promises";
+import {createRequire} from "node:module";
+import {pathToFileURL} from "node:url";
+import React from "react";
+import {renderToStaticMarkup} from "react-dom/server";
+import ts from "typescript";
 import {loadProduction} from "./helpers/load-production.mjs";
 const d=await loadProduction("components/analysis/failureAnalysisV3Data.ts");
 const api=(await loadProduction("services/failureAnalysisV3.ts")).failureAnalysisV3;
 const shared=await loadProduction("services/api.ts");
-const read=async name=>JSON.parse(await fs.readFile(new URL(`../../docs/failure-analysis-v3/backend-integration/evidence/examples/http-${name}.json`,import.meta.url),"utf8"));
+const read=async name=>JSON.parse(await fs.readFile(new URL(`./fixtures/fa-v3/http-${name}.json`,import.meta.url),"utf8"));
 const [s,e,p,r,h]=await Promise.all(["source","execution","reports","report","handoff-status"].map(read));
+test("canonical objectives and real diagnostic hypotheses remain visible with their own status",async()=>{
+ const base=new URL("../../docs/failure-analysis-v3/json-input-integration/evidence/accepted/",import.meta.url);
+ const load=async path=>JSON.parse(await fs.readFile(new URL(path,base),"utf8"));
+ const [a,b,c]=await Promise.all([
+  load("input-2-vehicsim-variant-1032-collection/diagnostics/2498.json"),
+  load("input-3-vehicsim-variant-1033-collection/diagnostics/2499.json"),
+  load("input-4-vehicsim-variant-1034-collection/diagnostics/2500.json"),
+ ]);
+ const first=d.objectivePresentation(a.report);assert.equal(first.length,3);assert(first.every(x=>x.text.includes("Không áp dụng")));
+ const second=d.objectivePresentation(b.report);assert.deepEqual(second.map(x=>x.text),["17,68 m/s³","6,067 m/s","17,518 m"]);
+ const third=d.objectivePresentation(c.report);assert(third[0].text.includes("21,621"));assert.match(third[1].text,/Không áp dụng/);assert(third[2].text.includes("16,627"));
+ assert.deepEqual(d.hypothesisPresentation(a.report),[]);
+ assert.match(d.hypothesisPresentation(b.report)[0].label,/Thời điểm can thiệp/);assert.equal(d.hypothesisPresentation(b.report)[0].status,"Cần điều tra");
+ assert.match(d.hypothesisPresentation(c.report)[0].label,/Dự đoán nguy cơ/);
+ assert(d.missingEvidencePresentation(b.report).some(x=>x.includes("phê duyệt")));
+ const report=structuredClone(b.report), value=report.objectives.rms_jerk_mps3.canonical_value;
+ for(const [status,text] of [["INVALID","Dữ liệu không hợp lệ"],["CONFLICTING","Dữ liệu mâu thuẫn"],["UNKNOWN","Chưa xác định"],["NOT_APPLICABLE","Không áp dụng"]]) {value.status=status;assert.match(d.objectivePresentation(report)[0].text,new RegExp(text));}
+ value.status="CONDITIONAL";assert.match(d.objectivePresentation(report)[0].text,/17,68.*có điều kiện/);
+ value.value=null;assert.equal(d.objectivePresentation(report)[0].text,"Chưa xác định");
+ value.value=0;value.status="OBSERVED";assert.match(d.objectivePresentation(report)[0].text,/^0 m\/s³/);
+});
+test("real report renders objective states, measured timeline, model screen and non-confirmed hypothesis",async()=>{
+ const source=await fs.readFile(new URL("../src/components/analysis/FailureAnalysisV3Report.tsx",import.meta.url),"utf8");
+ const dataSource=await fs.readFile(new URL("../src/components/analysis/failureAnalysisV3Data.ts",import.meta.url),"utf8");
+ const compile=(code,jsx)=>ts.transpileModule(code,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022,jsx}}).outputText;
+ const url=code=>"data:text/javascript;base64,"+Buffer.from(code).toString("base64");
+ const runtime=pathToFileURL(createRequire(import.meta.url).resolve("react/jsx-runtime")).href;
+ const css=url("export default new Proxy({}, {get: (_, k) => k})");
+ const reportModule=compile(source,ts.JsxEmit.ReactJSX)
+  .replace('"react/jsx-runtime"',JSON.stringify(runtime))
+  .replace('"./failureAnalysisV3Data"',JSON.stringify(url(compile(dataSource))))
+  .replace('"./FailureAnalysisV3.module.css"',JSON.stringify(css));
+ const {FailureAnalysisV3Report}=await import(url(reportModule));
+ const fixture=async path=>JSON.parse(await fs.readFile(new URL(`../../docs/failure-analysis-v3/json-input-integration/evidence/accepted/${path}/diagnostics/${path.includes("1033")?2499:2500}.json`,import.meta.url),"utf8"));
+ const content=renderToStaticMarkup(React.createElement(FailureAnalysisV3Report,{data:await fixture("input-3-vehicsim-variant-1033-collection")}));
+ for(const expected of ["17,68 m/s³","6,067 m/s","17,518 m","2,35 s","2,6 s","0,25 s","17,964 m","22,335 m","-4,371 m","Nghi ngờ","Cần điều tra"]) assert(content.includes(expected),expected);
+ assert.match(content,/chưa chứng minh khả năng tránh va chạm hai chiều/);
+ assert.match(content,/Các mốc khác đồng hồ/);
+ assert.doesNotMatch(content,/Nguyên nhân đã xác nhận theo báo cáo/);
+ const other=renderToStaticMarkup(React.createElement(FailureAnalysisV3Report,{data:await fixture("input-4-vehicsim-variant-1034-collection")}));
+ assert.match(other,/N\/A — Không áp dụng/);assert.match(other,/Dự đoán nguy cơ và quyết định phanh/);
+});
+test("presentation giữ riêng va chạm, dấu hiệu AEB và mức chắc chắn",()=>{
+ const base=structuredClone(r.report), evidence=(value,status="OBSERVED",unit=null)=>({value,status,unit});
+ const view=(patch)=>d.diagnosticPresentation({...base,...patch});
+ const candidate=(type,status="SUSPECTED")=>({type,status});
+ const noFailure=view({failure_candidates:[],functional_assessment:evidence("NO_SUPPORTED_FAILURE","DERIVED")});
+ assert.match(noFailure.conclusion,/Chưa phát hiện lỗi/);
+ for(const [type,label] of [["NO_BRAKING","không phanh"],["INEFFECTIVE_BRAKING","phanh không hiệu quả"],["FALSE_BRAKING","phanh không cần thiết"]]) {
+  assert.match(view({failure_candidates:[candidate(type)]}).conclusion,new RegExp(`Nghi ngờ ${label}`));
+  assert(!view({failure_candidates:[candidate(type,"SUPPORTED")]}).conclusion.startsWith("Nghi ngờ"));
+ }
+ assert.match(view({failure_candidates:[],functional_assessment:evidence("INCONCLUSIVE","CONDITIONAL")}).conclusion,/Chưa đủ/);
+ const crash=view({failure_candidates:[],functional_assessment:evidence("INCONCLUSIVE"),physical_outcome:evidence("COLLISION")});
+ assert.match(crash.outcomeText,/Có va chạm/);assert.match(crash.conclusion,/Chưa đủ/);
+ const noCrash=view({physical_outcome:evidence("SAFE"),failure_candidates:[candidate("FALSE_BRAKING")]});
+ assert.match(noCrash.outcomeText,/Không ghi nhận/);assert.match(noCrash.conclusion,/Nghi ngờ phanh không cần thiết/);
+ const many=view({failure_candidates:[candidate("NO_BRAKING"),candidate("INEFFECTIVE_BRAKING")]});
+ assert.equal(many.candidates.length,2);assert.match(many.conclusion,/nhiều dấu hiệu/);
+ assert.match(view({failure_candidates:[candidate("UNKNOWN_NEW_TYPE")]}).conclusion,/Chưa đủ/);
+ assert.match(view({physical_outcome:evidence("COLLISION","UNKNOWN")}).outcomeText,/Chưa xác định/);
+});
+test("presentation không bịa dự đoán hoặc biến null và dữ liệu không hợp lệ thành số",()=>{
+ const base=structuredClone(r.report), ev=(value,status="OBSERVED",unit="s")=>({value,status,unit});
+ const actual={...base,physical_outcome:ev("COLLISION","OBSERVED",null),impact_analysis:{contact_time:ev(3.92)},aeb_timeline:{detection:ev(2.35),command_onset:ev(null,"UNKNOWN")}};
+ let view=d.diagnosticPresentation(actual);
+ assert(view.metrics.some(x=>x.label==="Va chạm thực tế"));assert(!view.metrics.some(x=>/dự kiến/i.test(x.label)));assert(!view.metrics.some(x=>x.label==="Lệnh phanh AEB"));
+ const future={...actual,physical_outcome:ev(null,"UNKNOWN",null),impact_analysis:{contact_time:ev(null,"UNKNOWN")},prediction:{time:ev(4)}};
+ view=d.diagnosticPresentation(future);assert(!view.metrics.some(x=>/va chạm/i.test(x.label)));
+ const objectives=structuredClone(base.objectives);objectives.stopping_distance_m.canonical_value=ev(0,"INVALID","m");
+ view=d.diagnosticPresentation({...actual,objectives,aeb_timeline:{detection:ev(0,"OBSERVED"),command_onset:ev(0,"UNKNOWN")}});
+ assert(view.metrics.some(x=>x.label==="Phát hiện mục tiêu"&&x.data.value===0));
+ assert(!view.metrics.some(x=>x.label==="Lệnh phanh AEB"||x.label==="Quãng đường dừng"));
+ view=d.diagnosticPresentation({...actual,observed_behavior:ev("OFF_HYPOTHETICAL_ONLY","OBSERVED",null),aeb_timeline:{hypothetical:true,detection:ev(1),command_onset:ev(2)}});
+ assert(!view.metrics.some(x=>["Phát hiện mục tiêu","Lệnh phanh AEB"].includes(x.label)),"hypothetical AEB OFF events are not actual events");
+ objectives.stopping_distance_m.canonical_applicability="NOT_APPLICABLE";objectives.stopping_distance_m.canonical_value=ev(10,"OBSERVED","m");
+ assert(!d.diagnosticPresentation({...actual,objectives}).metrics.some(x=>x.label==="Quãng đường dừng"));
+});
 test("actual BE-R1 resource pages, IDs, scope and accounting round trip unchanged",()=>{
  assert.equal(d.source(s,1),s);assert.equal(d.execution(e,1),e);assert.equal(d.page(p,v=>d.reportMetadata(v,1)).items[0],p.items[0]);assert.equal(d.handoff(h,1),h);
  assert.throws(()=>d.source(s,2));assert.throws(()=>d.resource({...s,id:"2499"},"SOURCE",1));
@@ -31,7 +114,46 @@ test("null, zero and every evidence status survive without fallback calculations
  assert.match(d.evidenceText({value:null,status:"UNKNOWN",unit:"m"}),/^Chưa có giá trị/);
  for(const value of [NaN,Infinity])assert.throws(()=>d.evidence({value,status:"OBSERVED",unit:"m"}));
 });
-test("blocked handoff cannot acquire a dispatch action",()=>{assert.equal(d.handoff(h,1).dispatch_allowed,false);assert.throws(()=>d.handoff({...h,dispatch_allowed:true},1));});
+test("only READY with approved context, digest and no blockers can acquire a dispatch action",()=>{
+ assert.equal(d.handoff(h,1).dispatch_allowed,false);
+ assert.throws(()=>d.handoff({...h,dispatch_allowed:true},1));
+ const ready={...h,status:"READY",dispatch_allowed:true,context_id:s.id,content_digest:"a".repeat(64),reason_codes:[]};
+ assert.equal(d.handoff(ready,1),ready);
+ for(const patch of [{status:"DIAGNOSTIC_ONLY"},{dispatch_allowed:false},{context_id:null},{content_digest:null},{content_digest:"bad"},{reason_codes:["QUALITY_MISSING"]}])
+  assert.throws(()=>d.handoff({...ready,...patch},1));
+});
+
+const campaign={schema:"vehicsim.fa-v3-campaign/v1",project_id:1,handoff_id:h.id,handoff_digest:"b".repeat(64),
+ scenario:{id:42,name:"Explicit V3 fixture"},baseline:{id:7,label:"v7"},reference:{vehicle_id:2,simulator:"carla-0.9.16-xosc16",dt:0.01},
+ optimization_run_ids:[2499,2500],validation_run_ids:[2511,2512],search_space:{TTC_THRESHOLD:[0.5,3],BRAKE_ACTIVATION_DELAY:[0,0.5],MAX_DECELERATION:[3,10],BRAKE_BUILDUP_RATE:[5,20]}};
+test("V3 campaign projection pins server source, checksum, disjoint partitions and approved domain",()=>{
+ assert.equal(d.campaignInput(campaign,1,h.id,campaign.handoff_digest),campaign);
+ assert.throws(()=>d.campaignInput(campaign,2,h.id,campaign.handoff_digest));
+ assert.throws(()=>d.campaignInput(campaign,1,s.id,campaign.handoff_digest));
+ assert.throws(()=>d.campaignInput(campaign,1,h.id,"c".repeat(64)));
+ for(const patch of [{schema:"vehicsim.analysis-dataset/v2"},{validation_run_ids:[2499]},{optimization_run_ids:[2499,2499]},{validation_run_ids:[]},{optimization_run_ids:[0]},
+  {reference:{...campaign.reference,simulator:"unknown"}},{search_space:{}},{search_space:{...campaign.search_space,TTC_THRESHOLD:[2,1]}},
+  {search_space:{...campaign.search_space,EXTRA:[0,1]}},{search_space:{...campaign.search_space,TTC_THRESHOLD:[0,Infinity]}}])
+  assert.throws(()=>d.campaignInput({...campaign,...patch},1,h.id,campaign.handoff_digest));
+});
+
+test("context confirmation and bodyless execution use authenticated V3 APIs, no V2 optimizer substitution",async()=>{
+ const original=globalThis.fetch,calls=[];
+ const context={context_id:p.items[0].id,context_digest:"d".repeat(64),source_id:s.id};
+ const body={dataset_id:91,dataset_digest:"e".repeat(64),confirmed:true,reason:"Reviewed recorded canonical targets",canonical_targets_only:true,calibration_not_applicable:true,nonhazard_run_ids:[2500,2512]};
+ try{
+  globalThis.fetch=async(url,options={})=>{
+   calls.push({url:String(url),options});
+   return new Response(JSON.stringify(String(url).endsWith("/contexts")?context:String(url).includes("/campaign?")?campaign:{...e,context_id:context.context_id}));
+  };
+  assert.deepEqual(await api.createContext(body),context);assert.deepEqual(JSON.parse(calls.at(-1).options.body),body);
+  await api.analyzeContext(1,context.context_id);assert.equal(calls.at(-1).options.body,undefined);assert.equal(calls.at(-1).options.method,"POST");
+  await api.campaign(1,h.id,campaign.handoff_digest);assert(calls.at(-1).url.endsWith(`/handoffs/${h.id}/campaign?digest=${campaign.handoff_digest}`));
+  const count=calls.length;assert.throws(()=>api.campaign(1,h.id,"invalid"));assert.equal(calls.length,count,"Missing checksum never performs a request or falls back");
+  globalThis.fetch=async()=>new Response(JSON.stringify({...e,context_id:s.id}));await assert.rejects(()=>api.analyzeContext(1,context.context_id),{code:"CONTEXT_IDENTITY_MISMATCH"});
+  globalThis.fetch=async()=>new Response(JSON.stringify({...context,context_digest:null}));await assert.rejects(()=>api.createContext(body),{code:"MALFORMED_RESOURCE"});
+ }finally{globalThis.fetch=original}
+});
 test("all real service fixture paths preserve members, mode, repetition and report identities",async()=>{
  for(const name of ["collection","standalone","partial","blocked"]){
   const f=JSON.parse(await fs.readFile(new URL(`./fixtures/fa-v3/${name}.json`,import.meta.url),"utf8"));

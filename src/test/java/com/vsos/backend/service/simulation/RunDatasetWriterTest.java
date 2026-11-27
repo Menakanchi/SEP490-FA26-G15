@@ -1,6 +1,7 @@
 package com.vsos.backend.service.simulation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.vsos.backend.repository.common.Row;
 import com.vsos.core.common.MiniJson;
@@ -20,6 +21,21 @@ import org.junit.jupiter.api.io.TempDir;
 class RunDatasetWriterTest {
 
     private static final String GT_HEADER = "frame,sim_time_s,actor_id,role,type_id,x_m,y_m,z_m,yaw_deg,ax_ms2,ay_ms2,az_ms2,speed_ms";
+
+    @Test
+    void atomicResultReplacementCleansItsTemporaryFileOnSuccessAndFailure(@TempDir Path folder) throws IOException {
+        Path resultPath = folder.resolve("result.json");
+        Files.writeString(resultPath, "original");
+        RunDatasetWriter.writeAtomically(resultPath, "replacement");
+        assertThat(Files.readString(resultPath)).isEqualTo("replacement");
+        Path obstructed = Files.createDirectory(folder.resolve("obstructed.json"));
+        Files.writeString(obstructed.resolve("existing-evidence"), "keep");
+        assertThatThrownBy(() -> RunDatasetWriter.writeAtomically(obstructed, "replacement")).isInstanceOf(IOException.class);
+        assertThat(Files.readString(obstructed.resolve("existing-evidence"))).isEqualTo("keep");
+        try (var files = Files.list(folder)) {
+            assertThat(files.map(p -> p.getFileName().toString())).containsExactlyInAnyOrder("result.json", "obstructed.json");
+        }
+    }
 
     @Test
     void blockCarriesIdentityConfigObjectivesProvenanceTimeSeriesAndCollisionEvidence(@TempDir Path folder) throws IOException {
@@ -196,6 +212,65 @@ class RunDatasetWriterTest {
         assertThat(map(onDisk, "dataset")).containsEntry("format", "vehicsim.run-dataset/v1");
         assertThat(result).containsKey("dataset"); // bản trong bộ nhớ cũng có
         assertThat(map(onDisk, "outcome")).isEqualTo(map(result, "outcome"));
+    }
+
+    @Test
+    void attachRetainsEnrichedBytesWhenWritingTheFileFails(@TempDir Path folder) throws IOException {
+        Map<String, Object> result = result(false, true);
+        Path resultPath = folder.resolve("result.json");
+        String original = MiniJson.write(result);
+        Files.writeString(resultPath, original, StandardCharsets.UTF_8);
+
+        var attachment = RunDatasetWriter.attach(resultPath, result, run(), bundle(), aebVersion("BASELINE"), folder, folder,
+                (path, content) -> { throw new IOException("simulated write failure"); });
+
+        assertThat(attachment.written()).isFalse();
+        assertThat(Files.readString(resultPath, StandardCharsets.UTF_8)).isEqualTo(original);
+        Map<String, Object> preserved = MiniJson.parseObject(new String(attachment.bytes(), StandardCharsets.UTF_8));
+        assertThat(map(preserved, "dataset")).containsEntry("format", "vehicsim.run-dataset/v1");
+        assertThat(map(preserved, "outcome")).isEqualTo(map(result, "outcome"));
+    }
+
+    @Test
+    void failedResultFileWriteStillPersistsEnrichedProducerAndCompletesRun(@TempDir Path folder) throws IOException {
+        var db = org.mockito.Mockito.mock(com.vsos.backend.repository.common.Db.class);
+        var store = org.mockito.Mockito.mock(com.vsos.backend.repository.analysis.FailureAnalysisStore.class);
+        org.mockito.Mockito.when(store.saveSource(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> call.getArgument(0));
+        var analysis = new com.vsos.backend.service.analysis.FailureAnalysisService(store);
+        var props = org.mockito.Mockito.mock(com.vsos.backend.config.VehicSimProperties.class);
+        org.mockito.Mockito.when(props.dataRoot()).thenReturn(folder.toString());
+        var service = new RunService(db, org.mockito.Mockito.mock(com.vsos.backend.repository.common.Queries.class), props,
+                org.mockito.Mockito.mock(org.springframework.core.task.TaskExecutor.class),
+                org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class),
+                org.mockito.Mockito.mock(org.springframework.transaction.support.TransactionTemplate.class),
+                org.mockito.Mockito.mock(com.vsos.backend.service.scenario.FamilyService.class), analysis);
+        var runFields = new HashMap<>(run().asMap());
+        runFields.put("created_by_user_id", 9L);
+        Row currentRun = new Row(runFields);
+        Map<String, Object> result = result(false, false);
+        Path resultPath = folder.resolve("result.json");
+        String original = MiniJson.write(result);
+        Files.writeString(resultPath, original, StandardCharsets.UTF_8);
+        var attachment = RunDatasetWriter.attach(resultPath, result, currentRun, bundle(), aebVersion("BASELINE"), folder, folder,
+                (path, content) -> { throw new IOException("simulated write failure"); });
+
+        service.prepareCarlaResult(currentRun, result, resultPath, resultPath, folder, attachment);
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(service, "persist", currentRun, result);
+
+        var captured = org.mockito.ArgumentCaptor.forClass(com.vsos.backend.repository.analysis.FailureAnalysisStore.Resource.class);
+        org.mockito.Mockito.verify(store).saveSource(captured.capture());
+        var saved = captured.getValue();
+        assertThat(saved.body()).isEqualTo(attachment.bytes());
+        assertThat(saved.byteDigest()).isEqualTo(com.vsos.core.failureanalysis.Evidence.sha256(saved.body()));
+        assertThat(MiniJson.parseObject(new String(saved.body(), StandardCharsets.UTF_8))).containsKey("dataset");
+        assertThat(Files.readString(resultPath, StandardCharsets.UTF_8)).isEqualTo(original);
+        org.mockito.Mockito.verify(db, org.mockito.Mockito.never()).insert(
+                org.mockito.ArgumentMatchers.startsWith("INSERT INTO simulation_artifacts"), org.mockito.ArgumentMatchers.any(Object[].class));
+        var update = org.mockito.Mockito.mockingDetails(db).getInvocations().stream()
+                .filter(call -> call.getMethod().getName().equals("update")
+                        && call.getArgument(0).toString().startsWith("UPDATE simulation_runs SET status = ?"))
+                .findFirst().orElseThrow();
+        assertThat((Object) update.getArgument(1)).isEqualTo("COMPLETED");
     }
 
     @Test

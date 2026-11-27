@@ -39,6 +39,7 @@ public enum ProjectError {
     TEST_NOT_FOUND(NOT_FOUND, "Không tìm thấy lần kiểm chứng #%s trong project này."),
     TEST_NOT_FINISHED(CONFLICT, "Lần kiểm chứng #%s chưa chạy xong."),
     TEST_NOT_PASSED(CONFLICT, "Ứng viên %s chưa đạt tiêu chí kiểm chứng nên không dùng làm baseline được."),
+    TEST_EVIDENCE_INCOMPLETE(CONFLICT, "Bằng chứng kiểm chứng thiếu hoặc không hợp lệ. Hãy chạy lại kiểm chứng trước khi đổi baseline."),
     CANDIDATE_ALREADY_DECIDED(CONFLICT, "Ứng viên %s đã được xử lý trước đó."),
     BASELINE_CHANGED(CONFLICT, "Baseline %s đã được thay sau lần kiểm chứng này. Hãy kiểm chứng lại với baseline hiện hành.");
 

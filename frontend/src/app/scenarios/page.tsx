@@ -7,7 +7,7 @@ import { Pencil, Play, X } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { FamilyForm } from "@/components/FamilyForm";
-import { EmptyState, ErrorNote, Pagination, PillButton, Tag, cx, fmt, simulatorLabel, TableScroll } from "@/components/VehicSimUi";
+import { EmptyState, ErrorNote, Pagination, PillButton, Tag, cx, fmt, simulatorLabel, TableScroll, VehicSimSelect } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { ActiveFamilyRun, FamilyItem, FamilyVariantList, FamilyVersion, RiskLabel, TimeOfDay, Weather } from "@/types/vehicsim";
@@ -186,12 +186,6 @@ export default function ScenarioFamiliesPage() {
           ? [{ label: "Thiết kế kịch bản", href: "/scenarios" }, { label: "Nhập tham số" }]
           : [{ label: "Thiết kế kịch bản" }, { label: "Danh sách họ kịch bản" }]
       }
-      title={isNew ? "Thiết lập không gian tham số kịch bản" : "Họ kịch bản kiểm thử an toàn"}
-      subtitle={
-        isNew
-          ? "Định nghĩa dải giá trị vận tốc, khoảng cách và điều kiện môi trường để tự động sinh biến thể mô phỏng."
-          : "Quản lý các không gian tham số va chạm và biến thể phục vụ đánh giá hệ thống phanh khẩn cấp."
-      }
       actions={
         isNew ? (
           <>
@@ -305,14 +299,14 @@ export default function ScenarioFamiliesPage() {
           <EmptyState title="Chưa có họ kịch bản nào">Tạo họ đầu tiên (ví dụ người đi bộ băng ngang) rồi chạy cơ sở để có ca lỗi.</EmptyState>
         )}
         {!!pagedItems?.length && (
-          <TableScroll label="Bảng họ kịch bản" minWidth={960}>
+          <TableScroll label="Bảng họ kịch bản" minWidth={985}>
             <div className="flex h-11 items-center border-y border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
               <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
               <span className="w-[200px] shrink-0 pr-4">Họ kịch bản</span>
               <span className="min-w-[190px] flex-1 pr-4">Không gian tham số</span>
               <span className="w-[85px] shrink-0">Biến thể</span>
               <span className="w-[95px] shrink-0">Lượt chạy</span>
-              <span className="w-[95px] shrink-0">Lỗi baseline</span>
+              <span className="w-[120px] shrink-0 pr-2">Lỗi baseline</span>
               <span className="w-[85px] shrink-0">Ngày tạo</span>
               <span className="w-[215px] shrink-0 text-center">Thao tác</span>
             </div>
@@ -388,6 +382,9 @@ export default function ScenarioFamiliesPage() {
                     <span>
                       <b className="text-vehicsim-ink font-bold">{shown.runs.COMPLETED ?? 0}</b> đã xong
                     </span>
+                    <span className="text-[10.5px] text-vehicsim-faint" title="Gồm lượt baseline, lượt AEB tắt, lượt của tối ưu MOBO và kiểm thử hồi quy">
+                      mọi mục đích
+                    </span>
                     {!old && pending > 0 && (
                       <button
                         type="button"
@@ -417,14 +414,21 @@ export default function ScenarioFamiliesPage() {
                       ))}
                     {(shown.runs.STOPPED ?? 0) > 0 && <span className="text-[11px]">{shown.runs.STOPPED} đã hủy</span>}
                   </span>
-                  <span className="flex w-[95px] shrink-0 flex-col">
+                  <span className="flex w-[120px] shrink-0 flex-col pr-2">
                     {old ? (
                       <span className="text-[12px] text-vehicsim-faint" title="Lỗi trên bản cơ sở chỉ tính cho bản hiện hành">—</span>
                     ) : (
                       <>
-                        <span className={cx("text-[13px] font-bold", f.failures ? "text-vehicsim-danger" : "text-vehicsim-faint")}>
-                          {f.failures} / {f.variants}
-                        </span>
+                        {baselineRan(f) ? (
+                          <span className={cx("text-[13px] font-bold", f.failures ? "text-vehicsim-danger" : "text-vehicsim-faint")}>
+                            {f.failures} / {f.variants}
+                          </span>
+                        ) : (
+                          // Chưa biến thể nào chạy xong với bản cơ sở hiện hành: "0 / N" sẽ bị đọc thành "chạy rồi, không lỗi".
+                          <span className="text-[12px] font-semibold text-vehicsim-faint" title="Chưa có lượt baseline hoàn tất với bản cơ sở hiện hành">
+                            Chưa chạy
+                          </span>
+                        )}
                         {f.baseline && <span className="text-[10.5px] text-vehicsim-faint">AEB {f.baseline}</span>}
                       </>
                     )}
@@ -536,11 +540,11 @@ function VariantLabels({
 
   return (
     <div className="border-b border-solid border-vehicsim-line bg-vehicsim-soft px-5 py-4">
-      <p className="mb-3 text-[12px] leading-[1.5] text-vehicsim-muted">
-        Nhãn tập thử dùng để chọn dữ liệu cho tối ưu và regression (giữ đủ ca an toàn để đo phanh oan); không đổi cách chấm kết quả
-        của lượt chạy. Mặc định tự suy: người đi bộ <b>dừng ở lề</b> → an toàn, <b>băng qua làn</b> → nguy hiểm.
-        {list && !list.current && <> Đang xem bản cũ v{list.version}.</>}
-      </p>
+      {list && !list.current && (
+        <p className="mb-3 text-[12px] leading-[1.5] text-vehicsim-muted">
+          Đang xem bản cũ v{list.version}.
+        </p>
+      )}
       {!list ? (
         <p className="text-[12px] text-vehicsim-faint">Đang tải biến thể…</p>
       ) : (
@@ -564,17 +568,19 @@ function VariantLabels({
                     {v.manual ? " · sửa tay" : ""}
                   </Tag>
                 </span>
-                <select
+                <VehicSimSelect
+                  aria-label={`Nhãn biến thể #${index + 1}`}
                   value={v.manual ? v.risk_label : "AUTO"}
                   disabled={!canWrite || busy !== null}
-                  onChange={(e) => onChange(v.scenario_version_id, e.target.value as RiskLabel | "AUTO")}
-                  aria-label={`Nhãn biến thể #${index + 1}`}
-                  className="w-[170px] rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 py-[5px] text-[12px] text-vehicsim-ink disabled:opacity-50"
-                >
-                  <option value="AUTO">Tự suy ({RISK[v.auto_label].label.toLowerCase()})</option>
-                  <option value="DANGEROUS">Nguy hiểm</option>
-                  <option value="SAFE">An toàn</option>
-                </select>
+                  onChange={(val) => onChange(v.scenario_version_id, val as RiskLabel | "AUTO")}
+                  options={[
+                    { value: "AUTO", label: `Tự suy (${RISK[v.auto_label].label.toLowerCase()})` },
+                    { value: "DANGEROUS", label: "Nguy hiểm" },
+                    { value: "SAFE", label: "An toàn" },
+                  ]}
+                  buttonClassName="h-8 rounded-full px-2.5 text-[12px]"
+                  className="w-[170px]"
+                />
               </div>
             );
           })}
@@ -613,11 +619,7 @@ function ActiveRuns({
 }) {
   return (
     <div className="border-b border-solid border-vehicsim-line bg-vehicsim-soft px-5 py-4">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <p className="text-[12px] leading-[1.5] text-vehicsim-muted">
-          Hủy lượt <b>đang chờ</b> thì dừng ngay; lượt <b>đang chạy</b> sẽ chuyển sang &quot;đang dừng&quot; trong lúc worker dọn CARLA. Lượt thuộc
-          regression hoặc tối ưu chỉ dừng được theo cả lượt kiểm thử / đợt tối ưu.
-        </p>
+      <div className="mb-3 flex items-center justify-end">
         <button type="button" onClick={onClose} className="shrink-0 text-[12px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink">
           Đóng
         </button>
@@ -677,6 +679,11 @@ function ActiveRuns({
 }
 
 /** Tách lượt đang chạy khỏi lượt đang chờ (PENDING/QUEUED, PAUSED), mỗi loại một dòng để cột hẹp không cắt chữ. */
+/** Đã có biến thể chạy xong với bản cơ sở hiện hành (mọi bộ mô phỏng) chưa; backend chỉ đếm lượt baseline AEB bật của xe đang dùng. */
+function baselineRan(f: FamilyItem): boolean {
+  return Object.values(f.baseline_progress ?? {}).some((p) => p.completed_variants > 0);
+}
+
 function waitingRunsLines(runs: Record<string, number>): string[] {
   const running = runs.RUNNING ?? 0;
   const waiting = (runs.PENDING ?? runs.QUEUED ?? 0) + (runs.PAUSED ?? 0);

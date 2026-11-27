@@ -36,7 +36,9 @@ class SimilarFailuresTest {
     }
 
     private AnalysisViewService.RunBundle bundle(String aebMode) {
-        Map<String, Object> columns = Json.obj("id", 1L, "scenario_id", 42L, "run_config_json", Json.write(config(false)));
+        Map<String, Object> columns = Json.obj("id", 1L, "scenario_id", 42L, "aeb_version_id", 7L,
+                "carla_vehicle_model_id", 5L, "simulator_version", "carla-0.9.16-xosc16", "fixed_delta_seconds", .01,
+                "run_config_json", Json.write(config(false)));
         if (aebMode != null) columns.put("aeb_mode", aebMode);
         return new AnalysisViewService.RunBundle(new Row(columns), null, null, null, null, null, Json.obj("chain", List.of()));
     }
@@ -47,7 +49,7 @@ class SimilarFailuresTest {
 
         views.similarFailures(1L, bundle("ON"), 3);
 
-        verify(db).list(contains("r.aeb_mode = ?"), eq(1L), eq(42L), eq("ON"));
+        verify(db).list(contains("r.aeb_mode = ?"), eq(1L), eq(42L), eq("ON"), eq(7L), eq(5L), eq("carla-0.9.16-xosc16"), eq(.01));
     }
 
     @Test
@@ -56,7 +58,7 @@ class SimilarFailuresTest {
 
         views.similarFailures(1L, bundle("OFF"), 3);
 
-        verify(db).list(contains("r.aeb_mode = ?"), eq(1L), eq(42L), eq("OFF"));
+        verify(db).list(contains("r.aeb_mode = ?"), eq(1L), eq(42L), eq("OFF"), eq(7L), eq(5L), eq("carla-0.9.16-xosc16"), eq(.01));
     }
 
     @Test
@@ -65,7 +67,7 @@ class SimilarFailuresTest {
 
         views.similarFailures(1L, bundle(null), 3);
 
-        verify(db).list(contains("r.aeb_mode = ?"), eq(1L), eq(42L), eq("ON"));
+        verify(db).list(contains("r.aeb_mode = ?"), eq(1L), eq(42L), eq("ON"), eq(7L), eq(5L), eq("carla-0.9.16-xosc16"), eq(.01));
     }
 
     @Test
@@ -87,7 +89,9 @@ class SimilarFailuresTest {
                 "target_speed_kmh", 40.0, "initial_distance_m", 20.0, "target_decel_mps2", -6.0, "lateral_overlap_pct", 100.0,
                 "weather", "CLEAR", "time_of_day", "DAY");
         AnalysisViewService.RunBundle leadBundle = new AnalysisViewService.RunBundle(
-                new Row(Json.obj("id", 1L, "scenario_id", 43L, "aeb_mode", "ON", "run_config_json", Json.write(targetMe))),
+                new Row(Json.obj("id", 1L, "scenario_id", 43L, "aeb_mode", "ON", "aeb_version_id", 7L,
+                        "carla_vehicle_model_id", 5L, "simulator_version", "carla-0.9.16-xosc16", "fixed_delta_seconds", .01,
+                        "run_config_json", Json.write(targetMe))),
                 null, null, null, null, null, Json.obj("chain", List.of()));
 
         Row exact = new Row(Json.obj("failure_id", 21L, "run_id", 21L, "scenario_id", 43L, "scenario_code", "LR", "scenario_name", "LR",

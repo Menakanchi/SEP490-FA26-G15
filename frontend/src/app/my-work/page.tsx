@@ -184,8 +184,6 @@ function MyWorkContent() {
   return (
     <VehicSimPage
       crumbs={[{ label: "Nhiệm vụ & báo cáo" }]}
-      title="Theo dõi tiến độ & Báo cáo công việc"
-      subtitle="Tổng hợp các nhiệm vụ phân công, đợt kiểm thử đang xử lý và lịch sử nộp báo cáo trong dự án."
       actions={
         allowed && work && work.projects.length > 0 ? (
           <PillButton variant="dark" onClick={() => (formOpen ? setFormOpen(false) : openReportFor(null))}>

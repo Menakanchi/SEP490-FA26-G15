@@ -10,6 +10,7 @@ export type ReviewDecision = "PENDING" | "ACCEPT" | "REJECT" | "REQUEST_MORE_TES
 export type Weather = "CLEAR" | "CLOUDY" | "RAIN" | "HEAVY_RAIN" | "FOG";
 export type TimeOfDay = "DAY" | "DUSK" | "NIGHT";
 
+/** Trạng thái kết nối và khả năng tương thích của hệ thống giả lập CARLA. */
 export interface CarlaStatus {
   configured: boolean;
   connected: boolean;
@@ -20,7 +21,16 @@ export interface CarlaStatus {
   error?: string;
 }
 
+/** ADMIN: project có lượt CARLA, để chọn project muốn xem. */
+export interface CarlaRunProject {
+  id: number;
+  name: string;
+  status: string;
+  run_count: number;
+}
+
 export interface CarlaRun {
+  project_id?: number;
   optimization_trial_id: number | null;
   id: number;
   status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "STOPPED";
@@ -755,7 +765,8 @@ export interface RegressionRequest {
   variant_ids?: number[];
 }
 
-export type RecommendationStatus = ReviewDecision | "BLOCKED";
+/** `SUPERSEDED`: candidate đã được quyết định ở kiểm thử khác; `BASELINE_CHANGED`: bản cơ sở của kiểm thử đã đổi (không Accept được). */
+export type RecommendationStatus = ReviewDecision | "BLOCKED" | "SUPERSEDED" | "BASELINE_CHANGED";
 
 export interface RecommendationItem {
   id: number;
@@ -865,6 +876,13 @@ export interface OptimizationRun {
   error_message: string | null;
   search_space?: Record<string, [number, number]>;
   objective_config?: Record<string, unknown>;
+  dataset_id?: number | null;
+  dataset_digest?: string | null;
+  handoff_id?: string | null;
+  handoff_digest?: string | null;
+  handoff_execution_id?: string | null;
+  optimization_run_ids?: number[];
+  validation_run_ids?: number[];
 }
 
 export interface OptimizationTrial {
@@ -898,6 +916,7 @@ export interface OptimizationSelectionResult {
 }
 
 export interface AnalysisRun {
+  aeb_mode?: "ON" | "OFF";
   revision: string; run_id: number; scenario_id: number; scenario_version_id: number; version_no: number;
   family: string; variant: string; seed: number; baseline_id: number; vehicle_id: number;
   simulator: string; dt: number; status: string; outcome: string; weather: string | null;
@@ -921,6 +940,8 @@ export interface AnalysisDashboardData {
 }
 export interface AnalysisSelection {
   schema: "vehicsim.analysis-dataset/v2"; id: number; baseline_current: boolean; handoff_ready: boolean;
+  /** Server-issued digest returned by the current handoff validation. */
+  dataset_digest?: string;
   scenario: {id: number; code: string; name: string; category: string};
   baseline: {id: number; label: string};
   reference: {vehicle_id: number; simulator: string; dt: number};
