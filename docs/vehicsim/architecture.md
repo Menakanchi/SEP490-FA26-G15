@@ -302,7 +302,7 @@ không được đưa lại vào API hiện tại. CPLA/TURNING/CUT_IN chưa tri
 ## Xác thực
 
 - Đăng ký và quên mật khẩu: email → mã 6 số (TTL 600 s, tối đa 5 lần nhập sai,
-  gửi lại sau 60 s, giới hạn theo IP). Mã lưu **HMAC** trong Redis, không lưu MySQL.
+  gửi lại sau 30 s, giới hạn theo IP). Mã lưu **HMAC** trong Redis, không lưu MySQL.
 - Không tiết lộ email có tồn tại: đăng nhập và quên mật khẩu phản hồi và thời gian như nhau (gửi mail chạy nền). Riêng bước xin mã
   đăng ký trả 409 khi email đã có tài khoản ([ADR-070](../adr/ADR-070-dang-ky-bao-email-da-co-tai-khoan.md)), sau hạn mức theo IP.
 - Hai cách đăng ký, backend chọn bằng `REGISTRATION_MODE` (`auto` | `one_step` | `otp` | `closed`; `GET /auth/register/mode` cho
