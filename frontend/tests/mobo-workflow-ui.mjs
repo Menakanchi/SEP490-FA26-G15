@@ -59,6 +59,7 @@ try {
   if(p==="/vehicsim/analysis/datasets/91")return reply(dataset);
   if(p==="/vehicsim/analysis/runs")return reply({total:0,page:1,page_size:10,items:[],counts:{},objective_groups:[],evaluation_version:"adr040-stored-aggregation/1"});
   if(p==="/vehicsim/analysis/v3/sources")return reply({items:[],limit:20,offset:0});
+  if(p==="/vehicsim/analysis/v3/explorer/scenarios")return reply({project_id:1,items:[],total:0,limit:20,offset:0});
   if(/^\/vehicsim\/analysis\/v3\/database\/(runs|collections)$/.test(p))return reply({schema_version:"vehicsim.fa-db-input/v1",selection_kind:p.endsWith("collections")?"COLLECTION":"RUN",project_id:1,items:[],limit:20,offset:0});
   if(p==="/vehicsim/analysis/v3/contexts"&&req.method()==="POST"){
    contextWrites.push(req.postDataJSON());return contextStatus===200?reply({context_id:contextId,context_digest:"d".repeat(64),source_id:sourceId}):reply({detail:"Fixture context approval unavailable"},contextStatus);

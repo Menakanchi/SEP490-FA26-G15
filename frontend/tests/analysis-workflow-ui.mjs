@@ -85,6 +85,7 @@ try {
     if (p === "/vehicsim/context") return reply({ ...context, project: { id: project, name: project === secondProject ? "UI Project B fixture" : "UI Project A fixture" },
       reviewer_projects: [context.project.id, secondProject].map(id => ({ id, name: id === secondProject ? "Project B" : "Project A", workspace_name: "QA", can_decide: true })) });
     if (p === "/vehicsim/analysis/v3/sources") return reply({items:[],limit:20,offset:0}); // FE-R4: empty FA storage is independent of legacy runs.
+    if (p === "/vehicsim/analysis/v3/explorer/scenarios") return reply({project_id:project,items:[],total:0,limit:20,offset:0});
     if (/^\/vehicsim\/analysis\/v3\/database\/(runs|collections)$/.test(p)) return reply({schema_version:"vehicsim.fa-db-input/v1",selection_kind:p.endsWith("collections")?"COLLECTION":"RUN",project_id:Number(route.request().headers()["x-vehicsim-project"]),items:[],limit:20,offset:0}); // Independent database source fixture.
     if (p === "/vehicsim/notifications") return reply({ items: [], unread_count: 0 });
     if (p === "/vehicsim/analysis/runs") {
