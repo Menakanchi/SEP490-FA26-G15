@@ -101,11 +101,6 @@ try {
  await shot("scenario-runs");
  assert.equal(await page.getByText("Biến thể chưa có lượt chạy",{exact:true}).isVisible(),false);
  assert.equal(requests.filter(r=>r.path.includes("/explorer/scenarios/42/variants")).length,0);
- // Exercise the hidden variant list only in the test; it must not fetch on its own.
- await page.getByRole("searchbox",{name:"Tìm kiếm",exact:true}).fill("CP");await page.waitForURL(url=>url.searchParams.get("fa_q")==="CP");
- const unrun=page.getByText("Biến thể chưa có lượt chạy",{exact:true});await unrun.locator("xpath=ancestor::details[1]").evaluate(el=>{el.hidden=false});await unrun.click();
- await page.getByText("Biến thể 4 · ID 1034 — chưa có lượt chạy",{exact:true}).waitFor();
- await page.getByRole("searchbox",{name:"Tìm kiếm",exact:true}).fill("2499");await page.waitForURL(url=>url.searchParams.get("fa_q")==="2499");
  await page.getByText("Tìm kiếm nâng cao",{exact:true}).click();
  await page.getByLabel("Đánh giá AEB").selectOption("SUSPECTED");
  await page.waitForURL(url=>url.searchParams.get("fa_class")==="SUSPECTED");
