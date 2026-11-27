@@ -235,7 +235,7 @@ try {
     assert(requests.length>0);
     // Unmount cleans the loop; returning to the route starts paused.
     await play().click();await page.getByRole("link",{name:"Xem phân tích run",exact:true}).click();
-    await page.getByRole("heading",{name:"Dữ liệu đo",exact:true}).waitFor();
+    await page.getByRole("region",{name:"Kết luận phân tích",exact:true}).waitFor();
     await page.waitForFunction(()=>window.__playbackRaf.pending.size===0);
     await page.goBack();await controls.waitFor();assert(await play().isVisible());
   }
