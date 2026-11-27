@@ -1,16 +1,16 @@
 "use client";
 
-import { eventColor, eventName, PLAYBACK_SPEEDS, type PlaybackEvent, type PlaybackSpeed } from "./playbackPresentation";
+import { eventColor, eventName, PLAYBACK_SPEEDS, type PlaybackAebMode, type PlaybackEvent, type PlaybackSpeed } from "./playbackPresentation";
 import { formatMetric } from "./analysisMetricFormat";
 import type { SimEvent } from "@/types/vehicsim";
 import styles from "./AnalysisPlayback.module.css";
 
 type Props = {
   duration: number; time: number; frameTime?: number; playing: boolean; speed: PlaybackSpeed; enabled: boolean; canPlay: boolean; start: number; backgroundPaused: boolean;
-  entries: PlaybackEvent[]; activeEvent?: SimEvent; onSeek: (time: number) => void; onPlayPause: () => void;
+  entries: PlaybackEvent[]; activeEvent?: SimEvent; mode?: PlaybackAebMode; onSeek: (time: number) => void; onPlayPause: () => void;
   onSpeed: (speed: PlaybackSpeed) => void; onJump: (direction: 1 | -1) => void;
 };
-export function PlaybackTimeline({ duration, time, frameTime, playing, speed, enabled, canPlay, start, backgroundPaused, entries, activeEvent, onSeek, onPlayPause, onSpeed, onJump }: Props) {
+export function PlaybackTimeline({ duration, time, frameTime, playing, speed, enabled, canPlay, start, backgroundPaused, entries, activeEvent, mode, onSeek, onPlayPause, onSpeed, onJump }: Props) {
   const groups: { time: number; entries: PlaybackEvent[] }[] = [];
   for (const entry of entries) {
     const previous = groups.at(-1);
@@ -40,8 +40,8 @@ export function PlaybackTimeline({ duration, time, frameTime, playing, speed, en
     </div>
     {groups.length > 0 && <div className={styles.markers} aria-label="Mốc sự kiện playback"><div className={styles.track} />
       {groups.map((group, index) => <button key={index} type="button" className={styles.marker}
-        aria-label={`Mốc ${formatMetric(group.time, 3)} s: ${group.entries.map(entry => eventName(entry.record)).join("; ")}`}
-        title={group.entries.map(entry => `${formatMetric(entry.record.t, 3)} s · ${eventName(entry.record)}`).join("\n")}
+        aria-label={`Mốc ${formatMetric(group.time, 3)} s: ${group.entries.map(entry => eventName(entry.record, mode)).join("; ")}`}
+        title={group.entries.map(entry => `${formatMetric(entry.record.t, 3)} s · ${eventName(entry.record, mode)}`).join("\n")}
         aria-current={group.entries.some(entry => entry.record === activeEvent) ? true : undefined}
         style={{ left: `${duration > 0 ? group.time / duration * 100 : 0}%`, background: eventColor(group.entries[0].record) }}
         disabled={!enabled} onClick={() => onSeek(group.time)}>{group.entries.length > 1 ? group.entries.length : <span aria-hidden="true">·</span>}</button>)}
@@ -50,17 +50,17 @@ export function PlaybackTimeline({ duration, time, frameTime, playing, speed, en
   </section>;
 }
 
-export function PlaybackEvents({ entries, activeEvent, enabled, ignored, onSeek }: {
-  entries: PlaybackEvent[]; activeEvent?: SimEvent; enabled: boolean; ignored: number; onSeek: (time: number) => void;
+export function PlaybackEvents({ entries, activeEvent, enabled, ignored, mode, onSeek }: {
+  entries: PlaybackEvent[]; activeEvent?: SimEvent; enabled: boolean; ignored: number; mode?: PlaybackAebMode; onSeek: (time: number) => void;
 }) {
   return <section className={`analysis-panel ${styles.stack}`} aria-label="Nhật ký sự kiện">
     <div className={styles.eventsHeading}><h2>Nhật ký sự kiện</h2><span>{entries.length} mốc đã ghi</span></div>
     {!entries.length && <p className="analysis-caption">Run không có sự kiện hợp lệ trong khoảng phát.</p>}
     {ignored > 0 && <p className="analysis-caption">{ignored} sự kiện có timestamp không hợp lệ hoặc nằm ngoài khoảng phát.</p>}
     <div className={styles.eventList}>{entries.map((entry, index) => <button key={entry.id} type="button" className={styles.event} data-event-id={entry.id}
-      aria-label={`${index + 1}. ${eventName(entry.record)} · ${formatMetric(entry.record.t, 3)} s`}
+      aria-label={`${index + 1}. ${eventName(entry.record, mode)} · ${formatMetric(entry.record.t, 3)} s`}
       aria-current={entry.record === activeEvent ? "step" : undefined} disabled={!enabled} onClick={() => onSeek(entry.record.t)} title={`events[kind=${entry.record.kind}].t = ${formatMetric(entry.record.t, 3)} s`}>
-      <i style={{ background: eventColor(entry.record) }} /><time>{formatMetric(entry.record.t, 3)} s</time><span>{eventName(entry.record)}</span>
+      <i style={{ background: eventColor(entry.record) }} /><time>{formatMetric(entry.record.t, 3)} s</time><span>{eventName(entry.record, mode)}</span>
     </button>)}</div>
   </section>;
 }

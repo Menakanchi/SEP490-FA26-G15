@@ -17,7 +17,7 @@ const version = "adr040-stored-aggregation/1";
 const values = { rms_jerk_mps3: 2.123, impact_speed_mps: 10, stopping_distance_m: 33.25 };
 const run = { revision: "metric-fixture", run_id: 101, scenario_id: 42, scenario_version_id: 201, version_no: 1,
   family: "Metric fixture", variant: "CP-001", seed: 13, baseline_id: 7, vehicle_id: 2,
-  simulator: "carla-0.9.16-xosc5", dt: 0.25, status: "COMPLETED", outcome: "COLLISION",
+  simulator: "carla-0.9.16-xosc5", aeb_mode: "ON", dt: 0.25, status: "COMPLETED", outcome: "COLLISION",
   weather: "CLEAR", time_of_day: "DAY", failure_class: "CONTROL", error: null, end_reason: "COLLISION",
   trace_available: true, created_at: "2026-11-14T08:00:00", metrics: values };
 const objective = (value, unit) => ({ value, unit, samples: 1, missing: 0, notApplicable: 0, status: "VALID" });
@@ -70,7 +70,7 @@ try {
       requests.push(p);
       if(apiMode==="error")return route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({message:"Fixture playback unavailable"})});
       const body={...structuredClone(playback),run_id:p.includes("/102/")?102:101};
-      if(apiMode==="slow")await new Promise(resolve=>setTimeout(resolve,300));
+      if(apiMode==="slow")await new Promise(resolve=>setTimeout(resolve,1500));
       return reply(body);
     }
     if (p === "/vehicsim/analysis/runs/101") return reply({ run: inspectionRun, detail });
@@ -132,6 +132,44 @@ try {
 
   if(!baseline){
     await page.setViewportSize({width:1440,height:900});
+    // Replay must distinguish a recorded shadow decision from an active AEB intervention.
+    // This fixture deliberately keeps aeb=true and both events in every mode, including OFF.
+    for (const mode of ["OFF", "ON", null]) {
+      playback={...structuredClone(original),aeb_mode:mode,frames,duration_s:0.5,related_runs:[],
+        events:[{t:0,kind:"aeb_decision",label:"AEB brake command"},
+          {t:0.25,kind:"brake_onset",label:"brake command"},{t:0.5,kind:"collision",label:"Collision"}]};
+      await goto(0.25);
+      const facts=page.getByRole("region",{name:"Số đo khung playback",exact:true});
+      const log=page.getByRole("region",{name:"Nhật ký sự kiện",exact:true});
+      const text=await page.locator("body").innerText();
+      if(mode==="OFF") {
+        assert.match(text,/AEB TẮT/);
+        assert.equal(await page.getByText("Điều khiển",{exact:true}).count(),0);
+        assert.equal(await page.getByText("Va chạm",{exact:true}).count(),1);
+        assert.doesNotMatch(await facts.innerText(),/AEB ĐÃ RA QUYẾT ĐỊNH/);
+        assert.match(await log.innerText(),/Tín hiệu AEB giả lập/);
+        assert.match(await log.innerText(),/AEB tắt; chưa rõ nguồn/);
+        assert.doesNotMatch(await log.innerText(),/Quyết định AEB/);
+      } else if(mode==="ON") {
+        assert.match(text,/AEB BẬT/);
+        assert.equal(await page.getByText("Điều khiển",{exact:true}).count(),1);
+        assert.match(await facts.innerText(),/AEB ĐÃ RA QUYẾT ĐỊNH/);
+        assert.match(await log.innerText(),/Quyết định AEB/);
+      } else {
+        assert.match(text,/CHƯA RÕ CHẾ ĐỘ AEB/);
+        assert.doesNotMatch(await facts.innerText(),/AEB ĐÃ RA QUYẾT ĐỊNH/);
+        assert.match(await log.innerText(),/chưa rõ chế độ AEB/i);
+      }
+      await shot("aeb-mode-"+(mode??"unknown").toLowerCase());
+      assert.equal(await log.locator('[data-event-id]').count(),3,"Keep original events visible");
+      await log.getByRole("button",{name:/Va chạm|Collision/i}).click();
+      await page.waitForURL(u=>u.searchParams.get("t")==="0.5");
+      assert.match(await facts.innerText(),/VA CHẠM/,"Collision remains visible in every mode");
+    }
+    playback={...structuredClone(original),aeb_mode:"OFF",evaluation_valid:false,frames,duration_s:0.5,related_runs:[],events:[{t:0.5,kind:"collision",label:"Collision"}]};
+    await goto(0.25);
+    assert.equal(await page.getByText("Va chạm",{exact:true}).count(),1,"Recorded collision is shown even without AEB evaluation");
+    assert.equal(await page.getByText("Điều khiển",{exact:true}).count(),0);
     playback=fixture([1,1.2,2.75,3]);await goto(3,1);
     await page.setViewportSize({width:375,height:812});
     assert(await page.getByRole("region",{name:"Cảnh playback đã ghi",exact:true}).locator("svg").isVisible());

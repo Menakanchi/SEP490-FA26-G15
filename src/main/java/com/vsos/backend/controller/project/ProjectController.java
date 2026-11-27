@@ -45,7 +45,7 @@ public class ProjectController {
     public ProjectList list(@RequestParam(defaultValue = "ACTIVE") String status, @RequestParam(defaultValue = "") String q,
                             @RequestParam(defaultValue = "1") int page, @RequestParam(name = "page_size", defaultValue = "9") int pageSize,
                             @AuthenticationPrincipal UserDetails user) {
-        return projects.list(VehicSimAccess.userId(user), status, q, page, pageSize);
+        return projects.list(VehicSimAccess.userId(user), "ENGINEER".equals(VehicSimAccess.roleOf(user)), status, q, page, pageSize);
     }
 
     @Operation(summary = "Xe chọn được khi tạo hoặc sửa project")

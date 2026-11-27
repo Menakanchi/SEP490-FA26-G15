@@ -38,6 +38,7 @@ import static com.vsos.backend.dto.project.ProjectDtos.JourneyStatus.TODO;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -146,6 +147,19 @@ class ProjectServiceTest {
         assertThatThrownBy(() -> service.list(OWNER, "DELETED", "", 1, 9)).isInstanceOf(Vs.InvalidRequestException.class);
         assertThatThrownBy(() -> service.list(OWNER, "ACTIVE", "", 0, 9)).isInstanceOf(Vs.InvalidRequestException.class);
         assertThatThrownBy(() -> service.list(OWNER, "ACTIVE", "", 1, ProjectService.PAGE_SIZE_MAX + 1)).isInstanceOf(Vs.InvalidRequestException.class);
+    }
+
+    @Test
+    void engineerListsWorkspaceProjectsOwnedWhileStillAMember() {
+        when(projects.pageOwnedWorkspace(OWNER, "ACTIVE", "", 9, 0)).thenReturn(List.of(project("ACTIVE")));
+        when(projects.countOwnedWorkspace(OWNER, "ACTIVE", "")).thenReturn(1);
+        when(projects.countOwnedWorkspace(OWNER, "ARCHIVED", "")).thenReturn(0);
+
+        ProjectList list = service.list(OWNER, true, "ACTIVE", "", 1, 9);
+
+        assertThat(list.items()).extracting(ProjectItem::id).containsExactly(PROJECT);
+        assertThat(list.activeCount()).isEqualTo(1);
+        verify(projects, never()).pagePersonal(anyLong(), anyString(), anyString(), anyInt(), anyInt());
     }
 
     @Test
