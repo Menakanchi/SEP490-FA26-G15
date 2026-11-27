@@ -619,4 +619,12 @@ class CarlaWebTest {
                 .as("run có nhưng chưa có tệp").isInstanceOf(Vs.NotFoundException.class);
         verify(db).first(argThat((String q) -> q.contains("FROM simulation_runs WHERE id = ?") && !q.contains("project_id")), any(Object[].class));
     }
+
+    @Test
+    void adminProjectPickerListsOnlyProjectsThatHaveCarlaRuns() {
+        runs.carlaRunProjects();
+        org.mockito.ArgumentCaptor<String> sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(db, atLeastOnce()).list(sql.capture(), any(Object[].class));
+        assertThat(sql.getValue()).contains("simulator_type = 'CARLA'").contains("GROUP BY p.id");
+    }
 }

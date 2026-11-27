@@ -9,6 +9,7 @@ import type {
   AnalysisDataset,
   CarlaStatus,
   CarlaRun,
+  CarlaRunProject,
   CarlaData,
   DecisionHistory,
   DescribeResult,
@@ -180,7 +181,9 @@ export const vehicsimApi = {
       `/vehicsim/families/${scenarioId}/baseline-runs${simulatorType ? `?simulator_type=${simulatorType}` : ""}`,
       { method: "DELETE" }),
   carlaStatus: () => apiRequest<CarlaStatus>("/vehicsim/carla/status"),
-  carlaRuns: () => apiRequest<CarlaRun[]>("/vehicsim/carla/runs"),
+  /** `projectId` chỉ có tác dụng với ADMIN (xem lượt của một project); role khác bị backend bỏ qua. */
+  carlaRuns: (projectId?: number | null) => apiRequest<CarlaRun[]>(projectId ? `/vehicsim/carla/runs?project_id=${projectId}` : "/vehicsim/carla/runs"),
+  carlaRunProjects: () => apiRequest<CarlaRunProject[]>("/vehicsim/carla/run-projects"),
   carlaData: (runId: number) => apiRequest<CarlaData>(`/vehicsim/runs/${runId}/carla-data`),
   carlaImage: (runId: number, frame: string) => apiBlob(`/vehicsim/runs/${runId}/carla-files/${frame}`),
   /** Video mp4 xem lại của run CARLA (404 khi run không có video). */

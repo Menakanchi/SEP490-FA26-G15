@@ -876,6 +876,12 @@ public class RunService {
                 + "WHERE simulator_type = 'CARLA'" + visible + " ORDER BY id DESC LIMIT 30", args.toArray()).stream().map(Row::asMap).toList();
     }
 
+    /** Project có lượt CARLA (mới chạy gần nhất trước), cho ADMIN chọn project muốn xem. */
+    public List<Map<String, Object>> carlaRunProjects() {
+        return db.list("SELECT p.id, p.name, p.status, COUNT(*) AS run_count FROM simulation_runs r JOIN projects p ON p.id = r.project_id "
+                + "WHERE r.simulator_type = 'CARLA' GROUP BY p.id, p.name, p.status ORDER BY MAX(r.id) DESC").stream().map(Row::asMap).toList();
+    }
+
     /** Run CARLA mà request được xem theo {@link RunViewScope}; null nếu không thấy (gọi nơi trả 404, không lộ run tồn tại). */
     private Row visibleCarlaRun(RunViewScope scope, long runId, String columns) {
         List<Object> args = new ArrayList<>();

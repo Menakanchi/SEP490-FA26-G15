@@ -21,7 +21,16 @@ export interface CarlaStatus {
   error?: string;
 }
 
+/** ADMIN: project có lượt CARLA, để chọn project muốn xem. */
+export interface CarlaRunProject {
+  id: number;
+  name: string;
+  status: string;
+  run_count: number;
+}
+
 export interface CarlaRun {
+  project_id?: number;
   optimization_trial_id: number | null;
   id: number;
   status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "STOPPED";
