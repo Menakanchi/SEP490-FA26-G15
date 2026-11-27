@@ -32,7 +32,7 @@ public class MailService {
         return username != null && !username.isBlank() && mailSender.getPassword() != null && !mailSender.getPassword().isBlank();
     }
 
-    @Async
+    @Async("mailExecutor")
     public void sendOtp(String toEmail, String code, OtpService.Purpose purpose) {
         boolean register = purpose == OtpService.Purpose.REGISTER;
         String title = register ? "Mã xác minh đăng ký tài khoản" : "Mã đặt lại mật khẩu";

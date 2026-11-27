@@ -5,7 +5,7 @@ import { KeyRound, RotateCw } from "lucide-react";
 import { inputClass, labelClass } from "./AuthCard";
 
 /** Khớp OTP_RESEND_COOLDOWN_SECONDS mặc định ở backend. */
-export const RESEND_COOLDOWN_SECONDS = 60;
+export const RESEND_COOLDOWN_SECONDS = 30;
 
 interface OtpCodeFieldProps {
   email: string;
