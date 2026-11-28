@@ -71,6 +71,7 @@ class ProjectLocalCleanupMysqlTest {
         Files.writeString(ROOT.resolve(".vsos-storage-id"), "ae06c7f6-45f1-4835-a56e-cb0fb44a727a");
         Files.createDirectories(ROOT.resolve("runs/1"));
         Files.createDirectories(ROOT.resolve("runs/2"));
+        Files.writeString(ROOT.resolve("runs/.vsos-storage-id"), "ae06c7f6-45f1-4835-a56e-cb0fb44a727a");
         Files.writeString(ROOT.resolve("runs/1/demo.txt"), "project one");
         Files.writeString(ROOT.resolve("runs/2/demo.txt"), "project two");
         cleanup = new ProjectLocalCleanup(db, runs, transactions);
@@ -164,6 +165,26 @@ class ProjectLocalCleanupMysqlTest {
         }
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM project_local_cleanup", Integer.class)).isEqualTo(1);
         Files.writeString(ROOT.resolve(".vsos-storage-id"), storage);
+        cleanup.retryPending();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM project_local_cleanup", Integer.class)).isZero();
+        assertThat(ROOT.resolve("runs/2/demo.txt")).hasContent("project two");
+    }
+
+    @Test void missingOrWrongRunsMarkerKeepsProjectAndPendingJobUntilRestored() throws Exception {
+        String storage = cleanup.storageIdForWrite();
+        Path marker = ROOT.resolve("runs/.vsos-storage-id");
+        Files.delete(marker);
+        assertThat(cleanup.storageIdForWrite()).isNull();
+        assertThatThrownBy(() -> projects.delete(1, 7, "Demo", null))
+                .isInstanceOf(com.vsos.backend.exception.project.ProjectException.class);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM projects WHERE id = 1", Integer.class)).isEqualTo(1);
+        Files.writeString(marker, storage);
+        projects.delete(1, 7, "Demo", storage);
+        Files.writeString(marker, "09570bc3-47e1-4b78-a718-166d1dc74867");
+        cleanup.retryPending();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM project_local_cleanup", Integer.class)).isEqualTo(1);
+        assertThat(ROOT.resolve("runs/1/demo.txt")).hasContent("project one");
+        Files.writeString(marker, storage);
         cleanup.retryPending();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM project_local_cleanup", Integer.class)).isZero();
         assertThat(ROOT.resolve("runs/2/demo.txt")).hasContent("project two");

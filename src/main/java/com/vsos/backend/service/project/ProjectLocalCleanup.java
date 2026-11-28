@@ -55,7 +55,12 @@ public class ProjectLocalCleanup {
     }
 
     private String currentStorageId() throws IOException {
-        return readStorageId(runs.runDir(0).getParent().getParent().resolve(MARKER));
+        Path runRoot = runs.runDir(0).getParent();
+        String rootId = readStorageId(runRoot.getParent().resolve(MARKER));
+        if (!rootId.equals(readStorageId(runRoot.resolve(MARKER)))) {
+            throw new IOException("Marker thư mục runs không khớp data root");
+        }
+        return rootId;
     }
 
     private static String readStorageId(Path marker) throws IOException {

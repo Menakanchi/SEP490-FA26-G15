@@ -259,7 +259,7 @@ erDiagram
 
 #### `project_local_storage`
 
-Gắn duy nhất một database với một data root đã được quản trị viên xác minh. `id` luôn là 1; `storage_id` là UUID trùng marker `.vsos-storage-id` trong data root. Không tự khởi tạo lại khi marker bị mất.
+Gắn duy nhất một database với một data root đã được quản trị viên xác minh. `id` luôn là 1; `storage_id` là UUID trùng hai marker `.vsos-storage-id` tại data root và thư mục `runs`. Không tự khởi tạo lại khi marker bị mất.
 
 | Cột | Ý nghĩa |
 |---|---|
@@ -268,7 +268,7 @@ Gắn duy nhất một database với một data root đã được quản trị
 
 #### `project_local_cleanup`
 
-Hàng đợi dọn thư mục run local, được ghi cùng transaction xóa project. Không có FK đến run hoặc project vì chúng đã bị xóa. Worker chỉ xử lý công việc có `storage_id` khớp marker bền vững trong data root và giữ dòng khi dọn lỗi.
+Hàng đợi dọn thư mục run local, được ghi cùng transaction xóa project. Không có FK đến run hoặc project vì chúng đã bị xóa. Worker chỉ xử lý công việc có `storage_id` khớp cả hai marker bền vững và giữ dòng khi dọn lỗi.
 
 | Cột | Ý nghĩa |
 |---|---|
@@ -276,7 +276,7 @@ Hàng đợi dọn thư mục run local, được ghi cùng transaction xóa pro
 | `storage_id` | UUID của data root có file. |
 | `created_at` | Thời điểm ghi công việc. |
 
-**Thiết lập một lần sau migration 026:** sao lưu và xác định đúng DB cùng `VEHICSIM_DATA_ROOT` đã chứa các thư mục run của DB đó. Xác minh volume đã mount; không dùng chung một root cho nhiều DB độc lập. Trong đúng DB, nếu chưa có dòng binding, chạy `INSERT INTO project_local_storage (id, storage_id) VALUES (1, UUID());`, rồi đọc UUID bằng `SELECT storage_id FROM project_local_storage WHERE id = 1;`. Trên Windows hoặc Linux, chạy `python scripts/init-project-cleanup-marker.py <data-root> <UUID-vừa-đọc>`; script từ chối ghi đè marker hiện có. Giữ marker `.vsos-storage-id` cùng dữ liệu khi restart và backup. Không đổi binding/marker tùy tiện. Nếu bước ghi marker thất bại, sau khi xác minh root thật hãy dùng UUID đã lưu trong DB, không sinh UUID khác; nếu marker tồn tại nhưng khác/hỏng, dừng và đối soát trước khi xử lý. Backend từ chối xóa project có run nếu thiếu hoặc lệch binding/marker; project không có run vẫn xóa được. Với DB clone/khôi phục, bảo đảm root tách biệt và chủ động đối soát identity trước khi bật dọn; hai DB cùng root và trùng run ID không an toàn.
+**Thiết lập sau migration 026:** sao lưu và xác định đúng DB cùng `VEHICSIM_DATA_ROOT` đã chứa các thư mục run của DB đó. Xác minh cả root và `runs` đã tồn tại trên volume được mount đúng; không dùng chung một root cho nhiều DB độc lập, không mount riêng bất kỳ thư mục con nào dưới runs, kể cả từng thư mục run. Trong đúng DB, nếu chưa có dòng binding, chạy `INSERT INTO project_local_storage (id, storage_id) VALUES (1, UUID());`, rồi đọc UUID bằng `SELECT storage_id FROM project_local_storage WHERE id = 1;`. Trên Windows hoặc Linux, chạy `python scripts/init-project-cleanup-marker.py <data-root> <UUID-vừa-đọc>`; script tạo hai marker tại root và `runs`, chấp nhận marker đã có đúng UUID và không ghi đè marker khác. Bản cài 026 cũ cần chạy lại script sau khi xác minh mount để thêm marker trong `runs`. Giữ marker tương ứng trên đúng từng volume khi restart và backup; không đặt bản sao marker lên mountpoint bên dưới volume. Không đổi binding/marker tùy tiện. Nếu bước ghi marker thất bại, sau khi xác minh root thật hãy dùng UUID đã lưu trong DB, không sinh UUID khác; nếu marker tồn tại nhưng khác/hỏng, dừng và đối soát trước khi xử lý. Backend từ chối xóa project có run nếu thiếu hoặc lệch binding/marker; project không có run vẫn xóa được. Với DB clone/khôi phục, bảo đảm root tách biệt và chủ động đối soát identity trước khi bật dọn; hai DB cùng root và trùng run ID không an toàn.
 
 Worker kiểm marker trước và sau xóa file, nhưng không thể chứng minh trạng thái mount nếu mount biến mất rồi trở lại giữa hai lần kiểm. Dọn một thư mục giữ khóa vùng ID run vắng đến commit để tránh ID được tạo lại mất file; việc tạo run khác có thể bị chờ trong lúc dọn thư mục lớn. Các DB và phiên bản backend cùng dùng root phải tuân thủ cùng binding; backend cũ chưa ghi hàng đợi không đảm bảo dọn bền vững khi chạy song song.
 

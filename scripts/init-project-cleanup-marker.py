@@ -9,7 +9,17 @@ parser.add_argument("storage_id", type=UUID, help="Existing UUID from project_lo
 args = parser.parse_args()
 if not args.data_root.is_dir():
     parser.error("data root must already exist and be the verified mounted location")
-marker = args.data_root / ".vsos-storage-id"
-with marker.open("x", encoding="ascii") as out:
-    out.write(str(args.storage_id))
-print(f"Created {marker}; keep it with this data root and database.")
+run_root = args.data_root / "runs"
+if not run_root.is_dir():
+    parser.error("runs directory must already exist and be the verified mounted location")
+markers = [args.data_root / ".vsos-storage-id", run_root / ".vsos-storage-id"]
+for marker in markers:
+    if marker.is_symlink() or (marker.exists() and (
+        not marker.is_file() or marker.read_text(encoding="ascii").strip() != str(args.storage_id)
+    )):
+        parser.error(f"existing marker does not match the database binding: {marker}")
+for marker in markers:
+    if not marker.exists():
+        with marker.open("x", encoding="ascii") as out:
+            out.write(str(args.storage_id))
+print("Both markers match; keep each on its verified storage with this database.")
