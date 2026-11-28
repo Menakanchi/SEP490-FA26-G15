@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/vehicsim/projects")
@@ -101,11 +103,12 @@ public class ProjectController {
         return projects.unarchive(writer(user), projectId);
     }
 
-    @Operation(summary = "Xoá vĩnh viễn project cùng mọi dữ liệu (gõ đúng tên để xác nhận)")
+    @Operation(summary = "Xoá project (gõ đúng tên để xác nhận); trả danh sách lượt chưa dọn được file cục bộ nếu có")
     @DeleteMapping("/{projectId}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable long projectId, @RequestBody DeleteProjectRequest body, @AuthenticationPrincipal UserDetails user) {
-        projects.delete(writer(user), projectId, body.confirmName());
+    public ResponseEntity<?> delete(@PathVariable long projectId, @RequestBody DeleteProjectRequest body, @AuthenticationPrincipal UserDetails user) {
+        List<Long> failed = projects.delete(writer(user), projectId, body.confirmName());
+        return failed.isEmpty() ? ResponseEntity.noContent().build()
+                : ResponseEntity.ok(Map.of("deleted", true, "cleanup_failed_run_ids", failed));
     }
 
     private long writer(UserDetails user) {

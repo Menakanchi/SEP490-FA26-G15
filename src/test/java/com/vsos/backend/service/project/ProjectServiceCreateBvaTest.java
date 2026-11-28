@@ -64,7 +64,7 @@ class ProjectServiceCreateBvaTest {
     void setUp() {
         projects = mock(ProjectRepository.class);
         RunService runs = mock(RunService.class);
-        service = new ProjectService(projects, runs, mock(RegressionRepository.class));
+        service = new ProjectService(projects, runs, mock(RegressionRepository.class), mock(ProjectLocalCleanup.class));
         when(runs.configuredSimulator()).thenReturn("vehicsim-kinematic-1.0");
         when(projects.supportedVehicle(isNull())).thenReturn(DEFAULT_VEHICLE);
         when(projects.supportedVehicle(DEFAULT_VEHICLE)).thenReturn(DEFAULT_VEHICLE);

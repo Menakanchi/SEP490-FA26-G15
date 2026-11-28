@@ -1,4 +1,4 @@
-# Từ điển dữ liệu VehicSim (MySQL, 34 bảng)
+# Từ điển dữ liệu VehicSim (MySQL, 36 bảng)
 
 Tài liệu giải thích **từng bảng, từng cột** của database VehicSim: nghĩa nghiệp vụ, ràng buộc, ai
 ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệu nhóm 06/10/2026).
@@ -23,8 +23,8 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
 
 | | Số lượng |
 |---|---|
-| Bảng | 34 (schema source; DB đang dùng cần kiểm migration riêng) |
-| Cột | 445 |
+| Bảng | 36 (schema source; DB đang dùng cần kiểm migration riêng) |
+| Cột | 450 |
 | Khoá ngoại | 86 (nhiều khoá ghép) |
 | CHECK | 37 |
 | Engine / charset | InnoDB · `utf8mb4` / `utf8mb4_0900_ai_ci` · MySQL ≥ 8.0.16 (cần CHECK) |
@@ -40,6 +40,7 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
 | 7 | Mô phỏng, đánh giá, lỗi | `simulation_runs`, `simulation_artifacts`, `collision_events`, `failures`, `root_causes` | Có |
 | 8 | Phân tích, kết quả regression, khuyến nghị | `analysis_results`, `regression_test_items`, `engineering_recommendations` | Có; BASELINE_DATASET dùng IMMUTABLE_SNAPSHOT và FA_V3_CONTEXT |
 | 9 | Tri thức kỹ thuật | `tech_references` | Có: Admin list/detail/create/update, bật/tắt |
+| 10 | Dọn file local | `project_local_storage`, `project_local_cleanup` | Có: binding data root và hàng đợi dọn bền vững sau xóa project |
 
 Bảng chưa có code là thiết kế trước theo FE (0 dòng); màn hình / API đến ở các demo sau.
 
@@ -255,6 +256,29 @@ erDiagram
 | 6. Quyết định (chỉ REVIEWER) | Khuyến nghị → Review | `regression.decide` | `engineering_recommendations`; Accept: baseline cũ `ARCHIVED`, candidate `BASELINE`; Reject: candidate `REJECTED`. Project cá nhân: chủ project tự chọn (`ProjectService.adopt`, ADR-046), cùng cách đổi trạng thái `aeb_versions`; không ghi `engineering_recommendations` (`ck_er_no_self_review`), lý do nối vào `aeb_versions.notes` |
 
 ## 6. Từ điển từng bảng
+
+#### `project_local_storage`
+
+Gắn duy nhất một database với một data root đã được quản trị viên xác minh. `id` luôn là 1; `storage_id` là UUID trùng marker `.vsos-storage-id` trong data root. Không tự khởi tạo lại khi marker bị mất.
+
+| Cột | Ý nghĩa |
+|---|---|
+| `id` | PK cố định 1. |
+| `storage_id` | UUID bền vững của data root. |
+
+#### `project_local_cleanup`
+
+Hàng đợi dọn thư mục run local, được ghi cùng transaction xóa project. Không có FK đến run hoặc project vì chúng đã bị xóa. Worker chỉ xử lý công việc có `storage_id` khớp marker bền vững trong data root và giữ dòng khi dọn lỗi.
+
+| Cột | Ý nghĩa |
+|---|---|
+| `run_id` | PK; ID thư mục run cần dọn. |
+| `storage_id` | UUID của data root có file. |
+| `created_at` | Thời điểm ghi công việc. |
+
+**Thiết lập một lần sau migration 026:** sao lưu và xác định đúng DB cùng `VEHICSIM_DATA_ROOT` đã chứa các thư mục run của DB đó. Xác minh volume đã mount; không dùng chung một root cho nhiều DB độc lập. Trong đúng DB, nếu chưa có dòng binding, chạy `INSERT INTO project_local_storage (id, storage_id) VALUES (1, UUID());`, rồi đọc UUID bằng `SELECT storage_id FROM project_local_storage WHERE id = 1;`. Trên Windows hoặc Linux, chạy `python scripts/init-project-cleanup-marker.py <data-root> <UUID-vừa-đọc>`; script từ chối ghi đè marker hiện có. Giữ marker `.vsos-storage-id` cùng dữ liệu khi restart và backup. Không đổi binding/marker tùy tiện. Nếu bước ghi marker thất bại, sau khi xác minh root thật hãy dùng UUID đã lưu trong DB, không sinh UUID khác; nếu marker tồn tại nhưng khác/hỏng, dừng và đối soát trước khi xử lý. Backend từ chối xóa project có run nếu thiếu hoặc lệch binding/marker; project không có run vẫn xóa được. Với DB clone/khôi phục, bảo đảm root tách biệt và chủ động đối soát identity trước khi bật dọn; hai DB cùng root và trùng run ID không an toàn.
+
+Worker kiểm marker trước và sau xóa file, nhưng không thể chứng minh trạng thái mount nếu mount biến mất rồi trở lại giữa hai lần kiểm. Dọn một thư mục giữ khóa vùng ID run vắng đến commit để tránh ID được tạo lại mất file; việc tạo run khác có thể bị chờ trong lúc dọn thư mục lớn. Các DB và phiên bản backend cùng dùng root phải tuân thủ cùng binding; backend cũ chưa ghi hàng đợi không đảm bảo dọn bền vững khi chạy song song.
 
 ### 6.1 Tài khoản
 

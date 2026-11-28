@@ -5,6 +5,9 @@ import com.vsos.backend.repository.common.Row;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import com.vsos.backend.exception.project.ProjectException;
+
+import static com.vsos.backend.exception.project.ProjectError.*;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -215,7 +218,33 @@ public class ProjectRepository {
     }
 
     @Transactional
-    public void delete(long projectId) {
+    public List<Long> delete(long projectId, long userId, String confirmedName, String storageId) {
+        Row project = db.first("SELECT id, name, workspace_id, created_by_user_id FROM projects WHERE id = ? FOR UPDATE", projectId);
+        if (project == null) throw new ProjectException(PROJECT_NOT_FOUND, projectId);
+        if (project.get("workspace_id") != null || project.lng("created_by_user_id") != userId)
+            throw new ProjectException(PROJECT_NOT_YOURS, projectId);
+        if (confirmedName == null || !confirmedName.strip().equals(project.str("name")))
+            throw new ProjectException(CONFIRM_NAME_MISMATCH, project.str("name"));
+        List<Row> runs = db.list("SELECT id, status FROM simulation_runs WHERE project_id = ? FOR UPDATE", projectId);
+        List<Row> optimizations = db.list("SELECT id, status FROM optimization_runs WHERE project_id = ? FOR UPDATE", projectId);
+        List<Row> regressions = db.list("SELECT id, execution_status FROM regression_tests WHERE project_id = ? FOR UPDATE", projectId);
+        long active = runs.stream().filter(r -> List.of("PENDING", "RUNNING", "PAUSED").contains(r.str("status"))).count()
+                + optimizations.stream().filter(r -> List.of("PENDING", "RUNNING").contains(r.str("status"))).count()
+                + regressions.stream().filter(r -> List.of("PENDING", "RUNNING").contains(r.str("execution_status"))).count();
+        if (active > 0) throw new ProjectException(PROJECT_BUSY, project.str("name"), active);
+        List<Long> runIds = runs.stream().map(r -> r.lng("id")).toList();
+        if (!runIds.isEmpty()) {
+            Row binding = db.first("SELECT storage_id FROM project_local_storage WHERE id = 1 FOR SHARE");
+            if (storageId == null || binding == null || !storageId.equals(binding.str("storage_id")))
+                throw new ProjectException(STORAGE_NOT_READY);
+        }
+        for (long runId : runIds) {
+            db.update("INSERT INTO project_local_cleanup (run_id, storage_id) VALUES (?, ?)", runId, storageId);
+        }
+        db.update("DELETE FROM fa_json_handoffs WHERE project_id = ?", projectId);
+        db.update("DELETE FROM fa_json_reports WHERE project_id = ?", projectId);
+        db.update("DELETE FROM fa_json_executions WHERE project_id = ?", projectId);
+        db.update("DELETE FROM fa_json_sources WHERE project_id = ?", projectId);
         db.update("DELETE FROM engineering_recommendations WHERE project_id = ?", projectId);
         db.update("DELETE FROM regression_test_items WHERE regression_test_id IN (SELECT id FROM regression_tests WHERE project_id = ?)",
                 projectId);
@@ -228,5 +257,6 @@ public class ProjectRepository {
         db.update("DELETE FROM scenarios WHERE project_id = ?", projectId);
         db.update("DELETE FROM aeb_versions WHERE project_id = ? ORDER BY id DESC", projectId);
         db.update("DELETE FROM projects WHERE id = ?", projectId);
+        return runIds;
     }
 }

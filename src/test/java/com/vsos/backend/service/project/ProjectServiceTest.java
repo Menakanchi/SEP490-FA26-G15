@@ -45,6 +45,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -62,6 +63,7 @@ class ProjectServiceTest {
     private ProjectRepository projects;
     private RunService runs;
     private RegressionRepository regressions;
+    private ProjectLocalCleanup cleanup;
     private ProjectService service;
 
     @BeforeEach
@@ -69,7 +71,17 @@ class ProjectServiceTest {
         projects = mock(ProjectRepository.class);
         runs = mock(RunService.class);
         regressions = mock(RegressionRepository.class);
-        service = new ProjectService(projects, runs, regressions);
+        cleanup = mock(ProjectLocalCleanup.class);
+        service = new ProjectService(projects, runs, regressions, cleanup);
+        when(cleanup.storageIdForWrite()).thenReturn("fixture-storage");
+        when(projects.delete(anyLong(), anyLong(), anyString(), anyString()))
+                .thenAnswer(call -> projects.runIds(call.getArgument(0)));
+        when(cleanup.clean(anyLong(), anyString())).thenAnswer(call -> {
+            try {
+                org.springframework.util.FileSystemUtils.deleteRecursively(runs.runDir(call.getArgument(0)));
+                return true;
+            } catch (java.io.IOException | RuntimeException e) { return false; }
+        });
         when(runs.configuredSimulator()).thenReturn(SIMULATOR);
         when(projects.supportedVehicle(isNull())).thenReturn(VEHICLE);
         when(projects.supportedVehicle(VEHICLE)).thenReturn(VEHICLE);
@@ -218,7 +230,7 @@ class ProjectServiceTest {
 
         assertError(() -> service.archive(OWNER, PROJECT), ProjectError.PROJECT_BUSY, busy);
         assertError(() -> service.delete(OWNER, PROJECT, "Thử AEB"), ProjectError.PROJECT_BUSY, busy);
-        verify(projects, never()).delete(anyLong());
+        verify(projects, never()).delete(anyLong(), anyLong(), anyString(), anyString());
     }
 
     @Test
@@ -230,12 +242,141 @@ class ProjectServiceTest {
 
         assertError(() -> service.delete(OWNER, PROJECT, "thử aeb"), ProjectError.CONFIRM_NAME_MISMATCH,
                 "Gõ đúng “Thử AEB” để xác nhận xoá vĩnh viễn.");
-        verify(projects, never()).delete(anyLong());
+        verify(projects, never()).delete(anyLong(), anyLong(), anyString(), anyString());
 
-        service.delete(OWNER, PROJECT, " Thử AEB ");
+        assertThat(service.delete(OWNER, PROJECT, " Thử AEB ")).isEmpty();
 
-        verify(projects).delete(PROJECT);
+        verify(projects).delete(PROJECT, OWNER, " Thử AEB ", "fixture-storage");
         assertThat(runDir.getParent()).doesNotExist();
+    }
+
+    @Test
+    void repositoryFailureKeepsAllLocalArtifacts(@TempDir Path data) throws Exception {
+        given(project("ACTIVE"));
+        Path own = Files.createDirectories(data.resolve("runs/5"));
+        Path other = Files.createDirectories(data.resolve("runs/6"));
+        Files.writeString(own.resolve("demo.txt"), "own");
+        Files.writeString(other.resolve("demo.txt"), "other");
+        when(projects.runIds(PROJECT)).thenReturn(List.of(5L));
+        doThrow(new org.springframework.dao.DataAccessResourceFailureException("fixture failure"))
+                .when(projects).delete(PROJECT, OWNER, "Thử AEB", "fixture-storage");
+
+        assertThatThrownBy(() -> service.delete(OWNER, PROJECT, "Thử AEB"))
+                .isInstanceOf(org.springframework.dao.DataAccessResourceFailureException.class);
+        assertThat(own.resolve("demo.txt")).hasContent("own");
+        assertThat(other.resolve("demo.txt")).hasContent("other");
+        verify(runs, never()).runDir(anyLong());
+    }
+
+    @Test
+    void failureListingRunsDoesNotDeleteProject() {
+        given(project("ACTIVE"));
+        when(projects.runIds(PROJECT)).thenThrow(new org.springframework.dao.DataAccessResourceFailureException("fixture failure"));
+
+        assertThatThrownBy(() -> service.delete(OWNER, PROJECT, "Thử AEB"))
+                .isInstanceOf(org.springframework.dao.DataAccessResourceFailureException.class);
+        verify(runs, never()).runDir(anyLong());
+    }
+
+    @Test
+    void localArtifactDeletionFailureLeavesFileAfterDatabaseDeletion(@TempDir Path data) throws Exception {
+        given(project("ACTIVE"));
+        Path own = Files.createDirectories(data.resolve("run-5"));
+        Path other = Files.createDirectories(data.resolve("run-6"));
+        Files.writeString(own.resolve("demo.txt"), "own");
+        Files.writeString(other.resolve("demo.txt"), "other");
+        when(projects.runIds(PROJECT)).thenReturn(List.of(5L));
+        when(runs.runDir(5L)).thenReturn(own);
+        try (var files = org.mockito.Mockito.mockStatic(org.springframework.util.FileSystemUtils.class)) {
+            files.when(() -> org.springframework.util.FileSystemUtils.deleteRecursively(own)).thenThrow(new java.io.IOException("fixture denied"));
+            assertThat(service.delete(OWNER, PROJECT, "Thử AEB")).containsExactly(5L);
+        }
+        verify(projects).delete(PROJECT, OWNER, "Thử AEB", "fixture-storage");
+        assertThat(own.resolve("demo.txt")).hasContent("own");
+        assertThat(other.resolve("demo.txt")).hasContent("other");
+    }
+
+    @Test
+    void localCleanupContinuesAndReportsEveryFailedRun(@TempDir Path data) throws Exception {
+        given(project("ACTIVE"));
+        Path first = data.resolve("run-5");
+        Path second = data.resolve("run-7");
+        Path third = data.resolve("run-8");
+        when(projects.runIds(PROJECT)).thenReturn(List.of(5L, 7L, 8L));
+        when(runs.runDir(5L)).thenReturn(first);
+        when(runs.runDir(7L)).thenReturn(second);
+        when(runs.runDir(8L)).thenReturn(third);
+        try (var files = org.mockito.Mockito.mockStatic(org.springframework.util.FileSystemUtils.class)) {
+            files.when(() -> org.springframework.util.FileSystemUtils.deleteRecursively(first)).thenThrow(new java.io.IOException("fixture denied"));
+            files.when(() -> org.springframework.util.FileSystemUtils.deleteRecursively(second)).thenThrow(new SecurityException("fixture denied"));
+            assertThat(service.delete(OWNER, PROJECT, "Thử AEB")).containsExactly(5L, 7L);
+            files.verify(() -> org.springframework.util.FileSystemUtils.deleteRecursively(third));
+        }
+    }
+
+    @Test
+    @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.WINDOWS)
+    void lockedLocalFileCanBeCleanedAfterTheHandleIsClosed(@TempDir Path data) throws Exception {
+        given(project("ACTIVE"));
+        Path own = Files.createDirectories(data.resolve("runs/5"));
+        Path file = Files.writeString(own.resolve("demo.txt"), "own");
+        Path other = Files.createDirectories(data.resolve("runs/6"));
+        Files.writeString(other.resolve("demo.txt"), "other");
+        when(projects.runIds(PROJECT)).thenReturn(List.of(5L));
+        when(runs.runDir(5L)).thenReturn(own);
+
+        try (var handle = java.nio.channels.FileChannel.open(file, java.nio.file.StandardOpenOption.WRITE,
+                com.sun.nio.file.ExtendedOpenOption.NOSHARE_DELETE)) {
+            assertThat(service.delete(OWNER, PROJECT, "Thử AEB")).containsExactly(5L);
+            assertThat(file).hasContent("own");
+        }
+        org.springframework.util.FileSystemUtils.deleteRecursively(own);
+        assertThat(own).doesNotExist();
+        assertThat(other.resolve("demo.txt")).hasContent("other");
+    }
+
+    @Test
+    void projectDeletionLeavesExternalVideoObjectsForReconciliation(@TempDir Path data) throws Exception {
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        var objects = new java.util.concurrent.ConcurrentHashMap<String, byte[]>();
+        var methods = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        server.createContext("/", exchange -> {
+            methods.add(exchange.getRequestMethod());
+            if ("PUT".equals(exchange.getRequestMethod())) objects.put(exchange.getRequestURI().getPath(), exchange.getRequestBody().readAllBytes());
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        server.start();
+        String oldId = System.getProperty("aws.accessKeyId"), oldSecret = System.getProperty("aws.secretAccessKey");
+        System.setProperty("aws.accessKeyId", "fixture-access");
+        System.setProperty("aws.secretAccessKey", "fixture-secret");
+        try {
+            var storage = new com.vsos.backend.service.simulation.CarlaVideoStorage("fixture", "us-east-1",
+                    "http://127.0.0.1:" + server.getAddress().getPort(), true, "test-only");
+            try {
+                Path video = data.resolve("demo.mp4");
+                Files.writeString(video, "demo");
+                storage.upload(5L, video);
+                storage.upload(6L, video);
+                given(project("ACTIVE"));
+                when(projects.runIds(PROJECT)).thenReturn(List.of(5L));
+                when(runs.runDir(5L)).thenReturn(data.resolve("run-5"));
+                doThrow(new org.springframework.dao.DataAccessResourceFailureException("fixture failure"))
+                        .doReturn(List.of(5L)).when(projects).delete(PROJECT, OWNER, "Thử AEB", "fixture-storage");
+
+                assertThatThrownBy(() -> service.delete(OWNER, PROJECT, "Thử AEB"))
+                        .isInstanceOf(org.springframework.dao.DataAccessResourceFailureException.class);
+                assertThat(objects).containsKeys("/fixture/test-only/runs/5/video.mp4", "/fixture/test-only/runs/6/video.mp4");
+                service.delete(OWNER, PROJECT, "Thử AEB");
+
+                assertThat(objects).containsKeys("/fixture/test-only/runs/5/video.mp4", "/fixture/test-only/runs/6/video.mp4");
+                assertThat(methods).containsExactly("PUT", "PUT");
+            } finally { storage.close(); }
+        } finally {
+            if (oldId == null) System.clearProperty("aws.accessKeyId"); else System.setProperty("aws.accessKeyId", oldId);
+            if (oldSecret == null) System.clearProperty("aws.secretAccessKey"); else System.setProperty("aws.secretAccessKey", oldSecret);
+            server.stop(0);
+        }
     }
 
     // ------------------------------------------------------------------ hành trình
@@ -492,7 +633,7 @@ class ProjectServiceTest {
                 "Project #21 không phải project cá nhân của bạn.");
         verify(projects, never()).update(anyLong(), any(), any(), any(), any());
         verify(projects, never()).setStatus(anyLong(), anyString(), any());
-        verify(projects, never()).delete(anyLong());
+        verify(projects, never()).delete(anyLong(), anyLong(), anyString(), anyString());
     }
 
     @Test

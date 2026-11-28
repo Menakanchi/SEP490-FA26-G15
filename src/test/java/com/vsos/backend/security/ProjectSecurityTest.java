@@ -143,6 +143,20 @@ class ProjectSecurityTest {
     }
 
     @Test
+    void projectDeletionReportsLocalCleanupFailuresWithoutClaimingDatabaseRollback() throws Exception {
+        when(projects.delete(7L, 1L, "Thử AEB")).thenReturn(List.of(5L, 7L));
+        mvc.perform(json(HttpMethod.DELETE, "/1", "{\"confirm_name\":\"Thử AEB\"}").with(user(as(RoleCode.EXPERIENCER))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deleted").value(true))
+                .andExpect(jsonPath("$.cleanup_failed_run_ids[0]").value(5))
+                .andExpect(jsonPath("$.cleanup_failed_run_ids[1]").value(7));
+
+        when(projects.delete(7L, 1L, "Thử AEB")).thenReturn(List.of());
+        mvc.perform(json(HttpMethod.DELETE, "/1", "{\"confirm_name\":\"Thử AEB\"}").with(user(as(RoleCode.EXPERIENCER))))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
     void onlyExperiencersAndEngineersCreateProjects() throws Exception {
         for (RoleCode code : RoleCode.values()) {
             for (MockHttpServletRequestBuilder route : creatorRoutes()) {

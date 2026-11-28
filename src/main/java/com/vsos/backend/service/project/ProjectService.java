@@ -25,9 +25,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.FileSystemUtils;
-
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,6 +57,7 @@ public class ProjectService {
     private final ProjectRepository projects;
     private final RunService runs;
     private final RegressionRepository regressions;
+    private final ProjectLocalCleanup cleanup;
 
     public static void requireOwner(Row project, Object projectId, long userId) {
         if (project == null) {
@@ -179,17 +177,22 @@ public class ProjectService {
         return changeStatus(userId, projectId, ACTIVE);
     }
 
-    public void delete(long userId, long projectId, String confirmName) {
+    public List<Long> delete(long userId, long projectId, String confirmName) {
         Row project = owned(userId, projectId);
         String name = project.str("name");
         if (confirmName == null || !confirmName.strip().equals(name)) {
             throw new ProjectException(CONFIRM_NAME_MISMATCH, name);
         }
         requireIdle(project);
-        List<Long> runIds = projects.runIds(projectId);
-        projects.delete(projectId);
-        runIds.forEach(this::deleteRunFolder);
-        AuditLog.event("project.delete", "success", "project_id", projectId, "runs", runIds.size(), "by", userId);
+        String storageId = cleanup.storageIdForWrite();
+        List<Long> runIds = projects.delete(projectId, userId, confirmName, storageId);
+        List<Long> cleanupFailed = new java.util.ArrayList<>();
+        for (long runId : runIds) {
+            if (!cleanup.clean(runId, storageId)) cleanupFailed.add(runId);
+        }
+        AuditLog.event("project.delete", "success", "project_id", projectId, "runs", runIds.size(),
+                "cleanup_failed", cleanupFailed.size(), "by", userId);
+        return List.copyOf(cleanupFailed);
     }
 
     @Transactional
@@ -301,14 +304,6 @@ public class ProjectService {
         long work = project.lng("running_work");
         if (work > 0) {
             throw new ProjectException(PROJECT_BUSY, project.str("name"), work);
-        }
-    }
-
-    private void deleteRunFolder(long runId) {
-        try {
-            FileSystemUtils.deleteRecursively(runs.runDir(runId));
-        } catch (IOException e) {
-            log.warn("Không xoá được thư mục run {}: {}", runId, e.getMessage());
         }
     }
 

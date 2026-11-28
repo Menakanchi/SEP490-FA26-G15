@@ -1,5 +1,5 @@
 -- =====================================================================
--- VehicSim — MySQL 8.4 schema (34 bảng) — bản chuẩn hóa Scope luận văn & Đồ án tốt nghiệp
+-- VehicSim — MySQL 8.4 schema (36 bảng) — bản chuẩn hóa Scope luận văn & Đồ án tốt nghiệp
 -- Bảng lịch sử thứ 30 thuộc ADR-047 Proposed (migration 013).
 -- Phạm vi kỹ thuật: 4 tham số AEB + 3 mục tiêu MOBO + 7 Category kịch bản Euro NCAP
 -- Từ điển dữ liệu (nghĩa từng cột, ai ghi, JSON): docs/vehicsim/database-schema.md
@@ -982,6 +982,22 @@ CREATE TABLE fa_json_sources (
   CONSTRAINT ck_fa_source_bytes CHECK (OCTET_LENGTH(payload_bytes) <= 2097152 AND OCTET_LENGTH(metadata_bytes) <= 262144),
   CONSTRAINT ck_fa_source_parent CHECK (source_id IS NULL AND execution_id IS NULL)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Hàng đợi dọn file local sau khi project đã xóa. Không FK vì run/project không còn sau commit.
+CREATE TABLE project_local_storage (
+  id TINYINT UNSIGNED NOT NULL,
+  storage_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  PRIMARY KEY (id),
+  CONSTRAINT ck_project_local_storage_singleton CHECK (id = 1)
+) ENGINE=InnoDB;
+
+CREATE TABLE project_local_cleanup (
+  run_id BIGINT UNSIGNED NOT NULL,
+  storage_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (run_id),
+  KEY ix_project_local_cleanup_storage (storage_id, run_id)
+) ENGINE=InnoDB;
 
 CREATE TABLE fa_json_executions (
   id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
