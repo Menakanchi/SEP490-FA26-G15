@@ -60,7 +60,7 @@ final class DiagnosticSupport {
         if (a == null || !a.usable()) return true;
         return issues.stream().anyMatch(i -> i.source().artifactId().equals(a.id())
                 && (i.status() == Status.INVALID || i.status() == Status.CONFLICTING)
-                && List.of("TIMESTAMP_INVALID","TIMESTAMP_NON_MONOTONIC","TIMESTAMP_DUPLICATE","FRAME_ID_INVALID","ACTOR_ID_INVALID","DUPLICATE_FRAME_DISAGREEMENT",
+                && List.of("TIMESTAMP_INVALID","TIMESTAMP_NON_MONOTONIC","TIMESTAMP_DUPLICATE","FRAME_ID_INVALID","FRAME_ID_NON_MONOTONIC","ACTOR_ID_INVALID","DUPLICATE_FRAME_DISAGREEMENT",
                     "CLOCK_MISMATCH","INCONSISTENT_IDENTITY","RESULT_SCHEMA_UNSUPPORTED","HASH_MISMATCH","SIZE_MISMATCH","SCHEMA_PARSE_ERROR").contains(i.code()));
     }
     static Map<String,Object> interval(GeometryEngine.Interval i, String clock, List<SourceRef> refs, List<String> assumptions) {

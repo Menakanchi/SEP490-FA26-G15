@@ -147,6 +147,30 @@ class M1AEvidenceTest {
         write(root.resolve(dir + "/sensors/frames.csv"), "frame,sim_time_s\n10,1.0\n10,0.5\n");
         assertThat(new EvidenceValidator().validate(read())).extracting(Issue::code).contains("TIMESTAMP_NON_MONOTONIC", "DUPLICATE_FRAME_DISAGREEMENT");
     }
+    @Test void reorderedSensorFramesAreNotTrustedEvenWhenTimeIncreases() throws Exception {
+        write(root.resolve(dir + "/sensors/frames.csv"), "frame,sim_time_s\n10,0.0\n12,0.01\n11,0.02\n");
+        Run r = read();
+        var issues = new EvidenceValidator().validate(r);
+        assertThat(issues).anyMatch(i -> i.code().equals("FRAME_ID_NON_MONOTONIC") && i.status() == Status.INVALID);
+        assertThat(DiagnosticSupport.blocked(r, issues, "frames")).isTrue();
+        assertThat(new CanonicalObjectiveReader().read(r).get("impact_speed_mps").canonicalValue().value()).isEqualTo(6.0);
+    }
+    @Test void groundTruthFrameOrderIsCheckedPerActor() throws Exception {
+        write(root.resolve(dir + "/sensors/ground_truth.csv"), "frame,sim_time_s,actor_id,role\n10,0.0,100,ego\n10,0.0,101,target\n12,0.02,100,ego\n11,0.01,101,target\n11,0.03,100,ego\n");
+        Run r = read();
+        var issues = new EvidenceValidator().validate(r);
+        assertThat(issues).filteredOn(i -> i.code().equals("FRAME_ID_NON_MONOTONIC")).hasSize(1);
+        assertThat(DiagnosticSupport.blocked(r, issues, "ground_truth")).isTrue();
+    }
+    @Test void decimalAliasesCannotHideDuplicateFrameOrActor() throws Exception {
+        write(root.resolve(dir + "/sensors/frames.csv"), "frame,sim_time_s\n10,0.0\n010,0.01\n");
+        write(root.resolve(dir + "/sensors/ground_truth.csv"), "frame,sim_time_s,actor_id,role\n10,0.0,100,ego\n010,0.01,0100,ego\n");
+        Run r = read();
+        var issues = new EvidenceValidator().validate(r);
+        assertThat(issues).filteredOn(i -> i.code().equals("DUPLICATE_FRAME_DISAGREEMENT")).hasSize(2);
+        assertThat(DiagnosticSupport.blocked(r, issues, "frames")).isTrue();
+        assertThat(DiagnosticSupport.blocked(r, issues, "ground_truth")).isTrue();
+    }
     @Test void inconsistentRunMetadataAndBundleSeedAreDetected() throws Exception {
         write(root.resolve("metadata/runs_manifest_subset.jsonl"), MiniJson.write(obj("dir", "CASE\\rep1_a1", "run_id", "OTHER-R1", "case_id", "CASE")));
         writeJson(root.resolve("runs/CASE/bundle.json"), obj("seed", 999L));

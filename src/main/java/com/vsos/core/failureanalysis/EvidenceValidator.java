@@ -147,6 +147,7 @@ public final class EvidenceValidator {
         if (!(data instanceof List<?> rows)) { checkType(r, name, pointer, List.class, issues); return; }
         if (rows.isEmpty()) { add(issues, r, name, pointer, Status.UNKNOWN, "STREAM_EMPTY", "No recorded samples"); return; }
         Map<String, Double> last = new HashMap<>();
+        Map<String, String> lastFrame = new HashMap<>();
         Map<String, Object> seen = new HashMap<>();
         for (int i = 0; i < rows.size(); i++) {
             Object row = rows.get(i);
@@ -157,6 +158,7 @@ public final class EvidenceValidator {
             String who = actor == null ? "stream" : Objects.toString(map.get(actor), "missing");
             if (actor != null && (map.get(actor) == null || !map.get(actor).toString().matches("\\d+")))
                 add(issues, r, name, loc + "/" + actor, Status.INVALID, "ACTOR_ID_INVALID", "Actor ID missing or not decimal");
+            else if (actor != null) who = normalizeDecimalId(who);
             List<String> numeric = name.equals("frames") ? List.of("ego_speed_ms", "throttle", "brake", "steer", "imu_accel_x_ms2", "imu_jerk_ms3", "radar_depth_m", "radar_rel_velocity_ms", "radar_ttc_s")
                     : name.equals("ground_truth") ? List.of("x_m", "y_m", "z_m", "yaw_deg", "vx_ms", "vy_ms", "vz_ms", "ax_ms2", "ay_ms2", "az_ms2", "speed_ms", "a_along_v_ms2")
                     : List.of("ego_x", "ego_v", "ego_a", "ped_x", "ped_y", "ped_vy", "ttc", "ttc_gt");
@@ -171,12 +173,22 @@ public final class EvidenceValidator {
                 Object f = map.get(frame);
                 if (f == null || !f.toString().matches("\\d+")) add(issues, r, name, loc, Status.INVALID, "FRAME_ID_INVALID", "Expected decimal frame ID");
                 else {
-                    Object old = seen.putIfAbsent(who + ":" + f, row);
+                    String current = normalizeDecimalId(f.toString());
+                    String previousFrame = lastFrame.get(who);
+                    if (previousFrame != null && compareFrameIds(current, previousFrame) < 0)
+                        add(issues, r, name, loc + "/" + frame, Status.INVALID, "FRAME_ID_NON_MONOTONIC", "Frame ID moved backwards within stream/actor; cause unknown");
+                    else lastFrame.put(who, current);
+                    Object old = seen.putIfAbsent(who + ":" + current, row);
                     if (old != null && !old.equals(row)) add(issues, r, name, loc, Status.CONFLICTING, "DUPLICATE_FRAME_DISAGREEMENT", "Same frame/actor, different record");
                 }
             }
         }
     }
+    private static int compareFrameIds(String a, String b) {
+        int length = Integer.compare(a.length(), b.length());
+        return length != 0 ? length : a.compareTo(b);
+    }
+    private static String normalizeDecimalId(String id) { return id.replaceFirst("^0+(?!$)", ""); }
     /** Claim-local event validation. Missing events are not invalid zero-time events. */
     static Value coreEventTime(Run r, String field, List<Issue> issues) {
         String pointer = "/outcome/metrics/" + field;
