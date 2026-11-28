@@ -1,4 +1,4 @@
-# Từ điển dữ liệu VehicSim (MySQL, 36 bảng)
+# Từ điển dữ liệu VehicSim (MySQL, 39 bảng)
 
 Tài liệu giải thích **từng bảng, từng cột** của database VehicSim: nghĩa nghiệp vụ, ràng buộc, ai
 ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệu nhóm 06/10/2026).
@@ -307,7 +307,7 @@ Tài khoản. Mỗi người **đúng một role** (`role_id`). Tự đăng ký 
 | `password_hash` | VARCHAR(255) | ✓ |  |  | Hash mật khẩu (`salt:hash`), không bao giờ trả ra API. |
 | `role_id` | INT UNSIGNED | ✓ |  | FK → `roles` | Role duy nhất của người này. _Mỗi người đúng 1 role; tự đăng ký = EXPERIENCER_ |
 | `is_active` | BOOLEAN | ✓ | `TRUE` |  | `FALSE` = Admin vô hiệu hoá: không đăng nhập được, dữ liệu giữ nguyên. _ADMIN khóa/mở user; không xóa cứng để giữ lịch sử_ |
-| `auth_version` | BIGINT UNSIGNED | ✓ |  | 0 | Phiên bản xác thực; tăng khi đổi quyền hoặc trạng thái hoạt động để thu hồi JWT cũ. |
+| `auth_version` | BIGINT UNSIGNED | ✓ | 0 |  | Phiên bản xác thực; tăng khi đổi quyền, trạng thái hoạt động hoặc MFA để thu hồi JWT cũ. |
 | `last_login_at` | DATETIME |  |  |  | Lần đăng nhập gần nhất. |
 | `last_name` | VARCHAR(80) | ✓ |  |  | Họ (từ đầu của họ tên). Tên một từ thì để chuỗi rỗng. |
 | `middle_name` | VARCHAR(80) |  |  |  | Tên đệm (các từ giữa), có thể trống. |
@@ -320,6 +320,34 @@ Tài khoản. Mỗi người **đúng một role** (`role_id`). Tự đăng ký 
 | `avatar_url` | VARCHAR(2048) |  |  |  | URL ảnh đại diện — không lưu nhị phân. |
 | `created_date` | DATETIME | ✓ | `CURRENT_TIMESTAMP` |  | Lúc tạo tài khoản. |
 | `updated_at` | DATETIME | ✓ | `CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP` |  | Lần sửa gần nhất. |
+
+#### `auth_revoked_tokens` — thu hồi phiên
+
+Chỉ lưu hash, không lưu JWT gốc; mọi backend phải kiểm tra bảng này khi xác thực.
+
+| Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
+|---|---|---|---|---|---|
+| `token_hash` | CHAR(64) ASCII | ✓ | | PK | SHA-256 của JWT đã thu hồi. |
+| `expires_at_epoch` | BIGINT | ✓ | | Index | Thời điểm JWT hết hạn, Unix giây; dọn sau thời gian dự phòng. |
+
+#### `auth_mfa` — TOTP tự nguyện
+
+Chỉ có dòng khi người dùng đã bật MFA.
+
+| Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
+|---|---|---|---|---|---|
+| `user_id` | BIGINT UNSIGNED | ✓ | | PK; FK → `users` | Chủ tài khoản. |
+| `encrypted_secret` | VARCHAR(128) ASCII | ✓ | | | Khóa TOTP mã hóa AES-GCM. |
+| `last_step` | BIGINT | ✓ | | | Bước thời gian lớn nhất đã dùng để chống phát lại. |
+
+#### `auth_mfa_recovery_codes` — mã khôi phục
+
+Mã ngẫu nhiên dùng một lần; xóa cấu hình MFA xóa các hash tương ứng.
+
+| Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
+|---|---|---|---|---|---|
+| `user_id` | BIGINT UNSIGNED | ✓ | | PK; FK → `auth_mfa` | Chủ tài khoản. |
+| `code_hash` | CHAR(64) ASCII | ✓ | | PK | SHA-256 của mã khôi phục; không lưu mã gốc. |
 
 ### 6.2 Workspace, cộng tác, task
 
@@ -1084,6 +1112,8 @@ Cùng một PR (luật mềm ở `AGENTS.md`):
 | `022_2026-11-24_bo-sung-4-tham-so-aeb-tech-references.sql` | Bổ sung tài liệu và mô tả bốn tham số AEB |
 | `023_2026-11-26_regression-frozen-seeds.sql` | UNIQUE kết quả regression theo test + run baseline, giữ nhiều seed của một biến thể trong partition FA; không sửa/xóa kết quả cũ |
 | `024_2026-11-26_fa-db-collection-2mib.sql` | Tăng CHECK lưu nguồn FA lên 2 MiB cho collection DB; hạn mức upload/từng run giữ 1 MiB |
+| `027_2026-11-28_auth_revoked_tokens.sql` | Thêm bảng hash JWT đã thu hồi; không lưu token gốc |
+| `028_2026-11-29_optional_totp.sql` | Thêm cấu hình TOTP tự nguyện và hash mã khôi phục |
 
 Hai nhánh có migration trùng số **019 và 020**. Xác định bằng **tên file đầy đủ**, không bỏ một file vì số đã có. DB đang ở mốc 018 cần cả sáu file 019–022 ở trên và 023 trước verification từ dataset nhiều seed; DB mới từ schema hiện tại đã chứa chúng. Không tự chạy lại migration ALTER TABLE trên DB đã nâng. Migration 023 chỉ đổi thành phần của một UNIQUE, giữ 445 cột, 86 FK, 37 CHECK và 48 UNIQUE; chưa tự áp vào DB nhóm.
 

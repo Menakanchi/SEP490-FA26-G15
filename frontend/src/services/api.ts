@@ -370,12 +370,30 @@ export async function resetPassword(payload: {
   });
 }
 
-export async function postLogin(email: string, password: string): Promise<SessionResponse> {
+export async function postLogin(email: string, password: string, mfaCode?: string): Promise<SessionResponse> {
   return request<SessionResponse>("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, mfa_code: mfaCode || undefined }),
   });
 }
+
+export async function postLogout(): Promise<void> {
+  return request<void>("/auth/logout", { method: "POST" });
+}
+
+export const mfaStatus = () => request<{ enabled: boolean }>("/auth/mfa/status");
+export const mfaSetup = (password: string) => request<{ secret: string; uri: string }>("/auth/mfa/setup", {
+  method: "POST", body: JSON.stringify({ password }),
+});
+export const mfaEnable = (password: string, code: string) => request<{ session: SessionResponse; recoveryCodes: string[] }>("/auth/mfa/enable", {
+  method: "POST", body: JSON.stringify({ password, code }),
+});
+export const mfaDisable = (password: string, code: string) => request<SessionResponse>("/auth/mfa/disable", {
+  method: "POST", body: JSON.stringify({ password, code }),
+});
+export const mfaReplaceRecovery = (password: string, code: string) => request<{ codes: string[] }>("/auth/mfa/recovery", {
+  method: "POST", body: JSON.stringify({ password, code }),
+});
 
 /** Người đang đăng nhập, xác định bằng token trong header — không nhận username nào. */
 export async function getMe(): Promise<ApiUser> {

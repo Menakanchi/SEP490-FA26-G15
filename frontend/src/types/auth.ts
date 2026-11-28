@@ -45,7 +45,8 @@ export interface AuthContextType {
   role: Role | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<User>;
+  login: (email: string, password: string, mfaCode?: string) => Promise<User>;
+  acceptSecuritySession: (session: SessionResponse) => void;
   /** Đăng ký một bước: tạo tài khoản EXPERIENCER và đăng nhập luôn. */
   register: (payload: RegisterPayload) => Promise<User>;
   /** Đăng ký 2 bước (mã OTP gửi qua email đã xin bằng `requestRegisterCode`): mã đúng thì tạo tài khoản và đăng nhập luôn. */
@@ -53,5 +54,5 @@ export interface AuthContextType {
   /** Đổi mật khẩu khi đang đăng nhập; backend cấp phiên mới vì phiên cũ hết hiệu lực. */
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
   updateProfile: (fullName: string, avatarUrl?: string) => Promise<User>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }

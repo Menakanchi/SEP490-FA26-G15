@@ -1,5 +1,5 @@
 -- =====================================================================
--- VehicSim — MySQL 8.4 schema (36 bảng) — bản chuẩn hóa Scope luận văn & Đồ án tốt nghiệp
+-- VehicSim — MySQL 8.4 schema (39 bảng) — bản chuẩn hóa Scope luận văn & Đồ án tốt nghiệp
 -- Bảng lịch sử thứ 30 thuộc ADR-047 Proposed (migration 013).
 -- Phạm vi kỹ thuật: 4 tham số AEB + 3 mục tiêu MOBO + 7 Category kịch bản Euro NCAP
 -- Từ điển dữ liệu (nghĩa từng cột, ai ghi, JSON): docs/vehicsim/database-schema.md
@@ -60,6 +60,29 @@ CREATE TABLE users (
   UNIQUE KEY uq_users_phone (phone_number),
   KEY idx_users_role (role_id),
   CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE=InnoDB;
+
+-- Chỉ lưu SHA-256 của JWT đã thu hồi, không lưu token gốc.
+CREATE TABLE auth_revoked_tokens (
+  token_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  expires_at_epoch BIGINT NOT NULL,
+  PRIMARY KEY (token_hash),
+  KEY idx_auth_revoked_tokens_expiry (expires_at_epoch)
+) ENGINE=InnoDB;
+
+CREATE TABLE auth_mfa (
+  user_id BIGINT UNSIGNED NOT NULL,
+  encrypted_secret VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  last_step BIGINT NOT NULL,
+  PRIMARY KEY (user_id),
+  CONSTRAINT fk_auth_mfa_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE auth_mfa_recovery_codes (
+  user_id BIGINT UNSIGNED NOT NULL,
+  code_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  PRIMARY KEY (user_id, code_hash),
+  CONSTRAINT fk_auth_mfa_recovery_user FOREIGN KEY (user_id) REFERENCES auth_mfa(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------

@@ -19,12 +19,13 @@ import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.util.Date;
 import java.util.HexFormat;
+import java.util.UUID;
 import java.util.function.Function;
 
 /**
- * JWT đăng nhập, stateless. Token mang {@code pwv} — dấu vân tay ngắn của password_hash lúc cấp.
+ * JWT đăng nhập. Token mang {@code pwv} — dấu vân tay ngắn của password_hash lúc cấp.
  * Đổi / đặt lại mật khẩu làm hash đổi, nên mọi token cũ không còn khớp và bị từ chối
- * (không cần bảng thu hồi). Cùng cách với backend Python.
+ * Thu hồi theo phiên được lưu trong MySQL để đăng xuất vẫn có hiệu lực sau khi khởi động lại.
  */
 @Slf4j
 @Service
@@ -35,6 +36,7 @@ public class JwtService {
     private static final String CLAIM_PWV = "pwv";
 
     private final AuthProperties authProperties;
+    private final TokenRevocationStore revocations;
 
     @Value("${jwt.secret:" + DEFAULT_DEV_SECRET + "}")
     private String secretKey;
@@ -70,6 +72,7 @@ public class JwtService {
     public String generateToken(UserDetails userDetails) {
         long now = System.currentTimeMillis();
         return Jwts.builder()
+                .id(UUID.randomUUID().toString())
                 .subject(userDetails.getUsername())
                 .claim("type", "access")
                 .claim("av", authVersion(userDetails))
@@ -95,7 +98,15 @@ public class JwtService {
                 && pwv != null
                 && MessageDigest.isEqual(
                         pwv.getBytes(StandardCharsets.UTF_8),
-                        passwordFingerprint(userDetails.getPassword()).getBytes(StandardCharsets.UTF_8));
+                        passwordFingerprint(userDetails.getPassword()).getBytes(StandardCharsets.UTF_8))
+                && !revocations.isRevoked(token);
+    }
+
+    /** Persist a revocation for the remaining lifetime of a signature-verified token. */
+    public void revoke(String token) {
+        Claims claims = extractAllClaims(token);
+        if (!"access".equals(claims.get("type", String.class))) throw new IllegalArgumentException("Invalid token type");
+        revocations.revoke(token, claims.getExpiration().toInstant());
     }
 
     /** HMAC-SHA256 bằng khoá bí mật của server, cắt còn {@code length} ký tự hex. */

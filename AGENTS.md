@@ -17,7 +17,7 @@ chỉ từ tên màn hình, bảng DB hoặc tài liệu kế hoạch.
 
 VehicSim / VSOS (SEP490-FA26-G15) hỗ trợ kỹ sư kiểm thử, hiệu chỉnh AEB/FCW:
 tạo tình huống giả lập phanh, phân tích lỗi, tạo candidate và kiểm chứng bằng regression.
-Stack hiện tại: **Spring Boot Java 21 + Next.js 16 + MySQL (36 bảng: ADR-047 Proposed, 4 bảng `fa_json_*` của ADR-067 / migration 020, 2 bảng dọn file local / migration 026) + Redis + adapter CARLA Python**.
+Stack hiện tại: **Spring Boot Java 21 + Next.js 16 + MySQL (39 bảng: gồm `fa_json_*`, dọn file local và xác thực) + Redis + adapter CARLA Python**.
 Java xử lý REST/nghiệp vụ/DB và lõi AEB, mô phỏng, chấm điểm (`com.vsos.core`, ADR-042);
 Python `worker/` chỉ gọi API CARLA và nói chuyện với lõi Java qua cầu nối stdio `vsos-bridge/1`.
 Backend FastAPI và Scenario Forge đã gỡ; không khôi phục kiến trúc cũ khi làm tính năng mới.

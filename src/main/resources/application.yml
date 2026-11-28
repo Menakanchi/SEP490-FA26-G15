@@ -61,13 +61,14 @@ springdoc:
 app:
   env: ${APP_ENV:development}
   auth:
+    mfa-encryption-key: ${MFA_ENCRYPTION_KEY:}
     access-token-ttl-minutes: ${ACCESS_TOKEN_TTL_MINUTES:60}
     otp-ttl-seconds: ${OTP_TTL_SECONDS:600}
     otp-max-attempts: ${OTP_MAX_ATTEMPTS:5}
     otp-resend-cooldown-seconds: ${OTP_RESEND_COOLDOWN_SECONDS:30}
     otp-requests-per-ip: ${OTP_REQUESTS_PER_IP:5}
     login-attempts-per-ip: ${LOGIN_ATTEMPTS_PER_IP:10}
-    login-attempts-per-account: ${LOGIN_ATTEMPTS_PER_ACCOUNT:20}   # chỉ đếm lần đăng nhập SAI vào một email
+    login-attempts-per-account: ${LOGIN_ATTEMPTS_PER_ACCOUNT:20}   # lần sai + yêu cầu đang kiểm tra cùng email
     register-requests-per-ip: ${REGISTER_REQUESTS_PER_IP:10}
     rate-limit-window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:900}
     registration-mode: ${REGISTRATION_MODE:auto}   # auto (production: otp, còn lại: one_step) | one_step | otp

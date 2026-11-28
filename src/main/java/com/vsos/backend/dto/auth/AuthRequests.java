@@ -65,4 +65,11 @@ public final class AuthRequests {
             @Size(max = 150, message = "Họ và tên tối đa 150 ký tự")
             String fullName) {
     }
+
+    public record MfaPasswordRequest(
+            @NotBlank @Size(max = 128) String password) { }
+
+    public record MfaConfirmRequest(
+            @NotBlank @Size(max = 128) String password,
+            @NotBlank @Size(max = 64) String code) { }
 }

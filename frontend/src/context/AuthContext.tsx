@@ -9,6 +9,7 @@ import {
   getMe,
   getStoredToken,
   postLogin,
+  postLogout,
   postRegister,
   setSelectedProjectId,
   storeToken,
@@ -95,6 +96,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
+  const logout = useCallback(async () => {
+    const originalToken = getStoredToken();
+    try {
+      await postLogout();
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 401)) throw err;
+    }
+    if (getStoredToken() === originalToken || !getStoredToken()) clearSession();
+  }, [clearSession]);
+
   // Khôi phục phiên: có token thì hỏi backend nó còn hợp lệ không.
   useEffect(() => {
     try {
@@ -134,7 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const login = useCallback(
-    async (email: string, password: string) => startSession(await postLogin(email.trim(), password)),
+    async (email: string, password: string, mfaCode?: string) => startSession(await postLogin(email.trim(), password, mfaCode)),
     [startSession],
   );
 
@@ -173,11 +184,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: !!user && !!token,
         isLoading,
         login,
+        acceptSecuritySession: (session) => { applySession(session, true); },
         register,
         registerWithCode,
         changePassword,
         updateProfile,
-        logout: clearSession,
+        logout,
       }}
     >
       {children}

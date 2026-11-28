@@ -18,7 +18,7 @@ class JwtServiceTest {
 
     @BeforeEach
     void setUp() {
-        jwt = new JwtService(new AuthProperties(60, 600, 5, 60, 5, 10, 20, 10, 900, "auto", ""));
+        jwt = new JwtService(new AuthProperties(60, 600, 5, 60, 5, 10, 20, 10, 900, "auto", ""), org.mockito.Mockito.mock(TokenRevocationStore.class));
         ReflectionTestUtils.setField(jwt, "secretKey", SECRET);
         ReflectionTestUtils.setField(jwt, "appEnv", "development");
     }
@@ -35,6 +35,37 @@ class JwtServiceTest {
         String token = jwt.generateToken(user("hash-1", true));
         assertTrue(jwt.isTokenValid(token, user("hash-1", true)));
         assertEquals(3600, jwt.expiresInSeconds());
+    }
+
+    @Test
+    void tokensIssuedInTheSameMomentHaveDifferentIdentities() {
+        assertNotEquals(jwt.generateToken(user("hash-1", true)), jwt.generateToken(user("hash-1", true)));
+    }
+
+    @Test
+    void legacyTokenWithoutIdCanStillBeRevoked() {
+        var store = org.mockito.Mockito.mock(TokenRevocationStore.class);
+        var service = new JwtService(new AuthProperties(60, 600, 5, 60, 5, 10, 20, 10, 900, "auto", ""), store);
+        ReflectionTestUtils.setField(service, "secretKey", SECRET);
+        long now = System.currentTimeMillis();
+        String old = io.jsonwebtoken.Jwts.builder().subject("a@b.c").claim("type", "access")
+                .claim("pwv", service.keyedDigest("pwv:hash-1", 16))
+                .issuedAt(new java.util.Date(now)).expiration(new java.util.Date(now + 60_000))
+                .signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(io.jsonwebtoken.io.Decoders.BASE64.decode(SECRET))).compact();
+        assertTrue(service.isTokenValid(old, user("hash-1", true)));
+        org.mockito.Mockito.when(store.isRevoked(old)).thenReturn(true);
+        assertFalse(service.isTokenValid(old, user("hash-1", true)));
+    }
+
+    @Test
+    void revokedTokenIsRejectedAndStorageFailureFailsClosed() {
+        var store = org.mockito.Mockito.mock(TokenRevocationStore.class);
+        var service = new JwtService(new AuthProperties(60, 600, 5, 60, 5, 10, 20, 10, 900, "auto", ""), store);
+        ReflectionTestUtils.setField(service, "secretKey", SECRET);
+        String token = service.generateToken(user("hash-1", true));
+        org.mockito.Mockito.when(store.isRevoked(token)).thenReturn(true).thenThrow(new IllegalStateException("DB unavailable"));
+        assertFalse(service.isTokenValid(token, user("hash-1", true)));
+        assertThrows(IllegalStateException.class, () -> service.isTokenValid(token, user("hash-1", true)));
     }
 
     @Test
@@ -60,7 +91,7 @@ class JwtServiceTest {
 
     @Test
     void expiredTokensAreRejected() {
-        var expired = new JwtService(new AuthProperties(-1, 600, 5, 60, 5, 10, 20, 10, 900, "auto", ""));
+        var expired = new JwtService(new AuthProperties(-1, 600, 5, 60, 5, 10, 20, 10, 900, "auto", ""), org.mockito.Mockito.mock(TokenRevocationStore.class));
         ReflectionTestUtils.setField(expired, "secretKey", SECRET);
         String token = expired.generateToken(user("hash-1", true));
         assertThrows(io.jsonwebtoken.ExpiredJwtException.class, () -> jwt.isTokenValid(token, user("hash-1", true)));

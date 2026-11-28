@@ -8,6 +8,7 @@ import { inputClass, labelClass } from "@/components/auth/AuthCard";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { Card, CardTitle, ErrorNote, PillButton, ROLE_LABELS, initials } from "@/components/VehicSimUi";
 import { useAuth } from "@/context/AuthContext";
+import { MfaSettings } from "@/components/auth/MfaSettings";
 
 const MIN_PASSWORD_LENGTH = 8;
 type Feedback = { tone: "ok" | "error"; text: string };
@@ -188,6 +189,7 @@ export default function ProfilePage() {
           </form>
         </Card>
       </div>
+      <div className="mt-5"><MfaSettings /></div>
       {imageToCrop && (
         <AvatarCropModal imageSrc={imageToCrop} onClose={() => setImageToCrop(null)} onCropConfirm={async (cropped) => {
           setAvatarUrl(cropped);

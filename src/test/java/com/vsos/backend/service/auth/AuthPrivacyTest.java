@@ -16,11 +16,12 @@ import org.springframework.data.redis.core.HashOperations;
 import org.springframework.http.HttpStatus;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.Map;
 import java.util.Optional;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -56,7 +57,8 @@ class AuthPrivacyTest {
         encoder = mock(LegacyAwarePasswordEncoder.class);
         when(encoder.dummyHash()).thenReturn("dummy");
         when(otpService.issue(any(), anyString())).thenReturn(Optional.of("123456"));
-        auth = new AuthService(users, mock(RoleRepository.class), encoder, mock(JwtService.class), otpService, mail, PROPS);
+        when(otpService.reserveLogin(anyString(), org.mockito.ArgumentMatchers.anyInt())).thenReturn("attempt");
+        auth = new AuthService(users, mock(RoleRepository.class), encoder, mock(JwtService.class), otpService, mail, PROPS, mock(MfaService.class), mock(jakarta.persistence.EntityManager.class));
         ReflectionTestUtils.setField(auth, "appEnv", "development");
     }
 
@@ -100,8 +102,8 @@ class AuthPrivacyTest {
 
     @Test
     void wrongPasswordAndUnknownEmailGiveTheSameError() {
-        when(users.findByEmail("real@example.com")).thenReturn(Optional.of(account("real@example.com")));
-        when(users.findByEmail("ghost@example.com")).thenReturn(Optional.empty());
+        when(users.findLockedByEmail("real@example.com")).thenReturn(Optional.of(account("real@example.com")));
+        when(users.findLockedByEmail("ghost@example.com")).thenReturn(Optional.empty());
         when(encoder.matches(any(), eq("stored"))).thenReturn(false);
 
         ResponseStatusException wrongPassword = login("real@example.com");
@@ -111,6 +113,17 @@ class AuthPrivacyTest {
         assertThat(unknownEmail.getReason()).isEqualTo(wrongPassword.getReason());
         // Email lạ vẫn tốn đủ một lần băm, để độ trễ không tiết lộ tài khoản có tồn tại.
         verify(encoder).matches(any(), eq("dummy"));
+    }
+
+    @Test
+    void passwordChangeRejectsAUserVersionThatChangedAfterAuthentication() {
+        User account = account("real@example.com");
+        account.setAuthVersion(1L);
+        when(users.findLockedByEmail("real@example.com")).thenReturn(Optional.of(account));
+        assertThatThrownBy(() -> auth.changePassword("real@example.com", "old", "new-password", 0))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED));
+        verify(users, never()).save(any());
     }
 
     private ResponseStatusException login(String email) {
@@ -123,7 +136,7 @@ class AuthPrivacyTest {
     // ---- OtpService: lưu hash, gắn với mục đích, một lần
 
     private JwtService realJwt() {
-        JwtService jwt = new JwtService(PROPS);
+        JwtService jwt = new JwtService(PROPS, mock(com.vsos.backend.security.TokenRevocationStore.class));
         ReflectionTestUtils.setField(jwt, "secretKey", SECRET);
         ReflectionTestUtils.setField(jwt, "appEnv", "development");
         return jwt;
@@ -143,25 +156,27 @@ class AuthPrivacyTest {
         HashOperations<String, Object, Object> hash = mock(HashOperations.class);
         ValueOperations<String, String> value = mock(ValueOperations.class);
         when(value.setIfAbsent(anyString(), anyString(), any(java.time.Duration.class))).thenReturn(true);
-        OtpService otp = new OtpService(redisWith(hash, value), PROPS, realJwt());
+        StringRedisTemplate redis = redisWith(hash, value);
+        when(redis.execute(any(RedisScript.class), any(List.class), any(Object[].class))).thenReturn(1L);
+        OtpService otp = new OtpService(redis, PROPS, realJwt());
 
         String registerCode = otp.issue(OtpService.Purpose.REGISTER, "a@b.c").orElseThrow();
-        ArgumentCaptor<Map<Object, Object>> stored = ArgumentCaptor.forClass(Map.class);
-        verify(hash).putAll(eq("otp:register:a@b.c"), stored.capture());
-        String registerHash = stored.getValue().get("h").toString();
+        ArgumentCaptor<String> stored = ArgumentCaptor.forClass(String.class);
+        verify(redis).execute(any(RedisScript.class), eq(List.of("otp:register:a@b.c")), stored.capture(), eq("600"));
+        String registerHash = stored.getValue();
 
         assertThat(registerCode).matches("\\d{6}");
-        assertThat(registerHash).doesNotContain(registerCode).hasSize(64);
+        assertThat(registerHash).hasSize(64).isEqualTo(realJwt().keyedDigest("otp:register:a@b.c:" + registerCode, 64));
 
         String resetCode = otp.issue(OtpService.Purpose.RESET, "a@b.c").orElseThrow();
-        ArgumentCaptor<Map<Object, Object>> storedReset = ArgumentCaptor.forClass(Map.class);
-        verify(hash).putAll(eq("otp:reset:a@b.c"), storedReset.capture());
+        ArgumentCaptor<String> storedReset = ArgumentCaptor.forClass(String.class);
+        verify(redis).execute(any(RedisScript.class), eq(List.of("otp:reset:a@b.c")), storedReset.capture(), eq("600"));
         // Cùng email, hai mục đích: hash khác nhau, nên mã đăng ký không đặt lại được mật khẩu.
         // (Hai mã sinh ngẫu nhiên có thể trùng 1/10^6; so hash của CÙNG một mã mới là phép thử đúng.)
         JwtService jwt = realJwt();
         assertThat(jwt.keyedDigest("otp:register:a@b.c:" + registerCode, 64))
                 .isNotEqualTo(jwt.keyedDigest("otp:reset:a@b.c:" + registerCode, 64));
-        assertThat(storedReset.getValue().get("h").toString()).doesNotContain(resetCode);
+        assertThat(storedReset.getValue()).isEqualTo(jwt.keyedDigest("otp:reset:a@b.c:" + resetCode, 64));
     }
 
     @SuppressWarnings("unchecked")
@@ -171,14 +186,11 @@ class AuthPrivacyTest {
         ValueOperations<String, String> value = mock(ValueOperations.class);
         StringRedisTemplate redis = redisWith(hash, value);
         when(value.setIfAbsent(anyString(), anyString(), any(java.time.Duration.class))).thenReturn(true);
+        when(redis.execute(any(RedisScript.class), any(List.class), any(Object[].class)))
+                .thenReturn(1L, 0L, 0L, 1L, 0L);
         OtpService otp = new OtpService(redis, PROPS, realJwt());
 
         String code = otp.issue(OtpService.Purpose.REGISTER, "a@b.c").orElseThrow();
-        ArgumentCaptor<Map<Object, Object>> stored = ArgumentCaptor.forClass(Map.class);
-        verify(hash).putAll(eq("otp:register:a@b.c"), stored.capture());
-        when(hash.get("otp:register:a@b.c", "h")).thenReturn(stored.getValue().get("h"));
-        when(hash.increment(eq("otp:register:a@b.c"), eq("attempts"), eq(1L))).thenReturn(1L);
-        when(redis.delete("otp:register:a@b.c")).thenReturn(true, false); // lần xoá thứ hai: không còn
 
         String wrong = code.equals("000000") ? "111111" : "000000";
         assertThat(otp.verify(OtpService.Purpose.REGISTER, "a@b.c", wrong)).isFalse();
@@ -198,5 +210,12 @@ class AuthPrivacyTest {
         assertThat(otp.verify(OtpService.Purpose.REGISTER, "a@b.c", "12345")).isFalse();
         assertThat(otp.verify(OtpService.Purpose.REGISTER, "a@b.c", "abcdef")).isFalse();
         verify(hash, never()).increment(anyString(), any(), org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void unavailableRateLimitResultDoesNotPermitTheRequest() {
+        OtpService otp = new OtpService(mock(StringRedisTemplate.class), PROPS, realJwt());
+        assertThatThrownBy(() -> otp.hitRateLimit("login_ip", "127.0.0.1", 10))
+                .isInstanceOf(IllegalStateException.class);
     }
 }

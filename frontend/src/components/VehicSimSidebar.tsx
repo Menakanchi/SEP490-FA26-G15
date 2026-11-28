@@ -627,6 +627,8 @@ function ExperiencerNav() {
 export function VehicSimSidebar() {
   const router = useRouter();
   const { user, logout } = useAuth();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
 
   return (
     <aside className="flex flex-col gap-4 px-3.5 py-4 lg:sticky lg:top-0 lg:max-h-dvh lg:overflow-y-auto">
@@ -649,15 +651,25 @@ export function VehicSimSidebar() {
           type="button"
           title="Đăng xuất khỏi phiên làm việc"
           aria-label="Đăng xuất"
-          onClick={() => {
-            logout();
-            router.push("/login");
+          disabled={loggingOut}
+          onClick={async () => {
+            setLoggingOut(true);
+            setLogoutError("");
+            try {
+              await logout();
+              router.push("/login");
+            } catch {
+              setLogoutError("Không thể đăng xuất. Hãy kiểm tra kết nối và thử lại.");
+            } finally {
+              setLoggingOut(false);
+            }
           }}
           className="flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-3 text-[14px] font-bold text-slate-300 transition-colors hover:bg-rose-500/20 hover:text-rose-300"
         >
           <LogOut aria-hidden className="size-4.5 shrink-0" />
-          Đăng xuất
+          {loggingOut ? "Đang đăng xuất…" : "Đăng xuất"}
         </button>
+        {logoutError && <p role="alert" className="px-3 text-sm text-rose-200">{logoutError}</p>}
       </div>
     </aside>
   );

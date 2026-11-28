@@ -60,8 +60,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // Token sai, hết hạn hoặc không đọc được: bỏ qua, request vẫn chưa đăng nhập (-> 401 ở lớp bảo mật).
             log.debug("JWT bị từ chối: {}", e.getMessage());
         } catch (RuntimeException e) {
-            // Lỗi hạ tầng (vd. DB sập khi tra người dùng) — không được lặng lẽ biến thành "chưa đăng nhập".
+            // Không biến lỗi DB thành 401: frontend sẽ xóa phiên dù token chưa bị thu hồi.
             log.warn("Lỗi khi xác thực JWT: {}", e.toString());
+            response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+            response.setContentType("application/json;charset=UTF-8");
+            response.getWriter().write("{\"detail\":\"Không thể kiểm tra phiên đăng nhập. Vui lòng thử lại.\"}");
+            return;
         }
 
         filterChain.doFilter(request, response);

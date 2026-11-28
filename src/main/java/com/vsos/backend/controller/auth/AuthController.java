@@ -11,6 +11,10 @@ import com.vsos.backend.dto.auth.LoginRequest;
 import com.vsos.backend.dto.auth.RegisterRequest;
 import com.vsos.backend.dto.auth.UserDto;
 import com.vsos.backend.service.auth.AuthService;
+import com.vsos.backend.service.auth.MfaService;
+import com.vsos.backend.security.CustomUserDetails;
+import com.vsos.backend.dto.auth.AuthRequests.MfaPasswordRequest;
+import com.vsos.backend.dto.auth.AuthRequests.MfaConfirmRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -35,6 +39,7 @@ public class AuthController {
     private static final String OTP_SENT_MESSAGE = "Nếu email hợp lệ, mã xác minh 6 số đã được gửi. Mã có hiệu lực trong ít phút.";
 
     private final AuthService authService;
+    private final MfaService mfaService;
 
     // ---- đăng nhập / đăng ký
 
@@ -88,6 +93,41 @@ public class AuthController {
 
     // ---- cần đăng nhập
 
+    @GetMapping("/mfa/status")
+    public ResponseEntity<Map<String, Boolean>> mfaStatus(@AuthenticationPrincipal CustomUserDetails user) {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(Map.of("enabled", mfaService.enabled(user.getUser().getId())));
+    }
+
+    @PostMapping("/mfa/setup")
+    public ResponseEntity<MfaService.Setup> mfaSetup(@AuthenticationPrincipal CustomUserDetails user, @Valid @RequestBody MfaPasswordRequest body) {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(mfaService.setup(user.getUsername(), authVersion(user), body.password()));
+    }
+
+    @PostMapping("/mfa/enable")
+    public ResponseEntity<MfaService.Enabled> mfaEnable(@AuthenticationPrincipal CustomUserDetails user, @Valid @RequestBody MfaConfirmRequest body) {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(mfaService.enable(user.getUsername(), authVersion(user), body.password(), body.code()));
+    }
+
+    @PostMapping("/mfa/disable")
+    public ResponseEntity<AuthResponse> mfaDisable(@AuthenticationPrincipal CustomUserDetails user, @Valid @RequestBody MfaConfirmRequest body) {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(mfaService.disable(user.getUsername(), authVersion(user), body.password(), body.code()));
+    }
+
+    @PostMapping("/mfa/recovery")
+    public ResponseEntity<Map<String, Object>> mfaRecovery(@AuthenticationPrincipal CustomUserDetails user, @Valid @RequestBody MfaConfirmRequest body) {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(Map.of("codes", mfaService.replaceRecoveryCodes(user.getUsername(), authVersion(user), body.password(), body.code())));
+    }
+
+    @Operation(summary = "Thu hồi phiên đăng nhập hiện tại", security = @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH))
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@RequestHeader("Authorization") String authorization) {
+        if (!authorization.startsWith("Bearer ")) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        authService.logout(authorization.substring(7));
+        return ResponseEntity.noContent().build();
+    }
+
     @Operation(summary = "Thông tin người dùng hiện tại", description = "Cần JWT: bấm Authorize rồi dán access_token.",
             security = @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH))
     @GetMapping("/me")
@@ -105,8 +145,13 @@ public class AuthController {
             description = "Trả phiên MỚI: token cũ (kể cả token của request này) hết hiệu lực khi mật khẩu đổi.",
             security = @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH))
     @PostMapping("/password/change")
-    public ResponseEntity<AuthResponse> passwordChange(@Valid @RequestBody PasswordChangeRequest body, @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(authService.changePassword(userDetails.getUsername(), body.oldPassword(), body.newPassword()));
+    public ResponseEntity<AuthResponse> passwordChange(@Valid @RequestBody PasswordChangeRequest body, @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ResponseEntity.ok(authService.changePassword(userDetails.getUsername(), body.oldPassword(), body.newPassword(), authVersion(userDetails)));
+    }
+
+    private static long authVersion(CustomUserDetails user) {
+        Long version = user.getUser().getAuthVersion();
+        return version == null ? 0 : version;
     }
 
     /**

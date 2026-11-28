@@ -12,6 +12,7 @@ export default function LoginPage() {
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -20,7 +21,7 @@ export default function LoginPage() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const user = await login(email, password);
+      const user = await login(email, password, mfaCode.trim());
       router.push(homeFor(user.role));
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : "Không thể đăng nhập. Vui lòng thử lại.");
@@ -81,6 +82,12 @@ export default function LoginPage() {
           />
         </div>
 
+        <div>
+          <label htmlFor="login-mfa" className={labelClass}>Mã xác thực hai bước</label>
+          <input id="login-mfa" type="text" autoComplete="one-time-code" maxLength={64} className={inputClass}
+            value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} aria-describedby="login-mfa-help" />
+          <p id="login-mfa-help" className="mt-1.5 text-xs text-vehicsim-muted">Chỉ nhập nếu bạn đã bật xác thực hai bước; có thể dùng mã khôi phục.</p>
+        </div>
         <button type="submit" disabled={loading} className={primaryButtonClass}>
           {loading && <Loader2 className="size-4 animate-spin" />}
           {loading ? "Đang đăng nhập…" : "Đăng nhập"}

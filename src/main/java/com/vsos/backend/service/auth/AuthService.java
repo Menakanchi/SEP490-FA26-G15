@@ -15,6 +15,8 @@ import com.vsos.backend.security.CustomUserDetails;
 import com.vsos.backend.security.JwtService;
 import com.vsos.backend.security.LegacyAwarePasswordEncoder;
 import jakarta.annotation.PostConstruct;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -55,6 +57,8 @@ public class AuthService {
     private final OtpService otpService;
     private final MailService mailService;
     private final AuthProperties props;
+    private final MfaService mfaService;
+    private final EntityManager entityManager;
 
     @Value("${app.env:development}")
     private String appEnv;
@@ -96,38 +100,46 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, RATE_LIMITED);
         }
         String email = normalize(request.getEmail());
-        // Giới hạn theo tài khoản chỉ đếm lần SAI: chặn dò mật khẩu từ nhiều IP, và email lạ bị đếm y hệt email thật
-        // (không để lộ email nào tồn tại). Đổi lại, kẻ xấu làm khoá tạm một tài khoản được trong một cửa sổ.
-        if (otpService.isRateLimited("login_acct", email, props.loginAttemptsPerAccount())) {
+        // Reserve before checking the password, so concurrent requests cannot all pass the limit.
+        String attempt = otpService.reserveLogin(email, props.loginAttemptsPerAccount());
+        if (attempt == null) {
             AuditLog.event("auth.login", "blocked", "reason", "rate_limited_account", "user", email, "ip", clientIp);
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, RATE_LIMITED);
         }
-        String rawPassword = request.getPassword();
+        boolean success = false;
+        try {
+            String rawPassword = request.getPassword();
 
-        User user = userRepository.findByEmail(email).orElse(null);
-        if (user == null) {
-            passwordEncoder.matches(rawPassword, passwordEncoder.dummyHash());
-            otpService.hitRateLimit("login_acct", email, props.loginAttemptsPerAccount());
-            AuditLog.event("auth.login", "failure", "reason", "bad_credentials", "user", email, "ip", clientIp);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, INVALID_CREDENTIALS);
+            User user = userRepository.findLockedByEmail(email).orElse(null);
+            if (user == null) {
+                passwordEncoder.matches(rawPassword, passwordEncoder.dummyHash());
+                AuditLog.event("auth.login", "failure", "reason", "bad_credentials", "user", email, "ip", clientIp);
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, INVALID_CREDENTIALS);
+            }
+            entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE);
+            if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+                AuditLog.event("auth.login", "failure", "reason", "bad_credentials", "user", email, "ip", clientIp);
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, INVALID_CREDENTIALS);
+            }
+            if (Boolean.FALSE.equals(user.getIsActive())) {
+                AuditLog.event("auth.login", "failure", "reason", "account_disabled", "user", email, "user_id", user.getId(), "ip", clientIp);
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tài khoản đã bị khoá. Vui lòng liên hệ quản trị viên.");
+            }
+            if (!mfaService.verifyForLogin(user.getId(), request.getMfaCode())) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Cần mã xác thực hoặc mã khôi phục hợp lệ.");
+            }
+            if (passwordEncoder.upgradeEncoding(user.getPasswordHash())) {
+                user.setPasswordHash(passwordEncoder.encode(rawPassword)); // hash PBKDF2 cũ -> BCrypt
+            }
+            user.setLastLoginAt(LocalDateTime.now());
+            User saved = userRepository.save(user);
+            AuditLog.event("auth.login", "success", "user", email, "user_id", saved.getId(), "role", roleOf(saved), "ip", clientIp);
+            AuthResponse response = sessionFor(saved);
+            success = true;
+            return response;
+        } finally {
+            otpService.finishLogin(email, attempt, success);
         }
-        if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
-            otpService.hitRateLimit("login_acct", email, props.loginAttemptsPerAccount());
-            AuditLog.event("auth.login", "failure", "reason", "bad_credentials", "user", email, "ip", clientIp);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, INVALID_CREDENTIALS);
-        }
-        if (Boolean.FALSE.equals(user.getIsActive())) {
-            AuditLog.event("auth.login", "failure", "reason", "account_disabled", "user", email, "user_id", user.getId(), "ip", clientIp);
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tài khoản đã bị khoá. Vui lòng liên hệ quản trị viên.");
-        }
-        otpService.clearRateLimit("login_acct", email);
-        if (passwordEncoder.upgradeEncoding(user.getPasswordHash())) {
-            user.setPasswordHash(passwordEncoder.encode(rawPassword)); // hash PBKDF2 cũ -> BCrypt
-        }
-        user.setLastLoginAt(LocalDateTime.now());
-        User saved = userRepository.save(user);
-        AuditLog.event("auth.login", "success", "user", email, "user_id", saved.getId(), "role", roleOf(saved), "ip", clientIp);
-        return sessionFor(saved);
     }
 
     // ------------------------------------------------------------------ đăng ký
@@ -253,6 +265,10 @@ public class AuthService {
 
     // ------------------------------------------------------------------ đã đăng nhập
 
+    public void logout(String token) {
+        jwtService.revoke(token);
+    }
+
     @Transactional(readOnly = true)
     public UserDto getCurrentUser(String email) {
         return UserDto.fromEntity(requireUser(email));
@@ -274,9 +290,13 @@ public class AuthService {
      * (các thiết bị khác bị đăng xuất), nên chính người vừa đổi cũng cần token mới ngay tại đây.
      */
     @Transactional
-    public AuthResponse changePassword(String email, String oldPassword, String newPassword) {
+    public AuthResponse changePassword(String email, String oldPassword, String newPassword, long expectedAuthVersion) {
         requirePasswordFitsBcrypt(newPassword);
-        User user = requireUser(email);
+        User user = userRepository.findLockedByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Phiên đăng nhập không hợp lệ."));
+        entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE);
+        if (user.getAuthVersion() != expectedAuthVersion || Boolean.FALSE.equals(user.getIsActive()))
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Phiên đăng nhập không hợp lệ.");
         if (!passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
             AuditLog.event("auth.password_change", "failure", "reason", "wrong_old_password", "user", email, "user_id", user.getId());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mật khẩu hiện tại không đúng");

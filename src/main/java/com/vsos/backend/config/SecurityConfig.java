@@ -78,7 +78,7 @@ public class SecurityConfig {
                                 "/api/v1/vehicsim/recommendations/**", "/api/v1/vehicsim/decisions/**"
                         ).hasAnyRole("ADMIN", "ENGINEER", "EXPERIENCER", "REVIEWER")
                         // Phải đứng trước /api/v1/auth/** (permitAll) để hai route này đòi đăng nhập.
-                        .requestMatchers("/api/v1/auth/me", "/api/v1/auth/password/change").authenticated()
+                        .requestMatchers("/api/v1/auth/me", "/api/v1/auth/password/change", "/api/v1/auth/logout", "/api/v1/auth/mfa/**").authenticated()
                         .requestMatchers(API_DOC_PATHS).access((authentication, context) ->
                                 new org.springframework.security.authorization.AuthorizationDecision(!production))
                         .requestMatchers(

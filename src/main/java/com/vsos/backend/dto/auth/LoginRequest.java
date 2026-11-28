@@ -19,4 +19,8 @@ public class LoginRequest {
     @NotBlank(message = "Mật khẩu không được để trống")
     @Size(max = 128, message = "Mật khẩu tối đa 128 ký tự")
     private String password;
+
+    @com.fasterxml.jackson.annotation.JsonProperty("mfa_code")
+    @Size(max = 64, message = "Mã xác thực quá dài")
+    private String mfaCode;
 }
