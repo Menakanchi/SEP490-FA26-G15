@@ -1071,7 +1071,7 @@ public class RunService {
     /**
      * Xoá kết quả của một run baseline: dòng {@code simulation_runs} (kèm {@code collision_events}, {@code failures}, {@code root_causes}, {@code simulation_artifacts}
      * theo ON DELETE CASCADE) rồi cả thư mục file của run (ảnh/video/CSV/{@code result.json}). Chỉ run {@code BASELINE} không thuộc regression/tối ưu,
-     * ở trạng thái {@code FAILED}/{@code STOPPED}, do chính người xoá tạo (ADMIN xoá được run của người khác), và không được regression hay phân tích tham chiếu.
+     * ở trạng thái {@code FAILED}/{@code STOPPED}, do chính người xoá tạo (ADMIN xoá được run của người khác), và không phải mốc đối chiếu của một regression test.
      *
      * @param admin người xoá là ADMIN: bỏ qua điều kiện "run do mình tạo", không bỏ qua điều kiện trạng thái
      */
@@ -1094,7 +1094,7 @@ public class RunService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the user who started this run or an admin can delete its result");
         }
         if (!deleteFinishedBaselineRun(projectId, runId, userId, admin)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "This run is referenced or no longer eligible for deletion");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This run is the reference of a regression test and cannot be deleted");
         }
         deleteRunFolderAfterCommit(runId);
         AuditLog.event("run.delete", "success", "user_id", userId, "run_id", runId, "previous_status", run.str("status"));
@@ -1125,10 +1125,8 @@ public class RunService {
         int active = 0;
         int completed = 0;
         int notOwner = 0;
-        int optimization = 0;
-        int regression = 0;
-        StringBuilder sql = new StringBuilder("SELECT id, status, created_by_user_id, purpose, regression_test_id, optimization_trial_id "
-                + "FROM simulation_runs WHERE project_id = ? AND scenario_id = ?");
+        StringBuilder sql = new StringBuilder("SELECT id, status, created_by_user_id FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND purpose = 'BASELINE' "
+                + "AND regression_test_id IS NULL AND optimization_trial_id IS NULL");
         List<Object> args = new ArrayList<>();
         args.add(projectId);
         args.add(scenarioId);
@@ -1138,17 +1136,6 @@ public class RunService {
         }
         sql.append(" ORDER BY id");
         for (Row r : db.list(sql.toString(), args.toArray())) {
-            // These runs belong to a test/campaign and cannot be removed independently.
-            // Count failed/stopped ones so the user can understand why they remain visible.
-            if (!r.isNull("regression_test_id") || "REGRESSION".equals(r.str("purpose"))) {
-                if (DELETABLE_STATUSES.contains(r.str("status"))) regression++;
-                continue;
-            }
-            if (!r.isNull("optimization_trial_id") || "OPTIMIZATION".equals(r.str("purpose"))) {
-                if (DELETABLE_STATUSES.contains(r.str("status"))) optimization++;
-                continue;
-            }
-            if (!"BASELINE".equals(r.str("purpose"))) continue;
             if (ACTIVE_STATUSES.contains(r.str("status"))) {
                 active++;
             } else if (!DELETABLE_STATUSES.contains(r.str("status"))) {
@@ -1163,15 +1150,13 @@ public class RunService {
             }
         }
         AuditLog.event("family.baseline_runs.delete", "success", "user_id", userId, "scenario_id", scenarioId, "deleted", deleted,
-                "kept_in_use", inUse, "kept_active", active, "kept_completed", completed, "kept_not_owner", notOwner,
-                "kept_optimization", optimization, "kept_regression", regression);
+                "kept_in_use", inUse, "kept_active", active, "kept_completed", completed, "kept_not_owner", notOwner);
         return Json.obj("scenario_id", scenarioId, "deleted", deleted, "skipped_in_use", inUse, "skipped_active", active,
-                "skipped_completed", completed, "skipped_not_owner", notOwner,
-                "skipped_optimization", optimization, "skipped_regression", regression);
+                "skipped_completed", completed, "skipped_not_owner", notOwner);
     }
 
     /**
-     * Xoá dòng run baseline xoá được trong một transaction; {@code false} khi regression hoặc phân tích còn tham chiếu nó, hoặc run vừa đổi trạng thái /
+     * Xoá dòng run baseline xoá được trong một transaction; {@code false} khi một regression còn tham chiếu nó, hoặc run vừa đổi trạng thái /
      * không còn thuộc người xoá (câu DELETE kiểm lại mọi điều kiện, nên đọc trước rồi xoá sau vẫn an toàn khi có thao tác chen vào).
      */
     private boolean deleteFinishedBaselineRun(long projectId, long runId, long userId, boolean admin) {
@@ -1179,14 +1164,12 @@ public class RunService {
             Boolean done = tx.execute(status -> {
                 lockWritableProject(projectId, userId);
                 Object referenced = db.scalar("SELECT (SELECT COUNT(*) FROM simulation_runs WHERE baseline_run_id = ?) "
-                        + "+ (SELECT COUNT(*) FROM regression_test_items WHERE baseline_run_id = ?) "
-                        + "+ (SELECT COUNT(*) FROM analysis_results WHERE worst_case_run_id = ?)", runId, runId, runId);
+                        + "+ (SELECT COUNT(*) FROM regression_test_items WHERE baseline_run_id = ?)", runId, runId);
                 if (referenced instanceof Number n && n.longValue() > 0) {
                     return false;
                 }
                 return db.update("DELETE FROM simulation_runs WHERE id = ? AND project_id = ? AND status IN ('FAILED','STOPPED') "
                         + "AND purpose = 'BASELINE' AND regression_test_id IS NULL AND optimization_trial_id IS NULL "
-                        + "AND NOT EXISTS (SELECT 1 FROM analysis_results WHERE worst_case_run_id = simulation_runs.id) "
                         + "AND (? OR created_by_user_id = ?)", runId, projectId, admin, userId) > 0;
             });
             return Boolean.TRUE.equals(done);

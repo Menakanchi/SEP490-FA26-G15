@@ -27,7 +27,6 @@ export default function WorkspaceReportsPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const id = Number(workspaceId);
   const { user } = useAuth();
-  const userId = user?.id;
   const allowed = WORKSPACE_ROLES.includes(user?.roleCode ?? "");
   const isManagerOrAdmin = WORKSPACE_MANAGER_ROLES.includes(user?.roleCode ?? "");
 
@@ -75,12 +74,9 @@ export default function WorkspaceReportsPage() {
 
   const ws = detail?.workspace;
   const active = ws?.status === "ACTIVE";
-  const activeProjects = (detail?.projects ?? []).filter((p) => p.status === "ACTIVE");
-  const reportTasks = tasks.filter((t) => t.project && activeProjects.some((p) => p.id === t.project?.id));
   const visible = useMemo(
-    () => (reports ?? []).filter((r) => (!status || r.status === status) && (!project || String(r.project.id) === project)
-      && (!onlyMine || (userId != null && String(r.submitted_by.id) === String(userId)))),
-    [reports, status, project, onlyMine, userId],
+    () => (reports ?? []).filter((r) => (!status || r.status === status) && (!project || String(r.project.id) === project)),
+    [reports, status, project],
   );
   const count = (s: ReportStatus) => (reports ?? []).filter((r) => r.status === s).length;
 
@@ -147,7 +143,7 @@ export default function WorkspaceReportsPage() {
       title="Báo cáo công việc"
       badges={ws && !active && <Tag tone="neutral">Workspace đã lưu trữ — chỉ xem</Tag>}
       actions={
-        allowed && active && !isManagerOrAdmin ? (
+        allowed && active ? (
           <PillButton variant="dark" onClick={() => setSubmitting(true)}>
             + Nộp báo cáo
           </PillButton>
@@ -155,7 +151,7 @@ export default function WorkspaceReportsPage() {
       }
     >
       {!allowed ? (
-        <EmptyState title="Màn này dành cho Quản lý, Kỹ sư và Người duyệt của workspace. Quản trị viên sử dụng mục Quản trị → Workspace." />
+        <EmptyState title="Chỉ Quản lý workspace được vào màn này. Quản trị viên sử dụng mục Quản trị → Workspace." />
       ) : (
         <>
           <ErrorNote message={error} />
@@ -177,7 +173,7 @@ export default function WorkspaceReportsPage() {
           </div>
 
           <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
-            <div className="flex flex-wrap items-center gap-2 border-b border-solid border-vehicsim-line px-5 py-4">
+            <div className="flex items-center gap-2 border-b border-solid border-vehicsim-line px-5 py-4">
               <span className="mr-2 text-[15px] font-bold text-vehicsim-ink">{reports ? `${visible.length} báo cáo` : "…"}</span>
               <FilterSelect<ReportStatus>
                 label="Trạng thái"
@@ -191,7 +187,7 @@ export default function WorkspaceReportsPage() {
                 options={(detail?.projects ?? []).map((p) => ({ value: String(p.id), label: p.name }))}
                 onChange={setProject}
               />
-              {!isManagerOrAdmin && <button
+              <button
                 type="button"
                 onClick={() => setOnlyMine((v) => !v)}
                 className={cx(
@@ -202,7 +198,7 @@ export default function WorkspaceReportsPage() {
                 )}
               >
                 {onlyMine ? "✓ Báo cáo của tôi" : "Báo cáo của tôi"}
-              </button>}
+              </button>
             </div>
             {reports && visible.length === 0 && (
               <EmptyState title={reports.length ? "Không có báo cáo nào khớp bộ lọc" : "Chưa có báo cáo"}>
@@ -317,7 +313,7 @@ export default function WorkspaceReportsPage() {
                         className="w-full rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
                       >
                         <option value="">— Không gắn task —</option>
-                        {reportTasks.map((t) => (
+                        {tasks.map((t) => (
                           <option key={t.id} value={t.id}>
                             #{t.id}: {t.title}
                           </option>
@@ -329,16 +325,12 @@ export default function WorkspaceReportsPage() {
                       <span className="text-[12px] font-semibold text-vehicsim-muted">Project *</span>
                       <select
                         value={repProjectId ?? ""}
-                        onChange={(e) => {
-                          const nextId = e.target.value ? Number(e.target.value) : null;
-                          setRepProjectId(nextId);
-                          if (repTaskId && tasks.find((t) => t.id === repTaskId)?.project?.id !== nextId) setRepTaskId(null);
-                        }}
+                        onChange={(e) => setRepProjectId(e.target.value ? Number(e.target.value) : null)}
                         required
                         className="w-full rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
                       >
                         <option value="" disabled>— Chọn project —</option>
-                        {activeProjects.map((p) => (
+                        {(detail?.projects ?? []).map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.name}
                           </option>
@@ -352,7 +344,7 @@ export default function WorkspaceReportsPage() {
                     <textarea
                       value={repContent}
                       onChange={(e) => setRepContent(e.target.value)}
-                      maxLength={10000}
+                      maxLength={50000}
                       required
                       rows={5}
                       placeholder="Mô tả công việc đã hoàn thành, bằng chứng số liệu, nguyên nhân thất bại..."

@@ -45,13 +45,13 @@ export function FailureAnalysisV3Report({ data }: { data: DiagnosticReport }) {
       <h2>Kết luận: {result.conclusion}</h2>
       <p>{result.outcomeText}. {result.behaviorText}.</p>
       <p className="analysis-caption">Kết quả va chạm và đánh giá trách nhiệm AEB là hai thông tin riêng.</p>
-      <p className="analysis-caption">Đây là nhận định trong báo cáo đã lưu; điều kiện áp dụng và phê duyệt cần được kiểm tra lại trước khi ra quyết định.</p>
+      <p className="analysis-caption">Đây là nhận định trong báo cáo đã lưu; hiệu lực context và điều kiện phê duyệt cần được kiểm tra lại trước khi ra quyết định.</p>
     </header>
     {result.candidates.length > 0 && <section><h3>Dấu hiệu AEB</h3><ul className={styles.findings}>
       {result.candidates.map((candidate, i) => <li key={i}><strong>{candidate.label}</strong><span>{candidate.supported ? "Có bằng chứng hỗ trợ" : "Nghi ngờ — chưa xác nhận"}</span></li>)}
     </ul></section>}
     {result.hasUnknownCandidates && <p role="status">Một dấu hiệu chưa thể diễn giải; cần kiểm tra thêm.</p>}
-    <section aria-label="Ba chỉ số chính"><h3>Ba chỉ số chính</h3><dl className={styles.metrics}>
+    <section aria-label="Ba objective"><h3>Ba objective</h3><dl className={styles.metrics}>
       {objectivePresentation(report).map(metric => <div key={metric.key} className={styles.metric}><dt>{metric.label}</dt><dd><strong>{metric.text}</strong></dd>{metric.key === "stopping_distance_m" && <small>Chỉ số gốc của lượt chạy; có thể gồm phần ngoại suy.</small>}</div>)}
     </dl></section>
     <section><h3>Diễn biến tình huống</h3>
@@ -74,7 +74,7 @@ export function FailureAnalysisV3Report({ data }: { data: DiagnosticReport }) {
         {latest && <div className={styles.summaryCard}><dt>Mốc giới hạn theo phép sàng lọc dừng</dt><dd>{display(latest, "s")}</dd></div>}
       </dl>
       {comparable && <p>Chênh lệch theo báo cáo = khoảng cách hiện có − khoảng cách dừng theo mô hình = {fmt(available.value)} − {fmt(required.value)} = {fmt(margin.value)} m.</p>}
-      <p className="analysis-caption">Đây là phép sàng lọc dừng một chiều có điều kiện, không phải chỉ số quãng đường dừng; chưa chứng minh khả năng tránh va chạm hai chiều hay xác nhận nguyên nhân lỗi.</p>
+      <p className="analysis-caption">Đây là phép sàng lọc dừng một chiều có điều kiện, không phải objective quãng đường dừng; chưa chứng minh khả năng tránh va chạm hai chiều hay xác nhận nguyên nhân lỗi.</p>
     </section>}
     <section><h3>Nguyên nhân và hướng điều tra</h3>
       {hasConfirmedCause ? <p>Nguyên nhân đã xác nhận theo báo cáo: {causeLabels[String(confirmed.value)] ?? "chưa hỗ trợ hiển thị tên nguyên nhân"}.</p> : <p>Chưa có nguyên nhân được xác nhận trong báo cáo.</p>}

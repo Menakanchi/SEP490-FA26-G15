@@ -7,11 +7,9 @@ import { ErrorNote, PillButton } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion } from "@/types/vehicsim";
 import { CandidateForm } from "@/components/aeb/CandidateForm";
-import { useAuth } from "@/context/AuthContext";
 
 export default function AebManualPage() {
   const { ctx, refresh, canWrite } = useVehicSimContext();
-  const { user } = useAuth();
   const [versions, setVersions] = useState<AebVersion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ id: number; label: string } | null>(null);
@@ -32,7 +30,7 @@ export default function AebManualPage() {
       actions={
         <div className="flex items-center gap-2">
           <PillButton href="/aeb/mobo" variant="dark">
-            Danh sách đợt tối ưu
+            Chạy tối ưu tự động MOBO
           </PillButton>
         </div>
       }
@@ -48,11 +46,7 @@ export default function AebManualPage() {
         </div>
       )}
 
-      {user && !canWrite ? (
-        <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 text-[13px] text-vehicsim-muted">
-          Tài khoản của bạn chỉ có quyền xem, không thể chỉnh tay tham số.
-        </div>
-      ) : versions && ctx && canWrite ? (
+      {versions && ctx && canWrite ? (
         <CandidateForm
           versions={versions}
           parameters={ctx.parameters}
@@ -62,11 +56,11 @@ export default function AebManualPage() {
             await refresh();
           }}
         />
-      ) : !error ? (
+      ) : (
         <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 text-[13px] text-vehicsim-muted">
-          Đang tải dữ liệu tham số…
+          Bạn chỉ có quyền xem hoặc dữ liệu tham số đang được tải.
         </div>
-      ) : null}
+      )}
     </VehicSimPage>
   );
 }

@@ -12,7 +12,7 @@ const code=(await load("analysis/playbackPresentation.ts"))
   .replace('"./playbackClockData"',JSON.stringify(clockUrl))
   .replace('"./analysisRunData"',JSON.stringify(url(await load("analysis/analysisRunData.ts"))))
   .replace('"@/components/vehicsimI18n"',JSON.stringify(url(await load("vehicsimI18n.ts"))));
-const {playbackPresentation:prepare,frameStatus,eventName}=await import(url(code));
+const {playbackPresentation:prepare,frameStatus}=await import(url(code));
 const ready=(patch={})=>reduce(initial,{type:"load",key:"101:0",time:1,start:1,end:4,canPlay:true,speed:.5,...patch});
 const action=(type,patch={})=>({type,key:"101:0",...patch});
 
@@ -78,19 +78,7 @@ test("discrete collision/stop state is never activated early or inferred from ze
   const events=[{t:1,kind:"collision"}];
   assert.notEqual(frameStatus(f,1-1e-7,events).label,"VA CHẠM");
   assert.equal(frameStatus(f,1,events).label,"VA CHẠM");
-  assert.equal(frameStatus({...f,aeb:true},1,[],"ON").label,"AEB ĐÃ RA QUYẾT ĐỊNH");
-});
-test("OFF shadow signals never become real AEB/FCW actions; missing mode remains unknown",()=>{
-  const f={ego_v:10,ttc:1,aeb:true,fcw:true,detected:true};
-  assert.equal(frameStatus(f,1,[],"OFF").label,"AEB TẮT");
-  assert.match(frameStatus(f,1,[]).label,/CHƯA RÕ CHẾ ĐỘ/);
-  assert.equal(frameStatus(f,1,[{kind:"collision",t:1}],"OFF").label,"VA CHẠM");
-  assert.equal(eventName({kind:"aeb_decision"},"ON"),"Quyết định AEB");
-  assert.match(eventName({kind:"aeb_decision"},"OFF"),/giả lập.*không tác động phanh/);
-  assert.match(eventName({kind:"fcw"},"OFF"),/tính toán \(shadow\)/);
-  assert.match(eventName({kind:"brake_onset"},"OFF"),/chưa rõ nguồn/);
-  assert.match(eventName({kind:"aeb_decision"}),/chưa rõ chế độ/);
-  assert.match(eventName({kind:"brake_onset"}),/chưa rõ chế độ/);
+  assert.equal(frameStatus({...f,aeb:true},1,[]).label,"AEB ĐÃ RA QUYẾT ĐỊNH");
 });
 test("20,000 records keep every sample and support exact full-resolution floor lookup",()=>{
   const frames=Array.from({length:20000},(_,i)=>({t:i*.013,ego_v:i===19000?123.456:0}));

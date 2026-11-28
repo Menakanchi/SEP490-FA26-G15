@@ -1,6 +1,5 @@
 package com.vsos.core.failureanalysis;
 
-import com.vsos.core.evaluation.AnalysisMetrics;
 import java.util.*;
 import static com.vsos.core.failureanalysis.Evidence.*;
 
@@ -65,19 +64,9 @@ public final class CanonicalObjectiveReader {
             return Boolean.TRUE.equals(c) ? "APPLICABLE" : Boolean.FALSE.equals(c) ? "NOT_APPLICABLE" : "UNKNOWN";
         }
         if ("OFF".equals(r.get("result", "/outcome/case/aeb_mode"))) return "NOT_APPLICABLE";
-        Boolean braked = recordedBraking(r);
-        return Boolean.TRUE.equals(braked) ? "APPLICABLE" : Boolean.FALSE.equals(braked) ? "NOT_APPLICABLE" : "UNKNOWN";
-    }
-
-    /** Uses only the producer's recorded command onset, not a physical-braking assertion. */
-    public static Boolean recordedBraking(Run r) {
-        Object rawMetrics = r.get("result", "/outcome/metrics");
-        boolean onsetPresent = rawMetrics instanceof Map<?, ?> m && m.containsKey("brake_onset_t");
-        Object rawFrames = r.get("result", "/outcome/frames");
-        boolean trace = rawFrames instanceof List<?> frames && !frames.isEmpty();
-        return AnalysisMetrics.recordedBraking(r.get("result", "/outcome/metrics/brake_onset_t"), onsetPresent,
-                r.get("result", "/outcome/metrics/rms_jerk_mps3"), r.get("result", "/outcome/metrics/stopping_distance_m"),
-                r.get("result", "/evaluation/aeb_result/aeb_triggered") instanceof Boolean a ? a : null,
-                r.get("result", "/outcome/metrics/collision") instanceof Boolean c ? c : null, trace);
+        Object onset = r.get("result", "/outcome/metrics/brake_onset_t");
+        if (onset != null && !"null".equals(onset) || r.get("result", "/outcome/metrics/rms_jerk_mps3") != null
+                || r.get("result", "/outcome/metrics/stopping_distance_m") != null) return "APPLICABLE";
+        return Boolean.FALSE.equals(r.get("result", "/evaluation/aeb_result/aeb_triggered")) ? "NOT_APPLICABLE" : "UNKNOWN";
     }
 }

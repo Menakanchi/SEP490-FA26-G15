@@ -48,7 +48,7 @@ export default function RecommendationPage() {
             <PillButton onClick={() => window.print()} className="print:hidden">
               Xuất PDF
             </PillButton>
-            {!final && !superseded && <PillButton
+            <PillButton
               variant="dark"
               href={!final && !superseded && !running && canDecide ? `/validation/recommendations/${r.id}/review` : undefined}
               disabled={final || superseded || running || !canDecide}
@@ -56,8 +56,8 @@ export default function RecommendationPage() {
                 : superseded ? "Ứng viên này đã được quyết định ở một kiểm thử hồi quy khác" : undefined}
               className="print:hidden"
             >
-              {r.recommendation_status === "BASELINE_CHANGED" ? "Xem lựa chọn quyết định" : "Duyệt quyết định"}
-            </PillButton>}
+              Duyệt quyết định
+            </PillButton>
           </>
         )
       }
@@ -177,7 +177,7 @@ export default function RecommendationPage() {
                     <span className="text-[14px] font-bold text-vehicsim-decision">→</span>
                   </Link>
                 ) : (
-                  <div key={e.key} className="flex items-center gap-3 rounded-[14px] bg-vehicsim-soft px-3 py-3">
+                  <div key={e.key} className="flex items-center gap-3 rounded-[14px] bg-vehicsim-soft px-3 py-3" title="Chưa có trong MVP">
                     {body}
                   </div>
                 );
@@ -199,7 +199,7 @@ export default function RecommendationPage() {
                     : r.recommendation_status === "SUPERSEDED"
                       ? "Hết hiệu lực: ứng viên này đã được quyết định ở một kiểm thử hồi quy khác, không cần duyệt khuyến nghị này nữa."
                       : r.recommendation_status === "BASELINE_CHANGED"
-                        ? "Bản cơ sở đã đổi: không thể chấp nhận ứng viên bằng kiểm thử này. Bạn vẫn có thể từ chối hoặc yêu cầu kiểm thử thêm."
+                        ? "Bản cơ sở đã đổi kể từ khi chạy kiểm thử: không chấp nhận được nữa, hãy chạy lại kiểm thử hồi quy với bản cơ sở hiện hành."
                         : "Đang chờ Người duyệt (Reviewer) quyết định."}
                 </p>
               )}

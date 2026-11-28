@@ -87,7 +87,6 @@ public final class ProjectDtos {
             @JsonProperty("has_running_work") boolean hasRunningWork,
             @JsonProperty("created_date") LocalDateTime createdDate,
             @JsonProperty("updated_at") LocalDateTime updatedAt,
-            @JsonProperty("workspace_id") Long workspaceId,
             ProjectJourney journey) {
     }
 

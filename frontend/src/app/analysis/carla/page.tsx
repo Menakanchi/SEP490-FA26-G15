@@ -341,7 +341,7 @@ function SummaryView({ s }: { s: TelemetrySummary }) {
           tone="info"
         />
         <StatCard
-          label="Tốc độ va chạm tương đối"
+          label="Tốc độ ego lúc va chạm"
           value={s.collisions > 0 ? formatObjective(s.impact_speed_mps) : "—"}
           valueClass={s.collisions > 0 ? "text-vehicsim-danger" : undefined}
           note={s.collisions > 0 ? `m/s · ${n(speedKmh(s.impact_speed_mps), "km/h")} · khung trước va chạm` : s.collisions === 0 ? "Không có sự kiện va chạm trong dữ liệu cảm biến" : "Không có dữ liệu hợp lệ"}
@@ -366,6 +366,7 @@ function SummaryView({ s }: { s: TelemetrySummary }) {
           value={s.collisions === 0 ? "0 sự kiện" : `${s.collisions} lần · đầu tiên t ${n(s.first_collision_time_s, "s")}`}
           danger={s.collisions > 0}
         />
+        <Row label="Tốc độ va chạm tương đối (sensor)" value={s.collisions > 0 ? n(s.relative_impact_speed_mps, "m/s") : "—"} />
         <Row label="Gia tốc đỉnh lúc đâm" value={s.collisions > 0 ? n(s.impact_peak_accel_ms2, "m/s²") : "—"} />
       </div>
     </div>

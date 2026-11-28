@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -11,8 +11,6 @@ import { splitDescription, timeAgo } from "@/components/project/journey";
 import { JourneyTimeline, NextStepCard } from "@/components/project/ProjectHome";
 import { useJourney, useProjectItem, useProjectJourney } from "@/components/project/ProjectJourneyContext";
 import { ProjectMenu, useProjectActions } from "@/components/project/ProjectUi";
-import { useAuth } from "@/context/AuthContext";
-import { vehicsimApi } from "@/services/vehicsim";
 
 function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -25,36 +23,6 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
 
 /** Trang chủ project (M3): bước tiếp theo, hành trình 5 bước và thông tin project. Là nơi quay về từ mọi màn. */
 export default function ViewProjectDetailPage() {
-  const { user } = useAuth();
-  return user?.roleCode === "ENGINEER" ? <EngineerProjectRoute /> : <PersonalProjectDetail />;
-}
-
-/** Workspace projects use the team context, not the personal-project endpoint. */
-function EngineerProjectRoute() {
-  const { projectId } = useParams<{ projectId: string }>();
-  const id = Number(projectId);
-  const { ctx, openProject } = useVehicSimContext();
-  const router = useRouter();
-  const [personalId, setPersonalId] = useState<number | null>(null);
-  const [error, setError] = useState<{ id: number; message: string } | null>(null);
-  useEffect(() => {
-    let active = true;
-    vehicsimApi.reviewerProjects().then(projects => {
-      if (!active) return;
-      if (projects.some(project => project.id === id)) {
-        if (ctx?.project.id === id) router.replace("/");
-        else openProject(id, "/");
-      } else setPersonalId(id);
-    }).catch(err => { if (active) setError({ id, message: err instanceof Error ? err.message : "Không tải được danh sách project trong workspace." }); });
-    return () => { active = false; };
-  }, [id, ctx?.project.id, openProject, router]);
-  if (personalId === id) return <PersonalProjectDetail />;
-  return <VehicSimPage crumbs={[{ label: "Project của tôi", href: "/projects" }, { label: "Đang mở project" }]}>
-    {error?.id === id ? <ErrorNote message={error.message} /> : <Loader2 aria-label="Đang mở project" className="size-6 animate-spin" />}
-  </VehicSimPage>;
-}
-
-function PersonalProjectDetail() {
   const { projectId } = useParams<{ projectId: string }>();
   const id = Number(projectId);
   const router = useRouter();

@@ -31,12 +31,11 @@ export function VersionTable({
     () => versions?.filter((v) => v.status === "BASELINE").length ?? 0,
     [versions],
   );
-  const otherCount = allCount - candidateCount - baselineCount;
 
   const filteredVersions = useMemo(() => {
     if (!versions) return [];
     return versions.filter((v) => {
-      if (filterStatus === "OTHER" ? ["CANDIDATE", "BASELINE"].includes(v.status) : filterStatus !== "ALL" && v.status !== filterStatus) return false;
+      if (filterStatus !== "ALL" && v.status !== filterStatus) return false;
       if (query.trim()) {
         const q = query.trim().toLowerCase();
         const matchLabel = v.label.toLowerCase().includes(q);
@@ -64,7 +63,6 @@ export function VersionTable({
             { key: "ALL", label: `Tất cả (${allCount})` },
             { key: "CANDIDATE", label: `Ứng viên (${candidateCount})` },
             { key: "BASELINE", label: `Bản cơ sở (${baselineCount})` },
-            { key: "OTHER", label: `Phiên bản khác (${otherCount})` },
           ].map((tab) => {
             const active = filterStatus === tab.key;
             return (

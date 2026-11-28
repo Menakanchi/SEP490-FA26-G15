@@ -137,7 +137,7 @@ export function OneStepRegisterForm() {
             required
             autoComplete="email"
             className={inputClass}
-            placeholder="ten@vidu.vn"
+            placeholder="name@company.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />

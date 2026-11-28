@@ -17,20 +17,14 @@ public class FailureAnalysisExplorerRepository {
 
     private static final String DOC = "CONVERT(rep.payload_bytes USING utf8mb4)";
     private static final String META = "CONVERT(rep.metadata_bytes USING utf8mb4)";
-    private static String safeJson(String doc) {
-        return "(CASE WHEN JSON_VALID(" + doc + ") THEN " + doc + " ELSE NULL END)";
-    }
     private static String field(String doc, String path) {
-        return "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(" + safeJson(doc) + ", '$." + path + "')), 'null')";
+        return "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(" + doc + ", '$." + path + "')), 'null')";
     }
     private static final String REPORTS = "WITH ranked_reports AS (SELECT r.id AS run_id,rep.id AS report_id,rep.execution_id,"
             + DOC + " AS document, ROW_NUMBER() OVER (PARTITION BY r.id ORDER BY rep.created_at DESC,rep.id DESC) AS rn "
-            // Start from reports and look up the identified run by primary key. Joining
-            // project runs to every report before extracting the run ID is quadratic.
-            + "FROM fa_json_reports rep STRAIGHT_JOIN simulation_runs r ON r.id=CAST(" + field(META, "run_identity.run_id.value") + " AS UNSIGNED) "
-            + "AND rep.project_id=r.project_id AND " + field(META, "run_identity.run_id.value") + "=CAST(r.id AS CHAR) "
-            + "JOIN fa_json_sources src ON src.project_id=r.project_id "
+            + "FROM simulation_runs r JOIN fa_json_sources src ON src.project_id=r.project_id "
             + "AND src.dedupe_key=SHA2(CONCAT('module2-result/v1:',r.project_id,':',r.id,':',r.attempt),256) "
+            + "JOIN fa_json_reports rep ON rep.project_id=r.project_id AND " + field(META, "run_identity.run_id.value") + "=CAST(r.id AS CHAR) "
             + "JOIN fa_json_sources analyzed ON analyzed.project_id=rep.project_id AND analyzed.id=rep.source_id "
             + "JOIN fa_json_executions ex ON ex.project_id=rep.project_id AND ex.id=rep.execution_id AND ex.source_id=analyzed.id "
             + "WHERE r.project_id=? AND r.status='COMPLETED' AND SHA2(src.payload_bytes,256)=src.payload_sha256 "
@@ -58,10 +52,10 @@ public class FailureAnalysisExplorerRepository {
             + "AND " + field("CONVERT(analyzed.metadata_bytes USING utf8mb4)", "byte_sha256") + "=analyzed.payload_sha256 "
             + "AND " + field(META, "source_sha256") + " IN (src.payload_sha256,analyzed.payload_sha256) "
             + "AND (analyzed.id=src.id OR (" + field("CONVERT(analyzed.metadata_bytes USING utf8mb4)", "database_input.origin")
-            + "='MODULE2_RESULT_DATABASE' AND (JSON_CONTAINS(JSON_EXTRACT(" + safeJson("CONVERT(analyzed.metadata_bytes USING utf8mb4)") + ",'$.database_input.members'), "
+            + "='MODULE2_RESULT_DATABASE' AND (JSON_CONTAINS(JSON_EXTRACT(CONVERT(analyzed.metadata_bytes USING utf8mb4),'$.database_input.members'), "
             + "JSON_OBJECT('run_id',r.id,'source_id',src.id,'byte_sha256',src.payload_sha256)) OR ("
-            + "JSON_UNQUOTE(JSON_EXTRACT(" + safeJson("CONVERT(analyzed.metadata_bytes USING utf8mb4)") + ",CONCAT('$.database_input.members.\"',r.id,'\".source_id')))=src.id "
-            + "AND JSON_UNQUOTE(JSON_EXTRACT(" + safeJson("CONVERT(analyzed.metadata_bytes USING utf8mb4)") + ",CONCAT('$.database_input.members.\"',r.id,'\".source_sha256')))=src.payload_sha256)))) "
+            + "JSON_UNQUOTE(JSON_EXTRACT(CONVERT(analyzed.metadata_bytes USING utf8mb4),CONCAT('$.database_input.members.\"',r.id,'\".source_id')))=src.id "
+            + "AND JSON_UNQUOTE(JSON_EXTRACT(CONVERT(analyzed.metadata_bytes USING utf8mb4),CONCAT('$.database_input.members.\"',r.id,'\".source_sha256')))=src.payload_sha256)))) "
             + "AND " + field(META, "run_identity.project_id.value") + "=CAST(r.project_id AS CHAR) "
             + "AND " + field(META, "run_identity.run_id.value") + "=CAST(r.id AS CHAR) "
             + "AND " + field(META, "run_identity.scenario_id.value") + "=CAST(r.scenario_id AS CHAR) "
@@ -114,28 +108,15 @@ public class FailureAnalysisExplorerRepository {
                 + "LEFT JOIN run_projection p ON p.scenario_id=s.id AND p.aeb_mode='ON' AND p.report_id IS NOT NULL "
                 + where + " GROUP BY s.id,s.code,s.name,s.category";
         List<Object> pageArgs = new ArrayList<>(args); pageArgs.add(limit); pageArgs.add(offset);
-        String aggregate="SELECT grouped_scenarios.*, COUNT(*) OVER () AS summary_scenario_count, "
-                + "SUM(variant_count) OVER () AS summary_variant_count, SUM(analyzed_count) OVER () AS summary_analyzed_count, "
-                + "SUM(suspected_count) OVER () AS summary_suspected_count, SUM(unknown_count) OVER () AS summary_unknown_count "
-                + "FROM ("+grouped+") grouped_scenarios";
-        List<Row> rows=db.list(REPORTS+aggregate+" ORDER BY scenario_id " + order(sort) + " LIMIT ? OFFSET ?",pageArgs.toArray());
-        List<Map<String,Object>> items=rows.stream().map(r -> {
-            Map<String,Object> item=new LinkedHashMap<>(r.asMap());
-            item.keySet().removeIf(key -> key.startsWith("summary_"));
-            return item;
-        }).toList();
+        List<Map<String,Object>> items=db.list(REPORTS+grouped+" ORDER BY s.id " + order(sort) + " LIMIT ? OFFSET ?",pageArgs.toArray()).stream().map(r -> new LinkedHashMap<>(r.asMap())).map(m -> (Map<String,Object>)m).toList();
         List<Object> countArgs = new ArrayList<>(); countArgs.add(project);
         if (q != null && !q.isBlank()) {String term=q.trim(); countArgs.add("%"+term+"%");countArgs.add("%"+term+"%");countArgs.add(term);countArgs.add(term);countArgs.add(term);}
         long total=((Number)db.scalar("SELECT COUNT(*) FROM scenarios s"+where,countArgs.toArray())).longValue();
-        Row summary=rows.isEmpty() && total>0 ? db.first(REPORTS+"SELECT COUNT(*) AS scenario_count,COALESCE(SUM(variant_count),0) AS variant_count, "
+        Row summary=db.first(REPORTS+"SELECT COUNT(*) AS scenario_count,COALESCE(SUM(variant_count),0) AS variant_count, "
                 +"COALESCE(SUM(analyzed_count),0) AS analyzed_count,NULL AS confirmed_count, "
                 +"COALESCE(SUM(suspected_count),0) AS suspected_count,NULL AS no_failure_count, "
-                +"COALESCE(SUM(unknown_count),0) AS unknown_count FROM ("+grouped+") grouped_scenarios",args.toArray()) : null;
-        Map<String,Object> totals=new LinkedHashMap<>();
-        for(String key:List.of("scenario_count","variant_count","analyzed_count","suspected_count","unknown_count"))
-            totals.put(key,!rows.isEmpty()?rows.get(0).get("summary_"+key):summary!=null?summary.get(key):0L);
-        totals.put("confirmed_count",null);totals.put("no_failure_count",null);
-        Map<String,Object> response=envelope(project, items,total,limit,offset);response.put("summary",totals);return response;
+                +"COALESCE(SUM(unknown_count),0) AS unknown_count FROM ("+grouped+") grouped_scenarios",args.toArray());
+        Map<String,Object> response=envelope(project, items,total,limit,offset);response.put("summary",summary.asMap());return response;
     }
 
     public Map<String,Object> runs(long project,long scenario,String q,Long variant,Long run,String mode,String classification,

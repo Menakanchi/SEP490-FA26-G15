@@ -82,6 +82,9 @@ export function Welcome() {
             >
               Tạo project đầu tiên
             </Link>
+            <Link href="/projects" className="text-[14px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink hover:underline">
+              Mở lại project đã lưu trữ
+            </Link>
           </div>
         </section>
 
@@ -108,7 +111,6 @@ const OPEN_PATHS = ["/projects", "/profile", "/admin", "/vehicles"];
 
 const OTHER_ROLE_PATHS = [
   { prefix: "/validation/recommendations", title: "Project cá nhân không có khuyến nghị", detail: "Bạn tự xem kết luận kiểm chứng và tự chọn ứng viên làm baseline ở màn Kết luận vòng." },
-  { prefix: "/validation/decisions", title: "Project cá nhân không có lịch sử duyệt", detail: "Bạn tự xem kết luận kiểm chứng và tự chọn ứng viên làm baseline ở màn Kết luận vòng." },
   { prefix: "/workspace", title: "Workspace dành cho Manager", detail: "Tài khoản Experiencer làm việc trong project cá nhân của mình." },
 ];
 

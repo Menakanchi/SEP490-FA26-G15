@@ -722,7 +722,7 @@ export default function WorkspaceDetailPage() {
                   <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
                   <span className="w-[240px] shrink-0 pr-4">Project</span>
                   <span className="w-[180px] shrink-0 pr-3">Chủ project</span>
-                  <span className="w-[110px] shrink-0">Thành viên workspace</span>
+                  <span className="w-[110px] shrink-0">Thành viên</span>
                   <span className="w-[110px] shrink-0">Trạng thái</span>
                   <span className="w-[105px] shrink-0">Ngày tạo</span>
                 </div>

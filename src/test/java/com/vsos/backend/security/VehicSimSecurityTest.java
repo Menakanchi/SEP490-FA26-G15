@@ -67,7 +67,7 @@ import com.vsos.backend.service.vehicle.VehicleCatalogService;
 
 /**
  * Luật cứng 3 (AGENTS.md): mọi route {@code /api/v1/vehicsim/*} cần đăng nhập; ADMIN / ENGINEER / EXPERIENCER ghi được,
- * MANAGER quản lý workspace và xem catalog xe chung; chỉ REVIEWER Accept / Reject. Chạy với bộ lọc bảo mật thật ({@link SecurityConfig}), hai controller thật
+ * MANAGER chỉ đọc, chỉ REVIEWER Accept / Reject. Chạy với bộ lọc bảo mật thật ({@link SecurityConfig}), hai controller thật
  * (các controller VehicSim và {@link RegressionController} của màn 5) cùng luật quyền thật ({@link VehicSimAccess}),
  * service giả — không cần MySQL / Redis nên chạy được trong CI (TD-33).
  */
@@ -170,8 +170,8 @@ class VehicSimSecurityTest {
     }
     @Test void analysisSelectionAndReadEndpointsRespectRoles() throws Exception {
         for(RoleCode code: RoleCode.values()) {
-            assertThat(statusOf(request(HttpMethod.GET,BASE+"/analysis/runs"),code)).isEqualTo(code == RoleCode.MANAGER ? 403 : 200);
-            assertThat(statusOf(request(HttpMethod.GET,BASE+"/analysis/datasets/1/handoff"),code)).isEqualTo(code == RoleCode.MANAGER ? 403 : 200);
+            assertThat(statusOf(request(HttpMethod.GET,BASE+"/analysis/runs"),code)).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET,BASE+"/analysis/datasets/1/handoff"),code)).isEqualTo(200);
         }
         for(RoleCode code:List.of(RoleCode.ADMIN,RoleCode.ENGINEER,RoleCode.EXPERIENCER))
             assertThat(statusOf(selection(),code)).isBetween(200,299);
@@ -262,63 +262,9 @@ class VehicSimSecurityTest {
     }
 
     @Test
-    void managerCannotBypassTechnicalPagesUsingDirectApiRequests() throws Exception {
-        assertThat(statusOf(request(HttpMethod.GET, BASE + "/admin/users"), RoleCode.MANAGER)).isEqualTo(403);
-        for (String path : List.of(
-                "/context", "/projects", "/projects/1/journey", "/scenario-categories", "/families",
-                "/families/1/variants", "/scenarios/describe", "/variants/1/collection", "/runs/1",
-                "/carla/runs", "/telemetry/evaluate", "/failures", "/failures.csv",
-                "/analysis/runs", "/analysis/v3/explorer/scenarios", "/analysis/v3/handoffs/1/download",
-                "/aeb/versions", "/optimizations", "/optimizations/1/pareto", "/regression",
-                "/regression/1/export.json", "/recommendations", "/decisions")) {
-            for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.POST)) {
-                assertThat(statusOf(request(method, BASE + path), RoleCode.MANAGER))
-                        .as("MANAGER %s %s", method, path).isEqualTo(403);
-                assertThat(mvc.perform(request(method, BASE + path)).andReturn().getResponse().getStatus())
-                        .as("không đăng nhập %s %s", method, path).isEqualTo(401);
-            }
-        }
-    }
-
-    @Test
-    void managerIsBlockedFromEveryMappedTechnicalControllerRoute() throws Exception {
-        int checked = 0;
-        for (var entry : handlerMapping.getHandlerMethods().entrySet()) {
-            String type = entry.getValue().getBeanType().getPackageName();
-            if (!List.of(".scenario", ".simulation", ".analysis", ".aeb", ".optimization", ".regression")
-                    .stream().anyMatch(type::endsWith)) continue;
-            for (String pattern : entry.getKey().getPathPatternsCondition().getPatternValues()) {
-                String path = pattern.replaceAll("\\{[^}]+}", "1");
-                for (var method : entry.getKey().getMethodsCondition().getMethods()) {
-                    assertThat(statusOf(request(HttpMethod.valueOf(method.name()), path), RoleCode.MANAGER))
-                            .as("MANAGER %s %s", method, pattern).isEqualTo(403);
-                    checked++;
-                }
-            }
-        }
-        assertThat(checked).isGreaterThanOrEqualTo(50);
-    }
-
-    @Test
-    void deletingFamilyRequiresWriteRoleAndRespectsProjectAndQuota() throws Exception {
-        stubServices();
-        for (RoleCode code : List.of(RoleCode.ADMIN, RoleCode.ENGINEER, RoleCode.EXPERIENCER)) {
-            assertThat(statusOf(request(HttpMethod.DELETE, BASE + "/families/12"), code)).isEqualTo(204);
-        }
-        verify(families, times(3)).deleteFamily(1L, 12L);
-        for (RoleCode code : List.of(RoleCode.MANAGER, RoleCode.REVIEWER)) {
-            assertThat(statusOf(request(HttpMethod.DELETE, BASE + "/families/12"), code)).isEqualTo(403);
-        }
-        when(otp.hitRateLimit(eq("vs_family"), any(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(true);
-        assertThat(statusOf(request(HttpMethod.DELETE, BASE + "/families/12"), RoleCode.ENGINEER)).isEqualTo(429);
-        verify(families, times(3)).deleteFamily(1L, 12L);
-    }
-
-    @Test
-    void allRolesCanBrowseTheVehicleCatalog() throws Exception {
+    void everyRoleCanBrowseTheVehicleCatalog() throws Exception {
         stubServices();
         when(vehicles.detail(1L, 1L)).thenReturn(Map.of("id", 1L));
-        when(vehicles.detail(null, 1L)).thenReturn(Map.of("id", 1L));
         for (RoleCode code : RoleCode.values()) {
             assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles"), code)).as("%s xem danh sách xe", code).isEqualTo(200);
             assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles/1"), code)).as("%s xem chi tiết xe", code).isEqualTo(200);
@@ -341,29 +287,11 @@ class VehicSimSecurityTest {
     }
 
     @Test
-    void managerViewsOnlyGlobalVehicleCatalogAndCannotWrite() throws Exception {
-        when(vehicles.list(null)).thenReturn(List.of(Map.of("id", 1L)));
-        when(vehicles.detail(null, 1L)).thenReturn(Map.of("id", 1L));
-        assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles").header(ProjectAccess.PROJECT_HEADER, "999"), RoleCode.MANAGER)).isEqualTo(200);
-        assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles/1").header(ProjectAccess.PROJECT_HEADER, "999"), RoleCode.MANAGER)).isEqualTo(200);
-        verify(vehicles).list(null);
-        verify(vehicles).detail(null, 1L);
-        verify(projects, never()).hasProject();
-        for (HttpMethod method : List.of(HttpMethod.POST, HttpMethod.PUT, HttpMethod.PATCH, HttpMethod.DELETE)) {
-            for (String path : List.of("/vehicles", "/vehicles/1", "/vehicles/1/sensors")) {
-                assertThat(statusOf(request(method, BASE + path), RoleCode.MANAGER)).as("%s %s", method, path).isEqualTo(403);
-            }
-        }
-        assertThat(mvc.perform(request(HttpMethod.GET, BASE + "/vehicles")).andReturn().getResponse().getStatus()).isEqualTo(401);
-    }
-
-    @Test
-    void technicalRolesCanReadButOnlyWriteRolesCanWrite() throws Exception {
+    void everyRoleCanReadButOnlyWriteRolesCanWrite() throws Exception {
         stubServices();
         for (RoleCode code : RoleCode.values()) {
-            int expected = code == RoleCode.MANAGER ? 403 : 200;
-            assertThat(statusOf(read(), code)).as("%s đọc được", code).isEqualTo(expected);
-            assertThat(statusOf(analysisDataset(), code)).as("%s đọc tập phân tích được", code).isEqualTo(expected);
+            assertThat(statusOf(read(), code)).as("%s đọc được", code).isEqualTo(200);
+            assertThat(statusOf(analysisDataset(), code)).as("%s đọc tập phân tích được", code).isEqualTo(200);
         }
         for (RoleCode code : List.of(RoleCode.ADMIN, RoleCode.ENGINEER, RoleCode.EXPERIENCER)) {
             assertThat(statusOf(runFamily(), code)).as("%s chạy được", code).isBetween(200, 299);
@@ -371,7 +299,7 @@ class VehicSimSecurityTest {
             assertThat(statusOf(createRegression(), code)).as("%s tạo regression được", code).isBetween(200, 299);
             assertThat(statusOf(describeScenario(), code)).as("%s mô tả được", code).isBetween(200, 299);
         }
-        // MANAGER không được truy cập kỹ thuật; REVIEWER chỉ được chạy regression, không ghi kỹ thuật khác.
+        // MANAGER chỉ đọc; REVIEWER chỉ được chạy regression, không có quyền ghi kỹ thuật khác.
         for (RoleCode code : List.of(RoleCode.MANAGER, RoleCode.REVIEWER)) {
             assertThat(statusOf(runFamily(), code)).as("%s không được chạy", code).isEqualTo(403);
             assertThat(statusOf(createCandidate(), code)).as("%s không được tạo candidate", code).isEqualTo(403);
@@ -440,10 +368,9 @@ class VehicSimSecurityTest {
         when(runs.exportXosc(any())).thenReturn("<OpenSCENARIO />");
         when(simulationViews.familyXoscZip(anyLong())).thenReturn(new byte[] {'P', 'K'});
         for (RoleCode code : RoleCode.values()) {
-            int expected = code == RoleCode.MANAGER ? 403 : 200;
-            assertThat(statusOf(request(HttpMethod.GET, BASE + "/runs/1/xosc"), code)).isEqualTo(expected);
-            assertThat(statusOf(request(HttpMethod.GET, BASE + "/families/1/xosc.zip"), code)).as("%s tải zip .xosc của họ", code).isEqualTo(expected);
-            assertThat(statusOf(request(HttpMethod.GET, BASE + "/carla/status"), code)).isEqualTo(expected);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/runs/1/xosc"), code)).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/families/1/xosc.zip"), code)).as("%s tải zip .xosc của họ", code).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/carla/status"), code)).isEqualTo(200);
         }
         for (RoleCode code : RoleCode.values()) {
             boolean writer = Set.of(RoleCode.ADMIN, RoleCode.ENGINEER, RoleCode.EXPERIENCER).contains(code);
@@ -456,14 +383,13 @@ class VehicSimSecurityTest {
     }
 
     @Test
-    void regressionExportsAndDecisionHistoryAreAvailableToTechnicalRoles() throws Exception {
+    void regressionExportsAndDecisionHistoryAreReadOnlyForEveryRole() throws Exception {
         stubServices();
         when(regressionReports.exportCsv(anyLong())).thenReturn("variant\r\n");
         for (RoleCode code : RoleCode.values()) {
-            int expected = code == RoleCode.MANAGER ? 403 : 200;
-            assertThat(statusOf(request(HttpMethod.GET, BASE + "/regression/1/export.json"), code)).as("%s tải JSON", code).isEqualTo(expected);
-            assertThat(statusOf(request(HttpMethod.GET, BASE + "/regression/1/export.csv"), code)).as("%s tải CSV", code).isEqualTo(expected);
-            assertThat(statusOf(request(HttpMethod.GET, BASE + "/decisions"), code)).as("%s xem lịch sử", code).isEqualTo(expected);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/regression/1/export.json"), code)).as("%s tải JSON", code).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/regression/1/export.csv"), code)).as("%s tải CSV", code).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/decisions"), code)).as("%s xem lịch sử", code).isEqualTo(200);
         }
     }
 

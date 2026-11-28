@@ -495,7 +495,7 @@ export function ProjectSettingsForm({
         />
       </SettingsSection>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface py-3 pl-6 pr-3">
+      <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface py-3 pl-6 pr-3">
         <span aria-live="polite" className="flex items-center gap-2 text-[13px] font-medium text-vehicsim-muted">
           {dirty ? (
             <>

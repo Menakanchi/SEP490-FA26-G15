@@ -11,16 +11,6 @@ public final class AnalysisMetrics {
     public record Sample(String status, String endReason, Boolean collision, Boolean falsePositive,
                          Boolean falseNegative, String verdict, Boolean braked,
                          Double jerk, Double impact, Double stopping) {}
-    /** Classifies recorded brake-command evidence; this does not establish physical response. */
-    public static Boolean recordedBraking(Object onset, boolean onsetPresent, Object jerk, Object stopping,
-                                          Boolean activated, Boolean collision, boolean traceAvailable) {
-        boolean onsetIsNull = onset == null || "null".equals(String.valueOf(onset));
-        if (!onsetIsNull || jerk != null || stopping != null) return Boolean.TRUE;
-        if (Boolean.FALSE.equals(activated)) return Boolean.FALSE;
-        if (Boolean.TRUE.equals(activated) && Boolean.TRUE.equals(collision)
-                && onsetPresent && traceAvailable) return Boolean.FALSE;
-        return null;
-    }
     public static boolean valid(Sample s) {
         return "COMPLETED".equals(s.status()) && s.endReason() != null
                 && !List.of("TIMEOUT", "ERROR").contains(s.endReason())

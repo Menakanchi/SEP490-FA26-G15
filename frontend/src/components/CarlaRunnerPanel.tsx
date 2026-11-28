@@ -140,13 +140,11 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
     setBusy(true); setError(null); setNotice(null);
     try {
       const r = await vehicsimApi.deleteFamilyBaseline(Number(familyId), "CARLA");
+      if (selected !== null && familyRuns.some(run => run.id === selected) && r.deleted > 0) { setSelected(null); setData(null); setImage(null); }
       const kept = [r.skipped_completed ? `${r.skipped_completed} lượt hoàn thành` : "", r.skipped_active ? `${r.skipped_active} lượt đang chờ/chạy` : "",
-        r.skipped_in_use ? `${r.skipped_in_use} lượt đang được tham chiếu` : "", r.skipped_not_owner ? `${r.skipped_not_owner} lượt của người khác` : "",
-        r.skipped_optimization ? `${r.skipped_optimization} lượt tối ưu lỗi/đã hủy` : "",
-        r.skipped_regression ? `${r.skipped_regression} lượt hồi quy lỗi/đã hủy` : ""].filter(Boolean);
-      setNotice(`Đã xóa ${r.deleted} lượt baseline.${kept.length ? ` Giữ lại ${kept.join(", ")}.` : ""} Lượt tối ưu và hồi quy không thuộc phạm vi xóa.`);
-      try { await loadRuns(); }
-      catch { setError("Đã xử lý yêu cầu xóa nhưng không tải lại được danh sách. Vui lòng tải lại trang để xem kết quả mới nhất."); }
+        r.skipped_in_use ? `${r.skipped_in_use} lượt là mốc của hồi quy` : "", r.skipped_not_owner ? `${r.skipped_not_owner} lượt của người khác` : ""].filter(Boolean);
+      setNotice(`Đã xóa ${r.deleted} lượt.${kept.length ? ` Giữ lại ${kept.join(", ")}.` : ""}`);
+      await loadRuns();
     } catch (e) { setError(e instanceof Error ? vi(e.message) : "Không xóa được kết quả"); }
     finally { setBusy(false); }
   };
@@ -239,12 +237,12 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
         {(familyId && canEditRuns || familyRuns.length > 0) && (
           <details className="mt-4 rounded-lg bg-vehicsim-soft px-4 py-3 text-[13px]">
             <summary className="cursor-pointer font-semibold text-vehicsim-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vehicsim-primary">Quản lý họ kịch bản</summary>
-            <p className="mt-2 max-w-[75ch] text-[12px] leading-relaxed text-vehicsim-muted">Hủy hoặc xóa áp dụng cho mọi lượt phù hợp của họ {familyName}, kể cả lượt không hiển thị trong danh sách. Danh sách bên dưới có thể gồm nhiều họ kịch bản; lượt tối ưu và hồi quy không thuộc phạm vi xóa.</p>
+            <p className="mt-2 max-w-[75ch] text-[12px] leading-relaxed text-vehicsim-muted">Hủy hoặc xóa áp dụng cho mọi lượt phù hợp của họ {familyName}, kể cả lượt không hiển thị trong danh sách.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {familyRuns.length > 0 && <PillButton onClick={() => { setError(null); void vehicsimApi.downloadFamilyXosc(Number(familyId)).catch(e => setError(vi(e.message))); }} title="Tải .zip chứa một .xosc cho mỗi lượt chạy của họ này">Tải tất cả .xosc</PillButton>}
               {familyId && canEditRuns && <>
                 <PillButton className="text-vehicsim-danger" disabled={busy} onClick={() => void cancelFamily()} title="Hủy các lượt CARLA độc lập đang chờ hoặc đang chạy của họ này">Hủy lượt đang chạy</PillButton>
-                <PillButton className="text-vehicsim-danger" disabled={busy} onClick={() => void removeFamilyResults()} title="Xóa các lượt baseline CARLA bị lỗi hoặc đã hủy của họ này, kể cả các lượt không hiển thị; lượt hoàn thành được giữ">Xóa lượt baseline lỗi / đã hủy</PillButton>
+                <PillButton className="text-vehicsim-danger" disabled={busy} onClick={() => void removeFamilyResults()} title="Xóa các lượt baseline CARLA bị lỗi hoặc đã hủy của họ này, kể cả các lượt không hiển thị; lượt hoàn thành được giữ">Xóa lượt lỗi / đã hủy</PillButton>
               </>}
             </div>
           </details>
@@ -257,7 +255,6 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="mr-1 font-bold tabular-nums text-vehicsim-ink">{runCode(run.id)}</span>
               <Tag tone={run.status === "FAILED" ? "danger" : run.status === "COMPLETED" ? "ok" : "neutral"}>{statusLabel[run.status]}</Tag>
-              {ctx?.families.find(f => f.id === run.scenario_id) && <Tag tone="neutral">{ctx.families.find(f => f.id === run.scenario_id)?.name}</Tag>}
               {isAdmin && projectName(run.project_id) && <Tag tone="neutral">{projectName(run.project_id)}</Tag>}
               {run.aeb_mode === "OFF" && <Tag tone="neutral">AEB tắt</Tag>}
               {run.regression_test_id != null && <Tag tone="neutral">Hồi quy</Tag>}

@@ -78,9 +78,8 @@ class FailureAnalysisRestTest {
         when(database.analyze(2,7,2499,false,"a".repeat(64))).thenReturn(Map.of("status","COMPLETED"));
         mvc.perform(post(BASE+"/database/runs/2499/executions?source_sha256="+"a".repeat(64)).header("X-VehicSim-Project","2").with(user(person(RoleCode.ENGINEER)))).andExpect(status().isCreated());
         verify(database).analyze(2,7,2499,false,"a".repeat(64));
-        // MANAGER bị security filter chặn ngay; REVIEWER được đọc nhưng không được chạy phân tích.
-        mvc.perform(post(BASE+"/database/runs/2499/executions").with(user(person(RoleCode.MANAGER)))).andExpect(status().isForbidden());
-        mvc.perform(post(BASE+"/database/runs/2499/executions").with(user(person(RoleCode.REVIEWER)))).andExpect(status().isForbidden())
+        // Lỗi quyền chung do ApiExceptionHandler trả, cùng câu tiếng Việt như mọi route khác (không còn bị đổi thành mã FA_*).
+        mvc.perform(post(BASE+"/database/runs/2499/executions").with(user(person(RoleCode.MANAGER)))).andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("ENGINEER")));
         mvc.perform(post(BASE+"/database/collections/1033/executions").with(user(person(RoleCode.ENGINEER))).contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("ANALYSIS_BODY_NOT_ALLOWED"));
@@ -90,11 +89,10 @@ class FailureAnalysisRestTest {
         var execution=mvc.perform(post(BASE+"/sources/"+sid+"/executions").with(user(person(RoleCode.ENGINEER))))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.analyzed").value(2)).andExpect(jsonPath("$.status").value("COMPLETED")).andReturn();
         String eid=json(execution).get("id").toString(),hid=json(execution).get("handoff_id").toString();
-        mvc.perform(get(BASE+"/executions/"+eid+"/reports").with(user(person(RoleCode.MANAGER)))).andExpect(status().isForbidden());
-        var reports=mvc.perform(get(BASE+"/executions/"+eid+"/reports").with(user(person(RoleCode.REVIEWER))))
+        var reports=mvc.perform(get(BASE+"/executions/"+eid+"/reports").with(user(person(RoleCode.MANAGER))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(2)).andReturn();
         String rid=at(json(reports),"/items/0/id").toString();
-        var report=mvc.perform(get(BASE+"/reports/"+rid).with(user(person(RoleCode.REVIEWER))))
+        var report=mvc.perform(get(BASE+"/reports/"+rid).with(user(person(RoleCode.MANAGER))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.schema_version").value("vehicsim.failure-analysis/v1")).andReturn();
         var downloaded=mvc.perform(get(BASE+"/reports/"+rid+"/download").with(user(person(RoleCode.ENGINEER))))
                 .andExpect(status().isOk()).andExpect(header().string("Content-Disposition","attachment; filename=\"report-"+rid+".json\"")).andReturn();

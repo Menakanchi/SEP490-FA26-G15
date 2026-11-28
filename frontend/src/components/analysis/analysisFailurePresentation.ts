@@ -5,10 +5,10 @@ export const FAILURE_OUTCOMES = ["COLLISION", "NEAR_MISS", "FALSE_BRAKING"];
 export const FAILURE_WEATHERS = ["CLEAR", "CLOUDY", "RAIN", "HEAVY_RAIN", "FOG"];
 export const FAILURE_FILTER_KEYS = ["f_scenario", "f_class", "f_outcome", "f_weather", "f_aeb", "f_days"] as const;
 export const PARAMETER_NAMES: Record<string, string> = {
-  TTC_THRESHOLD: "Ngưỡng TTC",
-  BRAKE_ACTIVATION_DELAY: "Độ trễ kích hoạt phanh",
-  MAX_DECELERATION: "Giảm tốc tối đa",
-  BRAKE_BUILDUP_RATE: "Tốc độ tăng lực phanh",
+  TTC_THRESHOLD: "TTC Threshold",
+  BRAKE_ACTIVATION_DELAY: "Brake Activation Delay",
+  MAX_DECELERATION: "Max Deceleration",
+  BRAKE_BUILDUP_RATE: "Brake Build-up Rate",
 };
 export const EVIDENCE_FIELDS: Record<string, { label: string; unit: string; time?: boolean }> = {
   first_detection_t: { label: "Phát hiện lần đầu", unit: "s", time: true },

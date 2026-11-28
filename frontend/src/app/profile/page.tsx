@@ -126,15 +126,15 @@ export default function ProfilePage() {
               )}
               <div className="flex min-w-0 flex-1 basis-[180px] flex-col items-start gap-2">
                 <p className="text-sm font-semibold">Ảnh đại diện</p>
-                <p className="text-xs text-vehicsim-muted">Ảnh lưu trên trình duyệt này cho tài khoản của bạn, không đồng bộ giữa thiết bị. Dung lượng tối đa 5 MB.</p>
+                <p className="text-xs text-vehicsim-muted">Ảnh vuông hoặc tròn, dung lượng tối đa 5 MB.</p>
                 <input ref={fileInput} type="file" accept="image/*" className="hidden" aria-label="Chọn ảnh đại diện" onChange={handleFileUpload} />
                 <div className="flex flex-wrap items-center gap-2">
                   <PillButton type="button" onClick={() => fileInput.current?.click()}><Upload aria-hidden className="size-4" /> Chọn ảnh</PillButton>
                   {avatarUrl && (
                     <PillButton type="button" onClick={async () => {
+                      setAvatarUrl("");
                       try {
                         await updateProfile(fullName, undefined);
-                        setAvatarUrl("");
                         setProfileFeedback({ tone: "ok", text: "Đã xóa ảnh đại diện." });
                       } catch {
                         setProfileFeedback({ tone: "error", text: "Không thể xóa ảnh đại diện." });
@@ -174,7 +174,7 @@ export default function ProfilePage() {
             <div>
               <label htmlFor="profile-password-new" className={labelClass}>Mật khẩu mới</label>
               <input id="profile-password-new" type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} maxLength={72} aria-describedby="profile-password-rule" className={inputClass} required />
-              <p id="profile-password-rule" className="mt-1.5 text-xs text-vehicsim-muted">Ít nhất {MIN_PASSWORD_LENGTH} ký tự, tối đa 72 byte UTF-8.</p>
+              <p id="profile-password-rule" className="mt-1.5 text-xs text-vehicsim-muted">Ít nhất {MIN_PASSWORD_LENGTH} ký tự.</p>
             </div>
             <div>
               <label htmlFor="profile-password-confirm" className={labelClass}>Xác nhận mật khẩu mới</label>
@@ -194,8 +194,8 @@ export default function ProfilePage() {
           try {
             await updateProfile(fullName, cropped);
             setProfileFeedback({ tone: "ok", text: "Đã cập nhật ảnh đại diện thành công." });
-          } catch (err) {
-            setProfileFeedback({ tone: "error", text: err instanceof Error ? err.message : "Không lưu được ảnh đại diện. Hãy thử lại." });
+          } catch {
+            setProfileFeedback({ tone: "ok", text: "Đã cắt ảnh. Chọn Lưu thay đổi để hoàn tất." });
           }
         }} />
       )}

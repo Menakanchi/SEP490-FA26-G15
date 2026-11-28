@@ -107,7 +107,7 @@ export function OtpRegisterForm() {
               maxLength={255}
               autoComplete="email"
               className={inputClass}
-              placeholder="ten@vidu.vn"
+              placeholder="name@company.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />

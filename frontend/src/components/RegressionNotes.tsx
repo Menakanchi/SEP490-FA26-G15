@@ -101,7 +101,7 @@ export function PairObjectivesTable({
         <h2 className="text-[15px] font-bold text-vehicsim-ink">Ba mục tiêu theo từng cặp</h2>
         <p className="text-[12px] leading-[1.5] text-vehicsim-muted">
           {baselineLabel} → {candidateLabel}, càng nhỏ càng tốt. Chỉ để tham khảo — không thuộc tiêu chí đạt/không đạt. Quãng phanh ca va chạm là
-          ước lượng{simple ? "." : ". Chưa có số trung bình theo tập."}
+          ước lượng{simple ? "." : " (ADR-040). Chưa có trung bình theo tập: chờ bộ chỉ số chung."}
         </p>
       </div>
       <TableScroll label="Bảng mục tiêu theo cặp" minWidth={840}>

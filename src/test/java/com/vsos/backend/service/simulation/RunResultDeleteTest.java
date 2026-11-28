@@ -185,24 +185,10 @@ class RunResultDeleteTest {
         stubRun(run(46, "STOPPED", "BASELINE", null));
         when(db.scalar(startsWith("SELECT (SELECT COUNT(*)"), any(Object[].class))).thenReturn(2L);
 
-        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 46, 7, false)).isInstanceOf(ResponseStatusException.class).hasMessageContaining("referenced or no longer eligible");
+        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 46, 7, false)).isInstanceOf(ResponseStatusException.class).hasMessageContaining("reference of a regression");
 
         verify(db, never()).update(startsWith("DELETE FROM simulation_runs"), any(Object[].class));
         assertThat(folder).exists(); // thư mục chỉ bị xoá khi dòng DB đã xoá
-    }
-
-    @Test
-    void aRunReferencedByAnalysisIsKeptInsteadOfClearingWorstCase() throws Exception {
-        Path folder = runFolder(50);
-        stubRun(run(50, "FAILED", "BASELINE", null));
-        when(db.scalar(org.mockito.ArgumentMatchers.contains("analysis_results WHERE worst_case_run_id = ?"),
-                org.mockito.ArgumentMatchers.eq(50L), org.mockito.ArgumentMatchers.eq(50L), org.mockito.ArgumentMatchers.eq(50L)))
-                .thenReturn(1L);
-
-        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 50, 7, false))
-                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("referenced or no longer eligible");
-        verify(db, never()).update(startsWith("DELETE FROM simulation_runs"), any(Object[].class));
-        assertThat(folder).exists();
     }
 
     @Test
@@ -244,13 +230,10 @@ class RunResultDeleteTest {
         verify(db).update(org.mockito.ArgumentMatchers.contains("status IN ('FAILED','STOPPED')"),
                 org.mockito.ArgumentMatchers.eq(49L), org.mockito.ArgumentMatchers.eq(1L),
                 org.mockito.ArgumentMatchers.eq(false), org.mockito.ArgumentMatchers.eq(7L));
-        verify(db).update(org.mockito.ArgumentMatchers.contains("NOT EXISTS (SELECT 1 FROM analysis_results WHERE worst_case_run_id = simulation_runs.id)"),
-                org.mockito.ArgumentMatchers.eq(49L), org.mockito.ArgumentMatchers.eq(1L),
-                org.mockito.ArgumentMatchers.eq(false), org.mockito.ArgumentMatchers.eq(7L));
     }
 
     private static Row familyRow(long id, String status, long createdBy) {
-        return new Row(Json.obj("id", id, "status", status, "created_by_user_id", createdBy, "purpose", "BASELINE"));
+        return new Row(Json.obj("id", id, "status", status, "created_by_user_id", createdBy));
     }
 
     @Test
@@ -260,7 +243,7 @@ class RunResultDeleteTest {
         Path referenced = runFolder(3);
         Path completed = runFolder(4);
         Path foreign = runFolder(5);
-        when(db.list(startsWith("SELECT id, status, created_by_user_id, purpose"), any(Object[].class))).thenReturn(List.of(
+        when(db.list(startsWith("SELECT id, status, created_by_user_id FROM simulation_runs"), any(Object[].class))).thenReturn(List.of(
                 familyRow(1, "FAILED", OWNER), familyRow(2, "RUNNING", OWNER), familyRow(3, "STOPPED", OWNER),
                 familyRow(4, "COMPLETED", OWNER), familyRow(5, "FAILED", 8L)));
         when(db.scalar(startsWith("SELECT (SELECT COUNT(*)"), any(Object[].class))).thenAnswer(call -> (long) (Long) call.getArgument(1) == 3L ? 1L : 0L);
@@ -280,7 +263,7 @@ class RunResultDeleteTest {
     void anAdminDeletesFailedRunsOfEveryoneInAFamilyButKeepsCompletedOnes() throws Exception {
         Path foreign = runFolder(5);
         Path completed = runFolder(6);
-        when(db.list(startsWith("SELECT id, status, created_by_user_id, purpose"), any(Object[].class))).thenReturn(List.of(
+        when(db.list(startsWith("SELECT id, status, created_by_user_id FROM simulation_runs"), any(Object[].class))).thenReturn(List.of(
                 familyRow(5, "FAILED", 8L), familyRow(6, "COMPLETED", 8L)));
 
         Map<String, Object> result = runs.deleteFamilyBaselineRuns(1, 3, 7, true, null);
@@ -303,26 +286,5 @@ class RunResultDeleteTest {
         assertThat(carlaRun).doesNotExist();
         assertThatThrownBy(() -> runs.deleteFamilyBaselineRuns(1, 3, 7, false, "INVALID"))
                 .isInstanceOf(Vs.InvalidRequestException.class);
-    }
-
-    @Test
-    void failedCampaignAndRegressionRunsAreCountedButNeverDeleted() throws Exception {
-        Path optimization = runFolder(11);
-        Path regression = runFolder(12);
-        when(db.list(startsWith("SELECT id, status, created_by_user_id, purpose"), any(Object[].class))).thenReturn(List.of(
-                new Row(Json.obj("id", 11, "status", "STOPPED", "created_by_user_id", OWNER,
-                        "purpose", "OPTIMIZATION", "optimization_trial_id", 20)),
-                new Row(Json.obj("id", 12, "status", "FAILED", "created_by_user_id", OWNER,
-                        "purpose", "REGRESSION", "regression_test_id", 21)),
-                new Row(Json.obj("id", 13, "status", "COMPLETED", "created_by_user_id", OWNER,
-                        "purpose", "OPTIMIZATION", "optimization_trial_id", 20))));
-
-        Map<String, Object> result = runs.deleteFamilyBaselineRuns(1, 3, 7, false, "CARLA");
-
-        assertThat(result).containsEntry("deleted", 0).containsEntry("skipped_optimization", 1)
-                .containsEntry("skipped_regression", 1);
-        verify(db, never()).update(startsWith("DELETE FROM simulation_runs"), any(Object[].class));
-        assertThat(optimization).exists();
-        assertThat(regression).exists();
     }
 }

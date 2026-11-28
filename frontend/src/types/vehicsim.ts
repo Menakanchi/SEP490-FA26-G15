@@ -112,7 +112,6 @@ export interface ProjectItem {
   has_running_work: boolean;
   created_date: string;
   updated_at: string;
-  workspace_id?: number | null;
   journey: ProjectJourney;
 }
 
@@ -479,8 +478,6 @@ export interface Frame {
 
 export interface RunHeader {
   evaluation_valid?: boolean;
-  /** Run mode recorded by the backend; older responses may not include it. */
-  aeb_mode?: "ON" | "OFF" | null;
   run_id: number;
   purpose: string;
   status: string;
@@ -520,8 +517,6 @@ export interface MotionTelemetryPoint {
 }
 
 export interface FailureDetail extends RunHeader {
-  /** Mô tả nguyên nhân đã lưu theo luật, chưa xác nhận quan hệ nhân quả. */
-  recorded_cause?: string;
   motion_telemetry: MotionTelemetryPoint[];
   stage_evidence?: {stage: string; values: Record<string,number | null>}[];
   evaluation_version?: string;

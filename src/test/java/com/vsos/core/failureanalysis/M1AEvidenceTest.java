@@ -52,21 +52,6 @@ class M1AEvidenceTest {
         assertThat(o.canonicalValue().status()).isEqualTo(Status.UNKNOWN);
         assertThat(o.applicability()).isEqualTo("APPLICABLE");
     }
-    @Test void collisionAfterActivationRequiresRecordedNullOnsetAndTraceForNotApplicable() throws Exception {
-        for (String key : List.of("rms_jerk_mps3", "stopping_distance_m")) { metrics.put(key, null); copy.put(key, null); }
-        metrics.put("brake_onset_t", null);
-        Run explicitNull = read();
-        assertThat(CanonicalObjectiveReader.recordedBraking(explicitNull)).isFalse();
-        assertThat(new CanonicalObjectiveReader().read(explicitNull).get("rms_jerk_mps3").canonicalValue().status()).isEqualTo(Status.NOT_APPLICABLE);
-        metrics.remove("brake_onset_t");
-        Run absent = read();
-        assertThat(CanonicalObjectiveReader.recordedBraking(absent)).isNull();
-        assertThat(new CanonicalObjectiveReader().read(absent).get("rms_jerk_mps3").canonicalValue().status()).isEqualTo(Status.UNKNOWN);
-        metrics.put("brake_onset_t", null);
-        @SuppressWarnings("unchecked") Map<String, Object> outcome = (Map<String, Object>) result.get("outcome");
-        outcome.put("frames", List.of());
-        assertThat(CanonicalObjectiveReader.recordedBraking(read())).isNull();
-    }
     @Test void missingSourceIsReportedWithReason() throws Exception {
         Files.delete(resultPath);
         try (RawArtifactAdapter a = new RawArtifactAdapter(root)) {

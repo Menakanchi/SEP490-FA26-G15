@@ -32,9 +32,9 @@ export default function AebVersionsPage() {
           <PillButton href="/aeb/compare" variant="light">
             Đối chiếu thông số
           </PillButton>
-          {canWrite && <PillButton href="/aeb/manual" variant="dark">
+          <PillButton href="/aeb/manual" variant="dark">
             + Tạo ứng viên mới
-          </PillButton>}
+          </PillButton>
         </div>
       }
     >

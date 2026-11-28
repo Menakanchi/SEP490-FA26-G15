@@ -3,7 +3,7 @@
 import { ScenarioMap } from "@/components/ScenarioMap";
 import type { Frame, MotionTelemetryPoint, Playback, SimEvent } from "@/types/vehicsim";
 import { finite } from "./analysisRunData";
-import { PLAYBACK_LAYERS, frameStatus, type PlaybackAebMode, type PlaybackLayer } from "./playbackPresentation";
+import { PLAYBACK_LAYERS, frameStatus, type PlaybackLayer } from "./playbackPresentation";
 import { formatMeasurement, speedKmh } from "./analysisMetricFormat";
 import styles from "./AnalysisPlayback.module.css";
 
@@ -28,7 +28,7 @@ export function PlaybackScene({ playback: pb, frame, time, path, trajectoryCompl
       egoLabelAbove groundTruthColor="var(--color-vehicsim-ok)" perceptionColor="var(--color-vehicsim-perception)"
       egoLabel={`Xe ${pb.vehicle} · ${measured(speedKmh(frame.ego_v), "km/h")}`}
       labels={[
-        ...(layers.has("Nhận thức") && frame.detected && finite(frame.confidence) ? [{ x: pb.crossing_x - 4, y: 28, text: `Nhận thức · tin cậy ${frame.confidence.toFixed(2)}`, color: "var(--color-vehicsim-perception)" }] : []),
+        ...(layers.has("Nhận thức") && frame.detected && finite(frame.confidence) ? [{ x: pb.crossing_x - 4, y: 68, text: `Nhận thức · tin cậy ${frame.confidence.toFixed(2)}`, color: "var(--color-vehicsim-perception)" }] : []),
         ...(layers.has("GT mô phỏng") && finite(frame.ped_vy) ? [{ x: pb.crossing_x + 1, y: 196, text: `GT vY · ${formatMeasurement(frame.ped_vy, "", 2)} m/s`, color: "var(--color-vehicsim-ok)" }] : []),
       ]} /> : <div className="analysis-state">{frame ? "Khung này chưa đủ tọa độ hoặc kích thước xe để dựng cảnh." : "Chưa có khung đã ghi tại hoặc trước thời gian đang xem."}</div>}</div>
     <div className={styles.legend}><span><i style={{ background: "var(--color-vehicsim-ok)" }} />GT mô phỏng</span><span><i style={{ background: "var(--color-vehicsim-perception)" }} />Nhận thức</span><span><i style={{ background: "var(--color-vehicsim-decision)" }} />Quỹ đạo xe</span></div>
@@ -37,11 +37,11 @@ export function PlaybackScene({ playback: pb, frame, time, path, trajectoryCompl
   </section>;
 }
 
-export function PlaybackFacts({ frame, time, motion, events, mode }: { frame: Frame | null; time: number; motion?: MotionTelemetryPoint; events: SimEvent[]; mode?: PlaybackAebMode }) {
-  const status = frame ? frameStatus(frame, time, events, mode) : null;
+export function PlaybackFacts({ frame, time, motion, events }: { frame: Frame | null; time: number; motion?: MotionTelemetryPoint; events: SimEvent[] }) {
+  const status = frame ? frameStatus(frame, time, events) : null;
   return <section className="analysis-panel" aria-label="Số đo khung playback">
     <div className={styles.factHeading}><h2>Số đo tại khung</h2>{status && <span className={status.cls}>{status.label}</span>}</div>
-    <p className="analysis-caption mt-2">{frame ? `Khung ${frame.t.toFixed(2)} s · Thời gian đang xem ${time.toFixed(2)} s` : "Chưa có khung để đọc số đo."}</p>
+    <p className="analysis-caption mt-2">{frame ? `Khung ${frame.t.toFixed(2)} s · cursor ${time.toFixed(2)} s` : "Chưa có khung để đọc số đo."}</p>
     <div className={styles.facts}>
       <Stat label="Tốc độ xe ego" value={measured(speedKmh(frame?.ego_v), "km/h")} />
       <Stat label="Khoảng cách tới vạch băng qua" value={measured(motion?.crossing_distance_m, "m", 2, true)} />

@@ -259,9 +259,11 @@ public final class FailureAnalysisHandoffAdapter {
     private AnalysisMetrics.Sample sample(Run run) {
         Map<String,Object> row = list(dataset.get("runs")).stream().map(FailureAnalysisHandoffAdapter::map)
                 .filter(x -> runId(run).equals(String.valueOf(x.get("run_id")))).findFirst().orElseThrow();
+        Object onset = run.get("result", "/outcome/metrics/brake_onset_t");
         Double jerk = number(run.get("result", "/outcome/metrics/rms_jerk_mps3")),
                 stop = number(run.get("result", "/outcome/metrics/stopping_distance_m"));
-        Boolean braked = CanonicalObjectiveReader.recordedBraking(run);
+        Boolean braked = onset != null && !"null".equals(onset) || jerk != null || stop != null ? Boolean.TRUE
+                : Boolean.FALSE.equals(run.get("result", "/evaluation/aeb_result/aeb_triggered")) ? Boolean.FALSE : null;
         return new AnalysisMetrics.Sample(text(row.get("status")), text(run.get("result", "/outcome/end_reason")),
                 bool(run.get("result", "/outcome/metrics/collision")), bool(run.get("result", "/evaluation/aeb_result/false_activation")),
                 bool(run.get("result", "/evaluation/aeb_result/missed_activation")), text(run.get("result", "/evaluation/aeb_result/verdict")),

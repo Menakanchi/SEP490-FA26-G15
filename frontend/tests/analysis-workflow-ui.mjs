@@ -232,8 +232,7 @@ try {
   await page.getByLabel("Project đang xem", { exact: true }).selectOption(String(secondProject)); await page.waitForURL(u => u.pathname === "/");
   const resultsLink = page.getByRole("link", { name: "Kết quả & phân tích", exact: true });
   if (!(await resultsLink.isVisible())) await page.getByRole("button", { name: "Mở rộng Xem kết quả", exact: true }).click();
-  await resultsLink.click(); await page.waitForURL(u => u.pathname === "/analysis/failures"); await page.getByRole("heading", { name: "Họ kịch bản", exact: true }).waitFor();
-  await page.evaluate(() => history.pushState(null, "", "/analysis/failures?view=dataset&page_size=50")); await ready();
+  await resultsLink.click(); await page.getByText("Kết quả đã lưu và chuẩn bị tập bàn giao", { exact: true }).click(); await ready(); await page.getByRole("button", { name: "Chuẩn bị bàn giao", exact: true }).click();
   await dataset.getByRole("heading", { name: "Bản nháp đang chọn", exact: true }).waitFor(); assert.equal(await dataset.locator("tr[data-draft-run]").count(), 0); assert.equal(await rows.first().getAttribute("data-run-id"), String(runs.at(-1).run_id + 5000));
   const decodedBeforeRelease = await page.evaluate(() => window.__analysisDecoded.filter(url => url.includes("analysis/runs")).length);
   oldProject.release(); await page.waitForFunction(before => window.__analysisDecoded.filter(url => url.includes("analysis/runs")).length > before, decodedBeforeRelease);
@@ -247,7 +246,7 @@ try {
   assert.deepEqual(await draft(draftKey(actor.id, secondProject)), {});
   checks.push("actual project selector and logout/login isolate account/project rows and drafts; prior draft retained only under its original key");
 
-  actor = { ...actor, role: "REVIEWER" }; await goto("view=dataset&page_size=50"); assert(await freeze().isDisabled()); assert(await table.getByRole("combobox").first().isDisabled());
+  actor = { ...actor, role: "MANAGER" }; await goto("view=dataset&page_size=50"); assert(await freeze().isDisabled()); assert(await table.getByRole("combobox").first().isDisabled());
   checks.push("read-only role keeps reading but cannot assign or freeze");
   await goto("page_size=10");
   for (const width of [320, 375, 768, 1280, 1440]) {

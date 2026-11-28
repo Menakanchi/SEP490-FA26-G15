@@ -123,50 +123,6 @@ class AnalysisApiContractTest {
     }
 
     @Test
-    void playbackExposesRunModeWithoutChangingRecordedShadowEvents() {
-        Db db = mock(Db.class);
-        Queries queries = mock(Queries.class);
-        ProjectAccess projects = mock(ProjectAccess.class);
-        var views = new AnalysisViewService(db, queries, mock(FamilyService.class), projects);
-        var events = List.of(Json.obj("kind", "aeb_decision", "t", 2.25));
-        var run = Json.obj("id", 101L, "project_id", 1L, "status", "COMPLETED", "scenario_id", 42L,
-                "scenario_version_id", 301L, "aeb_version_id", 7L, "carla_vehicle_model_id", 2L,
-                "aeb_mode", "OFF", "telemetry_json", Json.write(Json.obj("events", events)), "run_config_json", "{}");
-        when(projects.currentProject()).thenReturn(new Row(Json.obj("id", 1L)));
-        when(db.first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ?", 101L, 1L)).thenReturn(new Row(run));
-        when(db.first("SELECT * FROM scenarios WHERE id = ?", 42L)).thenReturn(new Row(Json.obj("id", 42L, "code", "CP", "name", "Test")));
-        when(db.first("SELECT * FROM scenario_versions WHERE id = ?", 301L)).thenReturn(new Row(Json.obj("id", 301L, "version_no", 1L)));
-        when(db.first("SELECT * FROM aeb_versions WHERE id = ?", 7L)).thenReturn(new Row(Json.obj("id", 7L, "version_no", 1L)));
-        when(queries.vehicleById(2L)).thenReturn(new Row(Json.obj("id", 2L, "display_name", "Test")));
-
-        var playback = views.playback(101L);
-        assertThat(playback).containsEntry("aeb_mode", "OFF");
-        assertThat(playback.get("events")).isEqualTo(events);
-    }
-
-    @Test
-    void detailUsesTheSameStoredCauseAsTheResultsListWithoutInventingConfirmation() {
-        Db db = mock(Db.class);
-        Queries queries = mock(Queries.class);
-        ProjectAccess projects = mock(ProjectAccess.class);
-        var views = new AnalysisViewService(db, queries, mock(FamilyService.class), projects);
-        when(projects.currentProject()).thenReturn(new Row(Json.obj("id", 1L)));
-        when(db.first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ?", 101L, 1L)).thenReturn(new Row(Json.obj(
-                "id", 101L, "project_id", 1L, "status", "COMPLETED", "scenario_id", 42L, "scenario_version_id", 301L,
-                "aeb_version_id", 7L, "carla_vehicle_model_id", 2L, "telemetry_json", "{}", "run_config_json", "{}")));
-        when(db.first("SELECT * FROM scenarios WHERE id = ?", 42L)).thenReturn(new Row(Json.obj("id", 42L, "code", "CP", "name", "Test")));
-        when(db.first("SELECT * FROM scenario_versions WHERE id = ?", 301L)).thenReturn(new Row(Json.obj("id", 301L, "version_no", 1L)));
-        when(db.first("SELECT * FROM aeb_versions WHERE id = ?", 7L)).thenReturn(new Row(Json.obj("id", 7L, "version_no", 1L)));
-        when(queries.vehicleById(2L)).thenReturn(new Row(Json.obj("id", 2L, "display_name", "Test")));
-        when(db.first("SELECT * FROM failures WHERE simulation_run_id = ?", 101L)).thenReturn(new Row(Json.obj("id", 51L, "description", "Failure fallback")));
-        when(db.first("SELECT description FROM root_causes WHERE failure_id = ? AND is_primary = 1", 51L))
-                .thenReturn(new Row(Json.obj("description", "Primary recorded cause"))).thenReturn(null);
-        assertThat(views.failureDetail(101L)).containsEntry("recorded_cause", "Primary recorded cause")
-                .containsEntry("evidence_policy", "RULE_BASED_HYPOTHESIS_NOT_CAUSAL_PROOF");
-        assertThat(views.failureDetail(101L)).containsEntry("recorded_cause", "Failure fallback");
-    }
-
-    @Test
     void projectAndCompletionGatesRejectMissingOrUnfinishedPlayback() {
         Db db = mock(Db.class);
         ProjectAccess projects = mock(ProjectAccess.class);

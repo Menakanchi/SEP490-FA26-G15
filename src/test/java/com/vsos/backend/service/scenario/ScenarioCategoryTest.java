@@ -1,65 +1,17 @@
 package com.vsos.backend.service.scenario;
 
 import com.vsos.backend.common.Vs.InvalidRequestException;
-import com.vsos.backend.common.Vs.NotFoundException;
-import com.vsos.backend.repository.common.Db;
-import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.service.common.LlmService;
 import org.junit.jupiter.api.Test;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
 /** Mở category khỏi gán cứng CP_CROSSING (ADR-050): họ xe phía trước, nhận diện category từ câu mô tả, danh mục category. */
 class ScenarioCategoryTest {
-
-    @Test
-    void unusedFamilyDeletesVariantsBeforeBaseAndScenarioWithinProject() {
-        Db db = mock(Db.class);
-        when(db.first(contains("FOR UPDATE"), eq(12L), eq(3L))).thenReturn(new Row(Map.of("id", 12L)));
-        new FamilyService(db).deleteFamily(3L, 12L);
-        var order = inOrder(db);
-        order.verify(db).update(contains("parent_version_id IS NOT NULL"), eq(12L));
-        order.verify(db).update(eq("DELETE FROM scenario_versions WHERE scenario_id = ?"), eq(12L));
-        order.verify(db).update(eq("DELETE FROM scenarios WHERE id = ? AND project_id = ?"), eq(12L), eq(3L));
-    }
-
-    @Test
-    void familyInAnotherProjectCannotBeDeleted() {
-        Db db = mock(Db.class);
-        assertThatThrownBy(() -> new FamilyService(db).deleteFamily(3L, 12L)).isInstanceOf(NotFoundException.class);
-        verify(db, never()).update(anyString(), any());
-    }
-
-    @Test
-    void databaseReferencePreventsDeletingFamily() {
-        Db db = mock(Db.class);
-        when(db.first(contains("FOR UPDATE"), eq(12L), eq(3L))).thenReturn(new Row(Map.of("id", 12L)));
-        when(db.update(contains("parent_version_id IS NOT NULL"), eq(12L)))
-                .thenThrow(new DataIntegrityViolationException("referenced"));
-        assertThatThrownBy(() -> new FamilyService(db).deleteFamily(3L, 12L))
-                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("409");
-        verify(db, never()).update(eq("DELETE FROM scenarios WHERE id = ? AND project_id = ?"), eq(12L), eq(3L));
-    }
-
-    @Test
-    void usedFamilyIsProtectedWithoutDeletingAnyVersions() {
-        for (String table : List.of("simulation_runs", "analysis_results", "optimization_runs", "regression_tests")) {
-            Db db = mock(Db.class);
-            when(db.first(contains("FOR UPDATE"), eq(12L), eq(3L))).thenReturn(new Row(Map.of("id", 12L)));
-            when(db.first(contains("FROM " + table + " WHERE"), eq(3L), eq(12L))).thenReturn(new Row(Map.of("used", 1)));
-            assertThatThrownBy(() -> new FamilyService(db).deleteFamily(3L, 12L))
-                    .isInstanceOf(ResponseStatusException.class).hasMessageContaining("409");
-            verify(db, never()).update(anyString(), any());
-        }
-    }
 
     private static FamilyService.LeadFamilySpec lead(String category, List<Double> ego, List<Double> target, List<Double> distance, List<Double> decel,
                                                      List<Double> overlap) {

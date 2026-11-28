@@ -22,18 +22,14 @@ final class M1CFixture {
         return create(variants,seeds,off,mixed,false);
     }
     static Cohort create(int[] variants,long[] seeds,int off,boolean mixed,boolean missingJerk) throws Exception {
-        return create(variants,seeds,off,mixed,missingJerk,false);
-    }
-    static Cohort create(int[] variants,long[] seeds,int off,boolean mixed,boolean missingJerk,boolean collisionBeforeCommand) throws Exception {
         List<Run> runs=new ArrayList<>();List<Artifact> bindings=new ArrayList<>();List<Map<String,Object>> reports=new ArrayList<>(),rows=new ArrayList<>();
         List<AnalysisMetrics.Sample> samples=new ArrayList<>(samples());samples.add(sample(false,false,null,null,null));
         if(missingJerk)samples.set(0,sample(true,true,null,6.,10.));
-        if(collisionBeforeCommand)samples.set(0,sample(false,true,null,6.,null));
         for(int i=0;i<4;i++){
             var sample=samples.get(i);String key="SYNTHETIC-"+(i+1)+"-R1";Map<String,Object> metrics=obj("collision",sample.collision(),"rms_jerk_mps3",sample.jerk(),
                     "impact_speed_mps",sample.impact(),"stopping_distance_m",sample.stopping(),"brake_onset_t",sample.braked()?1.:null,"aeb_decision_t",sample.braked()?.75:null,"t_aeb_s",sample.braked()?1.:null,
                     "first_detection_t",sample.braked()?.5:null);
-            Map<String,Object> evaluation=new LinkedHashMap<>(metrics);evaluation.putAll(obj("aeb_triggered",collisionBeforeCommand && i==0 || sample.braked(),"false_activation",false,"missed_activation",false,"verdict","PASS"));
+            Map<String,Object> evaluation=new LinkedHashMap<>(metrics);evaluation.putAll(obj("aeb_triggered",sample.braked(),"false_activation",false,"missed_activation",false,"verdict","PASS"));
             Map<String,Object> params=obj("ttc_threshold",mixed&&i==1?.6:1.5,"brake_activation_delay",.15,"max_deceleration",8.,"brake_buildup_rate",20.);
             Map<String,Object> filter=obj("type","butterworth","order_per_pass",6,"cutoff_hz",10,"passes","forward + backward (zero phase)");
             Map<String,Object> result=obj("format","vehicsim.result/v1","simulator","carla-0.9.16-xosc15","engine","vsos-core-java/1","seed",seeds[i],

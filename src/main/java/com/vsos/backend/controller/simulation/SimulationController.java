@@ -125,7 +125,7 @@ public class SimulationController {
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Json.obj("run_id", runId, "status", status));
     }
 
-    @Operation(summary = "Xoá kết quả một run baseline lỗi (FAILED) hoặc đã hủy (STOPPED) do chính mình tạo, ADMIN xoá được của người khác (dòng DB + file ảnh/video/CSV); giữ run COMPLETED, run đang chạy, run của regression/tối ưu và run được regression hoặc phân tích tham chiếu")
+    @Operation(summary = "Xoá kết quả một run baseline lỗi (FAILED) hoặc đã hủy (STOPPED) do chính mình tạo, ADMIN xoá được của người khác (dòng DB + file ảnh/video/CSV); giữ run COMPLETED, run đang chạy, run của regression/tối ưu và mốc của regression")
     @DeleteMapping("/runs/{runId}")
     public Map<String, Object> deleteRun(@PathVariable long runId, @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);

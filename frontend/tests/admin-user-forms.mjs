@@ -100,7 +100,7 @@ try{
  assert.deepEqual((await dialog().getByLabel("Vai trò *",{exact:true}).locator("option").evaluateAll(nodes=>nodes.map(n=>n.value))).sort(),["ADMIN","ENGINEER","EXPERIENCER","MANAGER","REVIEWER"]);
  for(const [code,positive,limit] of [
   ["ADMIN","Quản trị tài khoản","Không duyệt khuyến nghị hoặc thêm/bớt thành viên workspace"],
-  ["MANAGER","Quản lý thành viên","không truy cập quy trình kỹ thuật"],
+  ["MANAGER","Quản lý thành viên","Chỉ đọc phần kỹ thuật"],
   ["ENGINEER","chạy regression","Không duyệt khuyến nghị"],
   ["REVIEWER","chạy regression để kiểm tra","Không tạo kịch bản hoặc candidate"],
   ["EXPERIENCER","Tài khoản tự đăng ký","Không duyệt khuyến nghị"]
@@ -125,7 +125,6 @@ try{
  await fillCreate();await dialog().getByLabel("Email *",{exact:true}).fill("invalid-email");
  await dialog().getByRole("button",{name:"Tạo mới",exact:true}).click();
  const emailField=dialog().getByLabel("Email *",{exact:true});
- assert.equal(await emailField.evaluate(el=>el.readOnly),false,"Email remains editable when creating an account");
  assert.equal(await emailField.getAttribute("aria-invalid"),"true");
  assert.equal(await emailField.evaluate(el=>document.getElementById(el.getAttribute("aria-describedby")).textContent),"Email không đúng định dạng.");
  assert.equal(await emailField.evaluate(el=>el===document.activeElement),true);assert.equal(writes.length,0);
@@ -174,10 +173,6 @@ try{
  assert.deepEqual(Object.keys(creation.body).sort(),["email","first_name","is_active","last_name","middle_name","password","role"]);
 
  await page.setViewportSize({width:1366,height:768});await open(users[1].email);
- const editEmail=dialog().getByLabel("Email *",{exact:true});
- assert.equal(await editEmail.evaluate(el=>el.readOnly),true,"Email is read-only while editing");
- assert.equal(await editEmail.evaluate(el=>document.getElementById(el.getAttribute("aria-describedby")).textContent),"Không thể thay đổi email của tài khoản.");
- await editEmail.focus();await page.keyboard.press("End");await page.keyboard.type("changed");assert.equal(await editEmail.inputValue(),users[1].email);
  assert.equal(await dialog().getByRole("button",{name:"Lưu thay đổi",exact:true}).isDisabled(),true);
  assert.equal(await dialog().getByText("Ngày tạo",{exact:true}).count(),1);
  assert.equal(await dialog().getByLabel("Mật khẩu ban đầu *",{exact:true}).count(),0);await shot("edit-details-1366");
@@ -223,7 +218,7 @@ try{
  await fs.writeFile(path.join(output,"save-error-observations.json"),JSON.stringify({unsafeMessages},null,2));
  assert.deepEqual(unsafeMessages,[],"Save errors distinguish business, network, server and unreadable-response failures without raw diagnostics");
  saveMode="success";await confirmEdit();const beforeSave=writes.length;await dialog().getByRole("button",{name:"Xác nhận lưu",exact:true}).click();await dialog().waitFor({state:"hidden"});await ready();
- assert.equal(writes.length,beforeSave+1);assert.equal(users[1].role,"REVIEWER");assert.equal(users[1].is_active,false);assert.equal(writes.at(-1).body.email,users[1].email);assert.equal(Object.hasOwn(writes.at(-1).body,"password"),false);
+ assert.equal(writes.length,beforeSave+1);assert.equal(users[1].role,"REVIEWER");assert.equal(users[1].is_active,false);assert.equal(Object.hasOwn(writes.at(-1).body,"password"),false);
  await open(users[1].email);await dialog().getByLabel("Tài khoản đang hoạt động",{exact:true}).check();await confirmEdit();await dialog().getByText("Tài khoản có thể đăng nhập lại. Các phiên đã thu hồi không được khôi phục.",{exact:true}).waitFor();await dialog().getByRole("button",{name:"Quay lại",exact:true}).click();await discard();
 
  // Wrong target and late detail responses cannot open another user's form or replace an Add draft.
@@ -234,9 +229,8 @@ try{
  await page.goto(base+"/admin/users");await ready();await page.setViewportSize({width:1366,height:768});await open(actor.email);
  assert.equal(await dialog().getByLabel("Vai trò *",{exact:true}).isDisabled(),true);assert.equal(await dialog().getByLabel("Tài khoản đang hoạt động",{exact:true}).isDisabled(),true);
  assert((await roleHelp().innerText()).includes("Bạn không thể tự đổi vai trò hoặc khóa tài khoản của mình."));
- assert.equal(await dialog().getByLabel("Email *",{exact:true}).evaluate(el=>el.readOnly),true);
- await dialog().getByLabel("Tên *",{exact:true}).fill("Tên quản trị mới");await confirmEdit();await dialog().getByText("Chỉ cập nhật thông tin họ tên; email, vai trò và trạng thái giữ nguyên.",{exact:true}).waitFor();await shot("self-name-review-1366");
- await dialog().getByRole("button",{name:"Xác nhận lưu",exact:true}).click();await dialog().waitFor({state:"hidden"});await ready();assert.equal(writes.at(-1).body.email,actor.email);assert.equal(await page.evaluate(()=>localStorage.getItem("vehicsim_access_token")),"user-form-fixture-only");
+ await dialog().getByLabel("Email *",{exact:true}).fill("self-new@example.invalid");await confirmEdit();await dialog().getByText("Phiên hiện tại của bạn sẽ hết hiệu lực. Hãy đăng nhập lại bằng email mới.",{exact:true}).waitFor();await shot("self-email-review-1366");
+ await dialog().getByRole("button",{name:"Xác nhận lưu",exact:true}).click();await page.waitForURL(base+"/login");assert.equal(await page.evaluate(()=>localStorage.getItem("vehicsim_access_token")),null);
  revoked=false;
  for(const nextRole of ["MANAGER","ENGINEER","REVIEWER","EXPERIENCER"]){
   role=nextRole;await page.evaluate(()=>localStorage.setItem("vehicsim_access_token","role-fixture-only"));await page.goto(base+"/admin/users");
@@ -244,6 +238,6 @@ try{
   await page.evaluate(()=>localStorage.removeItem("vehicsim_access_token"));await page.goto(base+"/login");
  }
  assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
- await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",screenshots,checks:["fixture login, create fields/defaults/inline validation/UTF8 72-byte boundary","pristine Cancel/X/Escape returns focus with no warning; backdrop does not close","invalid email/whitespace/first-invalid focus/described error; backend 255/80 caps and exact 80-character names accepted","password visibility; review redacts password; exact normalized create payload","dirty Escape/cancel keep/discard and focus return; native modal Tab trap","email editable on create and read-only on edit; name, role and status edits preserve email","five role explanations, system scope, unchanged options/no permission APIs, create/edit review and locked account semantics","ref double-submit lock and busy close/Escape prevention","409/400 dependency/403/429 business errors preserved; network/500/502 HTML/malformed JSON safely explained with focused alert, draft and retry controls preserved; no fake success","no password on update; self role/status disabled; self name change keeps session","mismatched/stale detail rejected; Add disabled while opening","four non-Admin roles cannot open form; no real API writes"],fixtureWriteCount:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));
+ await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",screenshots,checks:["fixture login, create fields/defaults/inline validation/UTF8 72-byte boundary","pristine Cancel/X/Escape returns focus with no warning; backdrop does not close","invalid email/whitespace/first-invalid focus/described error; backend 255/80 caps and exact 80-character names accepted","password visibility; review redacts password; exact normalized create payload","dirty Escape/cancel keep/discard and focus return; native modal Tab trap","explicit target and before-after; name-only vs role/lock/unlock/self-email consequences","five role explanations, system scope, unchanged options/no permission APIs, create/edit review and locked account semantics","ref double-submit lock and busy close/Escape prevention","409/400 dependency/403/429 business errors preserved; network/500/502 HTML/malformed JSON safely explained with focused alert, draft and retry controls preserved; no fake success","no password on update; self role/status disabled; expired self-email session","mismatched/stale detail rejected; Add disabled while opening","four non-Admin roles cannot open form; no real API writes"],fixtureWriteCount:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));
  console.log("PASS user forms: "+screenshots.length+" screenshots; browser HTTP fixtures only. Live backend/auth/DB/Figma NOT verified.");
 }finally{for(const item of pending)item.resolve();await browser.close();}

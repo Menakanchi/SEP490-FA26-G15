@@ -12,7 +12,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "VehicSim — Mô phỏng & kiểm định AEB/FCW",
   description:
-    "Mô tả kịch bản → sinh biến thể → mô phỏng → phân tích lỗi → kiểm định hồi quy và xem xét thay đổi cấu hình AEB.",
+    "Mô tả kịch bản → sinh biến thể → mô phỏng → phân tích lỗi → kiểm định hồi quy; kỹ sư quyết định mọi thay đổi cấu hình AEB.",
 };
 
 /**

@@ -35,8 +35,7 @@ Các dịch vụ app do script CARLA khởi động chạy nền; mở `http://l
    `root_causes`, `simulation_artifacts` (ON DELETE CASCADE) và cả thư mục `data/vehicsim/runs/<id>` (video, CSV, `result.json`). Chỉ xóa được run `BASELINE`
    **FAILED/STOPPED** (lượt COMPLETED là số liệu thật của ca lỗi, KPI và dataset nên luôn giữ, 409), không thuộc regression/tối ưu, và **do chính người xóa tạo**
    (ADMIN xóa được lượt của người khác; người khác nhận 403). Lượt đang chờ/đang chạy phải hủy trước; lượt đang là mốc đối chiếu của một regression test bị từ chối (409)
-   vì regression chạy lại đúng biến thể của nó; lượt được phân tích lưu làm ca xấu nhất cũng được giữ. Xóa cả họ trả số lượt giữ lại theo lý do (`skipped_completed`, `skipped_active`, `skipped_in_use`, `skipped_not_owner`);
-   `skipped_optimization` và `skipped_regression` đếm các lượt lỗi/đã hủy thuộc tối ưu hoặc hồi quy, những lượt này được giữ để bảo toàn lịch sử.
+   vì regression chạy lại đúng biến thể của nó. Xóa cả họ trả số lượt giữ lại theo lý do (`skipped_completed`, `skipped_active`, `skipped_in_use`, `skipped_not_owner`).
    Cần quyền ghi (ENGINEER/EXPERIENCER/ADMIN), có ghi audit `run.delete`.
 
 IR ở màn **Sinh từ mô tả** cũng tải `.xosc` để chạy thử, nhưng chưa gắn run trong DB. Muốn nộp kết quả từ máy khác,

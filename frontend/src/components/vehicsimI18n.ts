@@ -67,8 +67,6 @@ type Rule = [RegExp, (m: RegExpMatchArray) => string];
 const re = (pattern: string) => new RegExp(`^${pattern}$`);
 
 const RULES: Rule[] = [
-  [re("This scenario family has runs or related analysis, optimization or regression data and cannot be deleted"), () => "Không thể xóa họ kịch bản vì đã có lượt chạy hoặc dữ liệu phân tích, tối ưu hay kiểm chứng liên quan."],
-  [re("This scenario family is in use and cannot be deleted"), () => "Họ kịch bản đang được sử dụng, chưa thể xóa. Hãy tải lại danh sách và thử lại."],
   [re("Analysis dataset ID is required with its digest"), () => "Cần mã dataset và checksum từ bước kiểm tra bàn giao."],
   [re("Specify either a V3 handoff or a V2 dataset, not both"), () => "Chỉ chọn một nguồn bàn giao: handoff V3 hoặc dataset V2."],
   [re("V3 approved search space is missing"), () => "Handoff V3 chưa có miền tham số được xác nhận. Quay lại Phân tích lỗi để rà soát."],
@@ -239,8 +237,7 @@ const RULES: Rule[] = [
   [re("Robustness validation"), () => "Kiểm định độ bền vững"],
   [re("Pareto front"), () => "Biên Pareto"],
   [re("Sensitivity analysis"), () => "Phân tích độ nhạy"],
-  [re(String.raw`FE-\d+\s*[-—]\s*(?:not run yet|chưa chạy)`), () => "Chưa chạy"],
-  [re(String.raw`Verification test for MOBO candidate \(Run #(\d+), Trial #(\d+)\)`), (m) => `Kiểm thử ứng viên tối ưu (đợt #${m[1]}, lượt thử #${m[2]})`],
+  [re(String.raw`(FE-\d+) — not run yet`), (m) => `${m[1]} — chưa chạy`],
   [re(String.raw`Trial #(\d+) is on the Pareto front of (.+)`), (m) => `Lần thử #${m[1]} thuộc biên Pareto của đợt ${m[2]}`],
   [re(String.raw`Trial #(\d+) is not on the Pareto front of (.+)`), (m) => `Lần thử #${m[1]} không thuộc biên Pareto của đợt ${m[2]}`],
   [re("Manual candidate — not from optimization"), () => "Ứng viên chỉnh tay, không qua tối ưu MOBO"],
@@ -264,8 +261,6 @@ const RULES: Rule[] = [
     () => "Chỉ người tạo lượt chạy này hoặc Admin mới xóa được kết quả"],
   [re("This run is the reference of a regression test and cannot be deleted"),
     () => "Lượt này đang là mốc đối chiếu của một kiểm thử hồi quy nên không xóa được"],
-  [re("This run is referenced or no longer eligible for deletion"),
-    () => "Lượt này đang được tham chiếu hoặc không còn đủ điều kiện để xóa"],
   [re(String.raw`Regression test is already (\w+); nothing to cancel`), (m) => `Kiểm thử hồi quy đã ở trạng thái ${m[1]}, không còn gì để hủy`],
   // --- regression.py: tiêu chí -------------------------------------------------------
   [re("No previously safe scenario may collide"), () => "Không kịch bản an toàn nào được chuyển thành va chạm"],

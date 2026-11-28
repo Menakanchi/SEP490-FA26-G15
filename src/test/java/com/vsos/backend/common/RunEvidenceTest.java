@@ -27,7 +27,6 @@ class RunEvidenceTest {
         m.put("rms_jerk_mps3", jerk);
         m.put("stopping_distance_m", stopping);
         m.put("brake_onset", onset);
-        m.put("brake_onset_type", onset == null ? "NULL" : "DOUBLE");
         m.put("trace_frames", 54);
         return new Row(m);
     }
@@ -52,28 +51,5 @@ class RunEvidenceTest {
         var row = run(true, true, 1.25, 4.2, 12.5);
         assertThat(RunEvidence.sample(row).braked()).isTrue();
         assertThat(AnalysisMetrics.evidenceComplete(List.of(RunEvidence.sample(row)))).isTrue();
-    }
-
-    @Test
-    void missingOnsetAndMissingTraceDoNotEstablishNoBrake() {
-        Map<String, Object> missing = new HashMap<>(run(true, true, null, null, null).asMap());
-        missing.put("brake_onset_type", null); // JSON_TYPE returns SQL NULL when the key is absent.
-        assertThat(RunEvidence.sample(new Row(missing)).braked()).isNull();
-        assertThat(RunEvidence.completeAebOn(new Row(missing))).isFalse();
-        missing.put("brake_onset_type", "NULL");
-        missing.put("trace_frames", 0);
-        assertThat(RunEvidence.sample(new Row(missing)).braked()).isNull();
-        assertThat(RunEvidence.completeAebOn(new Row(missing))).isFalse();
-    }
-
-    @Test
-    void fullTelemetryDistinguishesAbsentFromExplicitNull() {
-        Map<String, Object> full = new HashMap<>(run(true, true, null, null, null).asMap());
-        full.remove("brake_onset"); full.remove("brake_onset_type"); full.remove("trace_frames");
-        full.put("telemetry_json", "{\"metrics\":{},\"frames\":[{}]}");
-        assertThat(RunEvidence.completeAebOn(new Row(full))).isFalse();
-        full.put("telemetry_json", "{\"metrics\":{\"brake_onset_t\":null},\"frames\":[{}]}");
-        assertThat(RunEvidence.sample(new Row(full)).braked()).isFalse();
-        assertThat(RunEvidence.completeAebOn(new Row(full))).isTrue();
     }
 }

@@ -22,8 +22,6 @@ test("new OFF and vehicle-limit explanations retain physical observations in Vie
   assert.match(vi("Analysis validation evidence is incomplete"), /Tập xác minh chưa đủ/);
   assert.match(vi("Analysis optimization objectives changed"), /Chỉ số của tập tối ưu/);
   assert.match(vi("Analysis validation objectives changed"), /Chỉ số của tập xác minh/);
-  assert.equal(vi("FE-13 - chưa chạy"), "Chưa chạy");
-  assert.match(vi("Verification test for MOBO candidate (Run #12, Trial #3)"), /Kiểm thử.*#12.*#3/);
 });
 
 test("m/s frame conversion preserves raw precision; API km/h is formatted directly", () => {

@@ -290,7 +290,6 @@ public class RegressionRepository {
                 SELECT id, status, collision_occurred, min_ttc_s, min_distance_m, impact_speed_mps, is_false_positive, verdict,
                        rms_jerk_mps3, stopping_distance_m, end_reason, aeb_mode, is_false_negative, aeb_activated,
                        JSON_EXTRACT(telemetry_json, '$.metrics.brake_onset_t') AS brake_onset,
-                       JSON_TYPE(JSON_EXTRACT(telemetry_json, '$.metrics.brake_onset_t')) AS brake_onset_type,
                        JSON_LENGTH(JSON_EXTRACT(telemetry_json, '$.frames')) AS trace_frames
                   FROM simulation_runs
                  WHERE id IN (""" + Db.placeholders(distinct.size()) + ")", distinct.toArray())) {

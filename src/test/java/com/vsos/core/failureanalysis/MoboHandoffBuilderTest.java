@@ -46,14 +46,6 @@ class MoboHandoffBuilderTest {
         assertThat(at(r,"/canonical_aggregation/optimization/value/rms_jerk_mps3/notApplicable")).isEqualTo(1);
         assertThat(at(r,"/baseline_objectives/optimization/value")).isNull();assertThat(at(r,"/members/0/canonical_sample/jerk")).isNull();
     }
-    @Test void activatedCollisionWithExplicitNullOnsetBindsToCanonicalHandoff() throws Exception {
-        var cohort = M1CFixture.create(new int[]{201,202,203,204}, new long[]{1,1,1,2}, -1, false, false, true);
-        var report = M1CFixture.build(cohort);
-        assertThat(at(report, "/members/0/canonical_sample/braked")).isEqualTo(false);
-        assertThat(list(at(report, "/members/0/eligibility/reason_codes"))).doesNotContain("CANONICAL_SAMPLE_OR_TRACE_MISMATCH");
-        assertThat(at(report, "/canonical_aggregation/optimization/value/rms_jerk_mps3/notApplicable")).isEqualTo(2);
-        assertThat(at(report, "/canonical_aggregation/optimization/value/impact_speed_mps/value")).isEqualTo(2.);
-    }
     @Test void approvedPolicyCannotSubstituteMissingCalibrationDomain(){String key=fixture.input().members().getFirst().run().runKey();
         var p=M1CFixture.change(fixture.input().qualityPolicy(),"/members/"+key+"/objectives/stopping_distance_m/calibration_applicability","UNKNOWN");
         var r=new MoboHandoffBuilder().build(M1CFixture.withPolicy(fixture,p));assertThat(at(r,"/baseline_objectives/availability")).isEqualTo("UNKNOWN");

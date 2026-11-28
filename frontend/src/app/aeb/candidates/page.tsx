@@ -35,7 +35,7 @@ export default function AebCandidatesPage() {
       step={4}
       crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Ứng viên chờ duyệt" }]}
       actions={
-        canWrite && <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <PillButton href="/aeb/mobo/new" variant="light">
             + Tối ưu MOBO mới
           </PillButton>
@@ -51,7 +51,7 @@ export default function AebCandidatesPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line px-5 py-4">
           <div className="flex items-center gap-3">
             <h2 className="text-[16px] font-bold text-vehicsim-ink">
-              Tất cả ứng viên ({candidates.length})
+              Tất cả ứng viên Candidate ({candidates.length})
             </h2>
             <Tag tone="info">Chờ kiểm chứng hồi quy</Tag>
           </div>

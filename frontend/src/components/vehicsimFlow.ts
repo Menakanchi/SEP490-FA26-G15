@@ -16,7 +16,7 @@ export function teamJourneyLinks(reviewer: boolean): Record<JourneyStepKey, { la
     IMPROVE: [
       { label: "Tổng quan cải tiến", href: "/aeb" },
       { label: "Tối ưu tự động (MOBO)", href: "/aeb/mobo" },
-      ...(!reviewer ? [{ label: "Chỉnh tay tham số", href: "/aeb/manual" }] : []),
+      { label: "Chỉnh tay tham số", href: "/aeb/manual" },
       { label: "Danh sách phiên bản", href: "/aeb/versions" },
       { label: "Đối chiếu thông số", href: "/aeb/compare" },
     ],
@@ -89,7 +89,7 @@ export const MVP_STEPS: FlowStep[] = [
     n: 6,
     title: "So sánh & quyết định",
     short: "Quyết định",
-    detail: "So từng cặp lỗi → đạt, đạt → lỗi, rồi người duyệt chấp nhận / từ chối kèm lý do",
+    detail: "So từng cặp lỗi → đạt, đạt → lỗi, rồi kỹ sư chấp nhận / từ chối kèm lý do",
     feature: "FE-14",
     href: "/validation/recommendations",
   },

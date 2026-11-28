@@ -13,14 +13,11 @@
 .toolbar { display: grid; grid-template-columns: minmax(240px, 1.7fr) repeat(2, minmax(130px, 1fr)) minmax(130px, .9fr); align-items: end; gap: var(--admin-space-4); margin-top: var(--admin-space-6); }
 .toolbar label, .search > label { display: block; min-width: 0; color: var(--admin-secondary); font-size: var(--admin-font-control); font-weight: 600; }
 .toolbar select, .pagination select { display: block; width: 100%; min-height: var(--admin-control-height); margin-top: var(--admin-space-2); padding: var(--admin-space-2) var(--admin-space-3); border: 1px solid var(--admin-input-line); border-radius: var(--admin-control-radius); background: var(--admin-surface); color: var(--admin-text); font-size: var(--admin-font-control); font-weight: 400; }
-.toolbar select, .pagination select { appearance: auto; padding-right: 2rem; }
 .search { min-width: 0; }
 .search > div { display: flex; gap: var(--admin-space-2); margin-top: var(--admin-space-2); }
 .searchInput { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--admin-space-2); min-height: var(--admin-control-height); padding: 0 var(--admin-space-3); border: 1px solid var(--admin-input-line); border-radius: var(--admin-control-radius); color: var(--admin-muted); }
 .searchInput svg { flex-shrink: 0; }
 .searchInput input { width: 100%; min-width: 0; padding: var(--admin-space-2) 0; border: 0; background: transparent; color: var(--admin-text); font-size: var(--admin-font-control); }
-.searchInput:focus-within { outline: 3px solid var(--admin-focus); outline-offset: 3px; }
-.searchInput:focus-within input:focus-visible { outline: none; }
 .chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--admin-space-2); margin-top: var(--admin-space-4); }
 .chips button { display: inline-flex; align-items: center; gap: var(--admin-space-2); max-width: 100%; padding: var(--admin-space-2) var(--admin-space-3); border: 1px solid var(--admin-input-line); border-radius: var(--admin-control-radius); background: var(--admin-soft); color: var(--admin-secondary); font-size: var(--admin-font-caption); overflow-wrap: anywhere; cursor: pointer; }
 .chips svg { flex-shrink: 0; }
@@ -53,7 +50,7 @@
 .pagination small { display: block; margin-top: var(--admin-space-1); color: var(--admin-muted); font-size: var(--admin-font-caption); }
 .pagination > div { display: flex; flex-wrap: wrap; align-items: center; gap: var(--admin-space-4); }
 .pagination label { display: flex; align-items: center; gap: var(--admin-space-3); font-size: var(--admin-font-caption); }
-.pagination select { width: 88px; margin: 0; min-height: var(--admin-control-height); }
+.pagination select { width: 70px; margin: 0; min-height: var(--admin-control-height); }
 .pagination nav { display: flex; gap: var(--admin-space-2); }
 .state, .empty { padding: 44px var(--admin-space-6); color: var(--admin-muted); font-size: var(--admin-font-body); line-height: 1.8; }
 .empty { display: flex; flex-direction: column; align-items: center; gap: var(--admin-space-3); text-align: center; }

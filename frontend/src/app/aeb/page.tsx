@@ -12,7 +12,7 @@ import type { AebVersion } from "@/types/vehicsim";
 import { KEY_PARAMS } from "@/components/aeb/aebTypes";
 
 export default function AebHubPage() {
-  const { ctx, canWrite } = useVehicSimContext();
+  const { ctx } = useVehicSimContext();
   const datasetId = useSearchParams().get("dataset_id");
   const optimizerHref = datasetId !== null ? `/aeb/mobo/new?dataset_id=${encodeURIComponent(datasetId)}` : "/aeb/mobo";
   const [versions, setVersions] = useState<AebVersion[] | null>(null);
@@ -109,7 +109,7 @@ export default function AebHubPage() {
       </section>
 
       {/* PHƯƠNG PHÁP CẢI TIẾN THAM SỐ */}
-      {canWrite && <section className="flex flex-col gap-2.5">
+      <section className="flex flex-col gap-2.5">
         <h2 className="text-[15px] font-bold text-vehicsim-ink">
           Phương pháp cải tiến tham số
         </h2>
@@ -148,7 +148,7 @@ export default function AebHubPage() {
             </Link>
           </div>
         </div>
-      </section>}
+      </section>
 
       {/* QUẢN LÝ PHIÊN BẢN & ĐỐI CHIẾU */}
       <section className="flex flex-col gap-2.5">
