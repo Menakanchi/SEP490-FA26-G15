@@ -122,6 +122,24 @@ public class AdminRepository {
     public void updateWorkspace(long id,String name,String description,long manager) {
         db.update("UPDATE workspaces SET name=?,description=?,manager_id=? WHERE id=?",name,description,manager,id);
     }
+    public List<Map<String,Object>> workspaceMembers(long id) {
+        return db.list("""
+            SELECT u.id, CONCAT_WS(' ',u.last_name,u.middle_name,u.first_name) AS full_name,
+                   u.email, r.code AS role, u.is_active
+              FROM workspace_members wm JOIN users u ON u.id=wm.user_id JOIN roles r ON r.id=u.role_id
+             WHERE wm.workspace_id=? ORDER BY wm.joined_at,wm.id
+            """,id).stream().map(AdminRepository::view).toList();
+    }
+    public boolean workspaceHasActiveWork(long id) {
+        // Locking reads see commits made while archive was waiting for the workspace lock,
+        // even under MySQL's default REPEATABLE READ isolation.
+        return db.first("SELECT r.id FROM simulation_runs r JOIN projects p ON p.id=r.project_id WHERE p.workspace_id=? AND r.status IN ('PENDING','RUNNING','PAUSED') LIMIT 1 FOR UPDATE",id)!=null
+                || db.first("SELECT o.id FROM optimization_runs o JOIN projects p ON p.id=o.project_id WHERE p.workspace_id=? AND o.status IN ('PENDING','RUNNING') LIMIT 1 FOR UPDATE",id)!=null
+                || db.first("SELECT t.id FROM regression_tests t JOIN projects p ON p.id=t.project_id WHERE p.workspace_id=? AND t.execution_status IN ('PENDING','RUNNING') LIMIT 1 FOR UPDATE",id)!=null;
+    }
+    public void setWorkspaceStatus(long id,String status) {
+        db.update("UPDATE workspaces SET status=? WHERE id=?",status,id);
+    }
     private static final String REF_COLUMNS = "ref_code,ref_type,ref_name,ref_value,unit,description,source_type,source_title,author,organization,publication_year,page,url,doi,is_active";
     public long createReference(Object[] values) {
         return db.insert("INSERT INTO tech_references("+REF_COLUMNS+") VALUES("+Db.placeholders(values.length)+")",values);

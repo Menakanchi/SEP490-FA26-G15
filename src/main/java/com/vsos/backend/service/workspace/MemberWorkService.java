@@ -66,7 +66,7 @@ public class MemberWorkService {
             throw new NotFoundException("task");
         }
         WorkspaceSummary ws = workspaces.find(workspaceId);
-        WorkspaceService.requireActive(ws);
+        WorkspaceService.requireActiveForWrite(workspaces, ws);
         if (current.project() != null && !"ACTIVE".equals(tasks.projectStatusInWorkspace(workspaceId, current.project().id()))) {
             throw new InvalidRequestException("Project đã lưu trữ, không cập nhật tiến độ được");
         }
@@ -104,6 +104,7 @@ public class MemberWorkService {
                 .orElseThrow(() -> new InvalidRequestException(
                         "Chỉ nộp báo cáo vào project đang hoạt động của workspace bạn là thành viên"));
         long workspaceId = project.workspace().id();
+        WorkspaceService.requireActiveForWrite(workspaces, workspaces.find(workspaceId));
         Long taskId = body.taskId();
         if (taskId != null) {
             TaskItem task = tasks.find(workspaceId, taskId);

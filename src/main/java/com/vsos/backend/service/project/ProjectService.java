@@ -103,6 +103,10 @@ public class ProjectService {
         return toItem(owned(userId, projectId));
     }
 
+    public ProjectItem get(long userId, String role, long projectId) {
+        return toItem(managed(userId, role, projectId, false));
+    }
+
     public ProjectJourney journey(long userId, long projectId) {
         requireOwner(projects.row(projectId), projectId, userId);
         return journeyOf(projectId);
@@ -122,6 +126,7 @@ public class ProjectService {
      * ADR-064: Experiencer tạo project cá nhân (không có {@code workspace_id}); Kỹ sư tạo project của một workspace đang hoạt động
      * mà mình là thành viên (bắt buộc có {@code workspace_id}), tên duy nhất trong workspace. Role khác không tạo được project.
      */
+    @Transactional
     public ProjectItem create(long userId, String role, ProjectRequest body) {
         if ("EXPERIENCER".equals(role)) {
             if (body.workspaceId() != null) {
@@ -136,7 +141,7 @@ public class ProjectService {
         if (workspaceId == null) {
             throw new ProjectException(WORKSPACE_REQUIRED);
         }
-        if (!projects.isActiveWorkspaceMember(userId, workspaceId)) {
+        if (!projects.lockActiveWorkspaceMember(userId, workspaceId)) {
             throw new ProjectException(WORKSPACE_NOT_MEMBER, workspaceId);
         }
         String name = validName(raw -> projects.existingNameInWorkspace(workspaceId, raw, 0), NAME_DUPLICATE_WORKSPACE, body.name());
@@ -148,9 +153,16 @@ public class ProjectService {
     }
 
     public ProjectItem update(long userId, long projectId, ProjectRequest body) {
-        Row project = owned(userId, projectId);
+        return update(userId, "EXPERIENCER", projectId, body);
+    }
+
+    @Transactional
+    public ProjectItem update(long userId, String role, long projectId, ProjectRequest body) {
+        Row project = managed(userId, role, projectId, true);
         Long currentVehicle = project.getLong("carla_vehicle_model_id");
-        String name = body.name() == null ? project.str("name") : validName(userId, body.name(), projectId);
+        String name = body.name() == null ? project.str("name") : project.get("workspace_id") == null
+                ? validName(userId, body.name(), projectId)
+                : validName(raw -> projects.existingNameInWorkspace(project.lng("workspace_id"), raw, projectId), NAME_DUPLICATE_WORKSPACE, body.name());
         String description = body.description() == null ? project.str("description") : validDescription(body.description());
         Long vehicleId = body.vehicleId() == null ? currentVehicle : Long.valueOf(supportedVehicle(body.vehicleId()));
         long runCount = project.lng("run_count");
@@ -159,11 +171,16 @@ public class ProjectService {
         }
         projects.update(projectId, name, description, vehicleId, Vs.now());
         AuditLog.event("project.update", "success", "project_id", projectId, "by", userId);
-        return get(userId, projectId);
+        return toItem(projects.find(projectId));
     }
 
     public ProjectItem archive(long userId, long projectId) {
-        Row project = owned(userId, projectId);
+        return archive(userId, "EXPERIENCER", projectId);
+    }
+
+    @Transactional
+    public ProjectItem archive(long userId, String role, long projectId) {
+        Row project = managed(userId, role, projectId, true);
         if (ARCHIVED.equals(project.str("status"))) {
             throw new ProjectException(ALREADY_ARCHIVED, project.str("name"));
         }
@@ -172,7 +189,12 @@ public class ProjectService {
     }
 
     public ProjectItem unarchive(long userId, long projectId) {
-        Row project = owned(userId, projectId);
+        return unarchive(userId, "EXPERIENCER", projectId);
+    }
+
+    @Transactional
+    public ProjectItem unarchive(long userId, String role, long projectId) {
+        Row project = managed(userId, role, projectId, true);
         if (ACTIVE.equals(project.str("status"))) {
             throw new ProjectException(NOT_ARCHIVED, project.str("name"));
         }
@@ -180,7 +202,12 @@ public class ProjectService {
     }
 
     public void delete(long userId, long projectId, String confirmName) {
-        Row project = owned(userId, projectId);
+        delete(userId, "EXPERIENCER", projectId, confirmName);
+    }
+
+    @Transactional
+    public void delete(long userId, String role, long projectId, String confirmName) {
+        Row project = managed(userId, role, projectId, true);
         String name = project.str("name");
         if (confirmName == null || !confirmName.strip().equals(name)) {
             throw new ProjectException(CONFIRM_NAME_MISMATCH, name);
@@ -244,6 +271,19 @@ public class ProjectService {
         return journeyOf(projectId);
     }
 
+    private Row managed(long userId, String role, long projectId, boolean write) {
+        Row project = projects.find(projectId);
+        if ("ENGINEER".equals(role) && project != null && project.get("workspace_id") != null
+                && project.lng("created_by_user_id") == userId
+                && (write ? projects.lockActiveWorkspaceMember(userId, project.lng("workspace_id"))
+                          : projects.isActiveWorkspaceMember(userId, project.lng("workspace_id")))) {
+            return project;
+        }
+        requireOwner(project, projectId, userId);
+        if (write && !"EXPERIENCER".equals(role)) throw new ProjectException(PROJECT_NOT_YOURS, projectId);
+        return project;
+    }
+
     private Row owned(long userId, long projectId) {
         Row project = projects.find(projectId);
         requireOwner(project, projectId, userId);
@@ -253,7 +293,7 @@ public class ProjectService {
     private ProjectItem changeStatus(long userId, long projectId, String status) {
         projects.setStatus(projectId, status, Vs.now());
         AuditLog.event("project.status", "success", "project_id", projectId, "status", status, "by", userId);
-        return get(userId, projectId);
+        return toItem(projects.find(projectId));
     }
 
     private String validName(long userId, String raw, long projectId) {
@@ -316,7 +356,7 @@ public class ProjectService {
         return new ProjectItem(p.lng("id"), p.str("name"), p.str("description"), p.str("status"),
                 p.getLong("carla_vehicle_model_id"), p.str("vehicle_name"), p.str("baseline_label"),
                 p.getInt("family_count"), p.getInt("run_count"), p.getInt("regression_count"), p.lng("running_work") > 0,
-                p.ts("created_date"), p.ts("updated_at"), p.getLong("workspace_id"), journeyOf(p.lng("id")));
+                p.ts("created_date"), p.ts("updated_at"), p.getLong("workspace_id"), p.str("workspace_status"), p.getLong("created_by_user_id"), journeyOf(p.lng("id")));
     }
 
     private ProjectJourney journeyOf(long projectId) {

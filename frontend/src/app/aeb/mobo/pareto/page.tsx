@@ -156,7 +156,7 @@ export default function AebMoboParetoPage() {
             }}
             options={(runs ?? []).map((r) => ({
               value: r.id,
-              label: `Run #${r.id} · ${r.name}`,
+              label: `Đợt #${r.id} · ${r.name}`,
               sublabel: `${r.pareto_count} nghiệm Pareto`,
             }))}
             className="min-w-0 max-w-md"
@@ -207,9 +207,9 @@ export default function AebMoboParetoPage() {
                   <th className="px-2 py-3.5">Trễ kích hoạt (s)</th>
                   <th className="px-2 py-3.5">Tăng lực phanh (m/s³)</th>
                   <th className="px-2 py-3.5">Giảm tốc tối đa (m/s²)</th>
-                  <th className="px-2 py-3.5 text-emerald-300">RMS Jerk</th>
-                  <th className="px-2 py-3.5 text-rose-300">Tốc độ va chạm</th>
-                  <th className="px-2 py-3.5 text-slate-200">Quãng phanh</th>
+                  <th className="px-2 py-3.5 text-emerald-300">Độ giật RMS (m/s³)</th>
+                  <th className="px-2 py-3.5 text-rose-300">Tốc độ va chạm tương đối (m/s)</th>
+                  <th className="px-2 py-3.5 text-slate-200">Quãng phanh (m)</th>
                   <th className="w-[160px] px-2 py-3.5 text-center">Thao tác</th>
                 </tr>
               </thead>

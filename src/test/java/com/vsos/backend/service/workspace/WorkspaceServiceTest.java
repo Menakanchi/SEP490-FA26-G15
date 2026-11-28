@@ -55,6 +55,7 @@ class WorkspaceServiceTest {
         chat = mock(WorkspaceChatHub.class);
         service = new WorkspaceService(repo, notifications, chat);
         when(repo.find(WS)).thenReturn(workspace("ACTIVE"));
+        when(repo.lockActiveWorkspace(WS)).thenReturn(true);
     }
 
     private static WorkspaceSummary workspace(String status) {

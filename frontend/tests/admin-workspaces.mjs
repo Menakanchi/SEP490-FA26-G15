@@ -27,6 +27,16 @@ try{
   if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
   if(p==="/vehicsim/projects")return reply({items:[],total:0,page:1,page_size:20,active_count:0,archived_count:0});
   if(p==="/vehicsim/context")return reply({project:{id:1,name:"Fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:null},versions:[],families:[],parameters:[],reviewer_projects:[],reviewer_can_decide:false});
+  const subroute=p.match(/^\/vehicsim\/admin\/workspaces\/(\d+)\/(members|archive|restore)$/);
+  if(subroute){
+   const row=workspaces.find(item=>item.id===Number(subroute[1]));
+   if(!row)return reply({detail:"Không tìm thấy workspace"},404);
+   if(subroute[2]==="members"&&req.method()==="GET")return reply([{id:52,full_name:"Thành viên kiểm thử",email:"member@example.invalid",role:"ENGINEER",is_active:true}]);
+   if(req.method()==="POST"&&subroute[2]!=="members"){
+    writes.push({method:req.method(),path:p,body:null});row.status=subroute[2]==="archive"?"ARCHIVED":"ACTIVE";return reply(row);
+   }
+   return reply({detail:"Không hỗ trợ"},405);
+  }
   if(p==="/vehicsim/admin/users"){
    const page=Number(url.searchParams.get("page")||1),size=Number(url.searchParams.get("page_size")||20),q=url.searchParams.get("q")||"";
    if(url.searchParams.get("role")!=="MANAGER")return reply({items:[actor],total:1,page,page_size:size});
@@ -118,6 +128,13 @@ try{
  assert.deepEqual(await region().getByRole("columnheader").allTextContents(),["Workspace","Manager phụ trách","Thành viên / Project","Trạng thái","Thao tác"]);
  const firstRow=region().locator("tbody tr").first(),firstId=Number((await firstRow.getByRole("rowheader").innerText()).match(/ID #(\d+)/)[1]),firstWorkspace=workspaces.find(item=>item.id===firstId);
  await firstRow.getByRole("cell").filter({hasText:firstWorkspace.member_count+" thành viên"}).filter({hasText:firstWorkspace.project_count+" project"}).waitFor();
+ await open(firstWorkspace);await dialog().getByText("Thành viên kiểm thử",{exact:false}).waitFor();await dialog().getByRole("button",{name:"Hủy",exact:true}).click();
+ page.on("dialog",dialog=>dialog.accept());
+ await frame.getByRole("button",{name:"Lưu trữ workspace "+firstWorkspace.name,exact:true}).click();await ready();
+ assert.equal(firstWorkspace.status,"ARCHIVED");
+ await frame.getByRole("button",{name:"Mở lại workspace "+firstWorkspace.name,exact:true}).click();await ready();
+ assert.equal(firstWorkspace.status,"ACTIVE");
+ assert.deepEqual(writes.map(item=>item.path),[`/vehicsim/admin/workspaces/${firstId}/archive`,`/vehicsim/admin/workspaces/${firstId}/restore`]);writes.length=0;
  for(const [width,height] of [[1920,1080],[1440,900],[1366,768],[1024,768],[768,1024],[375,812],[390,844]]){
   await page.setViewportSize({width,height});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await shot("list-"+width);
  }

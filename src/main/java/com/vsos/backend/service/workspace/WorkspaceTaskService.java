@@ -70,7 +70,7 @@ public class WorkspaceTaskService {
     @Transactional
     public TaskItem create(long userId, String role, long workspaceId, TaskRequest body) {
         WorkspaceSummary ws = workspaces.requireAccessible(userId, role, workspaceId);
-        WorkspaceService.requireActive(ws);
+        WorkspaceService.requireActiveForWrite(members, ws);
         Fields f = validate(workspaceId, body, null);
         long id = tasks.insert(workspaceId, f.projectId, f.title, f.description, f.priority, f.status, f.progress, f.assigneeId, userId,
                 f.dueDate);
@@ -83,7 +83,7 @@ public class WorkspaceTaskService {
     @Transactional
     public TaskItem update(long userId, String role, long workspaceId, long taskId, TaskRequest body) {
         WorkspaceSummary ws = workspaces.requireAccessible(userId, role, workspaceId);
-        WorkspaceService.requireActive(ws);
+        WorkspaceService.requireActiveForWrite(members, ws);
         TaskItem current = tasks.find(workspaceId, taskId);
         if (current == null) {
             throw new NotFoundException("task");
@@ -103,7 +103,7 @@ public class WorkspaceTaskService {
     @Transactional
     public void delete(long userId, String role, long workspaceId, long taskId) {
         WorkspaceSummary ws = workspaces.requireAccessible(userId, role, workspaceId);
-        WorkspaceService.requireActive(ws);
+        WorkspaceService.requireActiveForWrite(members, ws);
         TaskItem current = tasks.find(workspaceId, taskId);
         if (current == null) {
             throw new NotFoundException("task");

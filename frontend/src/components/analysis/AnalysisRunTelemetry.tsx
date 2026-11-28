@@ -46,8 +46,8 @@ export function AnalysisRunTelemetry({ detail: d, markers, cursor, signal, onSig
     <section className={`analysis-panel ${styles.stack}`} aria-label="Số đo tại thời gian đang xem">
       <div><h2>Số đo tại khung đã ghi</h2><p className="analysis-caption">Telemetry: {telemetry ? `${telemetry.t.toFixed(2)} s` : "—"} · Chuyển động: {motion ? `${motion.t.toFixed(2)} s` : "—"}. Hai nguồn đọc riêng theo timestamp của API; đây là mẫu trước hoặc tại mốc chọn, có thể cũ khi thiếu khung. Timestamp mẫu không phải thời gian của cursor.</p></div>
       <div className={styles.currentValues}>
-        <RunFact label="TTC nhận thức tại khung" value={formatMetric(telemetry?.ttc, 2, true)} note="s · telemetry.ttc; — = không xác định" />
-        <RunFact label="Tốc độ tại khung" value={formatMetric(telemetry?.speed_kmh, 1, true)} note="km/h · telemetry.speed_kmh" />
+        <RunFact label="TTC nhận thức tại khung" value={formatMetric(telemetry?.ttc, 2, true)} note="s · — = không xác định" />
+        <RunFact label="Tốc độ tại khung" value={formatMetric(telemetry?.speed_kmh, 1, true)} note="km/h" />
         <RunFact label="Gia tốc ego tại khung" value={formatMetric(motion?.ego_accel_mps2)} note="m/s² · giữ nguyên dấu đã ghi" />
         <RunFact label="Khoảng cách tới vạch tại khung" value={formatMetric(motion?.crossing_distance_m, 2, true)} note="m · backend dẫn xuất từ tọa độ" />
       </div>

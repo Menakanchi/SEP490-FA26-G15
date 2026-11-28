@@ -52,6 +52,25 @@ public class AdminService {
         }));
     }
 
+    @Transactional(readOnly=true)
+    public List<Map<String,Object>> workspaceMembers(long id) {
+        required(repo.workspace(id,false));
+        return repo.workspaceMembers(id);
+    }
+
+    @Transactional
+    public Map<String,Object> setWorkspaceArchived(long actor,long id,boolean archived) {
+        Row old=required(repo.workspace(id,true));
+        String target=archived ? "ARCHIVED" : "ACTIVE";
+        if (!target.equals(old.str("status"))) {
+            if (archived && repo.workspaceHasActiveWork(id))
+                throw invalid("Không thể lưu trữ workspace khi còn lượt chạy, tối ưu hoặc kiểm thử đang hoạt động");
+            repo.setWorkspaceStatus(id,target);
+            audit(archived ? "workspace_archive" : "workspace_restore",actor,id);
+        }
+        return detail("workspaces",id);
+    }
+
     @Transactional
     public Map<String,Object> createUser(long actor,UserRequest b) {
         String email=email(b.email());

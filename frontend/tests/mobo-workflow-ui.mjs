@@ -53,7 +53,7 @@ try {
   if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
   if(p==="/vehicsim/regression"&&req.method()==="GET")return reply({items:[],kpis:{total:0,passed:0,failed:0,running:0}});
   if(p==="/vehicsim/projects")return reply({items:[],total:0,page:1,page_size:20,active_count:0,archived_count:0});
-  if(p==="/vehicsim/context")return reply({project:{id:1,name:"MOBO fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:{id:10,label:"Baseline"}},versions:[],families:[{id:5,code:"CP",name:"FA frozen fixture"}],parameters:[],reviewer_projects:[],reviewer_can_decide:false});
+  if(p==="/vehicsim/context")return reply({project:{id:1,name:"MOBO fixture"},workspace:{id:1,name:"Fixture"},vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:{id:10,label:"Baseline"}},versions:[],families:[{id:5,code:"CP",name:"FA frozen fixture"}],parameters:[],reviewer_projects:[],reviewer_can_decide:true,project_writable:true});
   if(p==="/vehicsim/carla/status")return reply({connected:false});
   if(p==="/vehicsim/aeb/versions")return reply([]);
   if(p==="/vehicsim/analysis/datasets/91/handoff"){datasetReads.push(p);return datasetMode==="failure"?reply({detail:"Fixture source revision changed"},409):reply({...dataset,baseline_current:datasetMode!=="stale",dataset_digest:datasetMode==="missing-digest"?undefined:digest});}
@@ -96,7 +96,7 @@ try {
   unexpected.push(p);return reply({detail:"Unhandled fixture"},404);
  });
  const page=await context.newPage();page.setDefaultTimeout(Number(process.env.MOBO_UI_TIMEOUT)||15000);page.on("pageerror",error=>errors.push(error.message));
- const choose=async id=>{await page.getByRole("button",{name:"Chọn đợt tối ưu hoá",exact:true}).click();await page.getByRole("option",{name:new RegExp("Run #"+id+" ·")}).click();};
+ const choose=async id=>{await page.getByRole("button",{name:"Chọn đợt tối ưu hoá",exact:true}).click();await page.getByRole("option",{name:new RegExp("Đợt #"+id+" ·")}).click();};
  const noOverflow=async()=>assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),"No document overflow");
  const readableHeaders=async()=>assert(await page.locator("thead").evaluate(head=>{
   const canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");canvas.width=canvas.height=1;
@@ -106,7 +106,7 @@ try {
  }),"Table header contrast is readable");
  await page.goto(base+"/aeb/mobo/trials?run_id=1");
  await page.getByRole("button",{name:"Hợp lệ (1)",exact:true}).waitFor();
- assert.equal(await page.getByText("Khởi tạo Sobol/Random",{exact:true}).count(),5);
+ assert.equal(await page.getByText("Khởi tạo ban đầu",{exact:true}).count(),5);
  for(const name of ["TTC (s)","Trễ phanh (s)","Giảm tốc (m/s²)","Tăng lực phanh (m/s³)"])assert.equal(await page.getByRole("columnheader",{name,exact:true}).count(),1);
  await readableHeaders();
  assert.equal(await page.getByRole("columnheader",{name:"Va chạm (m/s)",exact:true}).count(),1);
@@ -118,7 +118,7 @@ try {
  // A slower response from a previous campaign must never replace the selected campaign.
  delayFirst=true;await page.goto(base+"/aeb/mobo/trials?run_id=1");
  await page.getByRole("button",{name:"Chọn đợt tối ưu hoá",exact:true}).waitFor();
- await page.waitForFunction(()=>document.querySelector('[aria-label="Chọn đợt tối ưu hoá"]')?.textContent.includes("Run #1"));
+ await page.waitForFunction(()=>document.querySelector('[aria-label="Chọn đợt tối ưu hoá"]')?.textContent.includes("Đợt #1"));
  await choose(2);await page.getByRole("cell",{name:"#201",exact:true}).waitFor();
  assert(pending.length>0);delayFirst=false;for(const release of pending.splice(0))release();
  await page.waitForResponse(response=>response.url().endsWith("/optimizations/1/trials"));
@@ -213,7 +213,7 @@ try {
  handoffReady=true;await review.getByRole("button",{name:"Thử lại phân tích với context đã lưu",exact:true}).click();
  const v3Link=review.getByRole("link",{name:"Mở MOBO từ handoff V3 →",exact:true});await v3Link.waitFor();
  assert.equal(contextWrites.length,1);assert.equal(await v3Link.getAttribute("href"),`/aeb/mobo/new?handoff_id=${handoffId}&handoff_digest=${handoffDigest}`);
- const beforeV3Reads=datasetReads.length;await v3Link.click();await page.getByRole("heading",{name:"Handoff V3 · FA frozen fixture",exact:true}).waitFor();
+ const beforeV3Reads=datasetReads.length;await v3Link.click();await page.getByRole("heading",{name:"Tập bàn giao · FA frozen fixture",exact:true}).waitFor();
  assert(await page.getByRole("button",{name:"Kịch bản kiểm thử",exact:true}).isDisabled());assert(await page.getByRole("button",{name:/Mô phỏng CARLA 3D/}).isDisabled());
  assert.equal(await page.locator('input[type="file"]').count(),0);await page.getByText("Nguồn và miền tham số đã xác nhận",{exact:true}).click();await page.getByText("BRAKE_BUILDUP_RATE",{exact:true}).waitFor();
  await page.screenshot({path:path.join(output,"v3-campaign-320.png"),fullPage:true});
@@ -221,9 +221,9 @@ try {
  assert.deepEqual(campaignWrites[2],{scenario_id:5,max_trials:10,n_initial_points:3,simulator_type:"CARLA",handoff_id:handoffId,handoff_digest:handoffDigest,base_aeb_version_id:10,search_space:v3Projection.search_space});
  assert.equal(await page.getByRole("link",{name:"Xem phân tích nguồn V3",exact:true}).getAttribute("href"),`/analysis/failures?fa_execution=${executionId}`);
  const v3Url=`/aeb/mobo/new?handoff_id=${handoffId}&handoff_digest=${handoffDigest}`;
- for(const mode of ["failure","wrong-checksum","wrong-project","holdout-overlap","domain-missing","stale"]){handoffMode=mode;await page.goto(base+v3Url);await page.getByRole("button",{name:"Kiểm tra lại handoff V3",exact:true}).waitFor();assert(await page.getByRole("button",{name:/Bắt đầu tối ưu/}).isDisabled());}
- handoffMode="normal";await page.getByRole("button",{name:"Kiểm tra lại handoff V3",exact:true}).click();await page.getByRole("heading",{name:"Handoff V3 · FA frozen fixture",exact:true}).waitFor();
- for(const query of [`handoff_id=${handoffId}`,`handoff_id=invalid&handoff_digest=${handoffDigest}`,`handoff_id=${handoffId}&handoff_digest=${handoffDigest}&dataset_id=91`]){await page.goto(base+"/aeb/mobo/new?"+query);await page.getByRole("region",{name:"Handoff Failure Analysis V3",exact:true}).getByRole("alert").waitFor();assert(await page.getByRole("button",{name:/Bắt đầu tối ưu/}).isDisabled());}
+ for(const mode of ["failure","wrong-checksum","wrong-project","holdout-overlap","domain-missing","stale"]){handoffMode=mode;await page.goto(base+v3Url);await page.getByRole("button",{name:"Kiểm tra lại tập bàn giao",exact:true}).waitFor();assert(await page.getByRole("button",{name:/Bắt đầu tối ưu/}).isDisabled());}
+ handoffMode="normal";await page.getByRole("button",{name:"Kiểm tra lại tập bàn giao",exact:true}).click();await page.getByRole("heading",{name:"Tập bàn giao · FA frozen fixture",exact:true}).waitFor();
+ for(const query of [`handoff_id=${handoffId}`,`handoff_id=invalid&handoff_digest=${handoffDigest}`,`handoff_id=${handoffId}&handoff_digest=${handoffDigest}&dataset_id=91`]){await page.goto(base+"/aeb/mobo/new?"+query);await page.getByRole("region",{name:"Tập bàn giao từ phân tích",exact:true}).getByRole("alert").waitFor();assert(await page.getByRole("button",{name:/Bắt đầu tối ưu/}).isDisabled());}
  assert.equal(datasetReads.length,beforeV3Reads,"V3 campaign errors never fetch a V2 dataset as fallback");assert.equal(campaignWrites.length,3,"Invalid V3 requests never create an alternate campaign");
  v3Campaign=false;
  runs[0].status="PENDING";

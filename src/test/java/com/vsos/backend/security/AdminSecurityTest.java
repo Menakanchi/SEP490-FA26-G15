@@ -106,6 +106,19 @@ class AdminSecurityTest {
         verifyNoInteractions(admin, otp);
     }
 
+    @Test void workspaceStatusAndMemberRoutesRequireAdmin() throws Exception {
+        for (RoleCode role : RoleCode.values()) {
+            for (var req : List.of(get(BASE + "workspaces/42/members"), post(BASE + "workspaces/42/archive"), post(BASE + "workspaces/42/restore"))) {
+                clearInvocations(admin,otp);
+                assertThat(mvc.perform(req.with(user(as(role)))).andReturn().getResponse().getStatus())
+                        .as("%s",role).isEqualTo(role == RoleCode.ADMIN ? 200 : 403);
+                if (role != RoleCode.ADMIN) verifyNoInteractions(admin,otp);
+            }
+        }
+        for (var req : List.of(get(BASE + "workspaces/42/members"), post(BASE + "workspaces/42/archive"), post(BASE + "workspaces/42/restore")))
+            assertThat(mvc.perform(req).andReturn().getResponse().getStatus()).isEqualTo(401);
+    }
+
     @Test void validCreateUpdateAndListDelegateWithActorAndQuota() throws Exception {
         for (String resource : RESOURCES) {
             assertThat(mvc.perform(write(resource, false).with(user(as(RoleCode.ADMIN))))

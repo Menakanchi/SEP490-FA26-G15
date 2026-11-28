@@ -82,13 +82,7 @@ export default function VehicleDetailPage() {
           </>
         )
       }
-      subtitle={
-        v && (
-          <span className="text-[13.5px] text-vehicsim-muted">
-            Blueprint CARLA: <span className="font-mono font-semibold text-vehicsim-ink">{v.carla_blueprint_id}</span> · Khối lượng {v.mass_kg} kg · Giảm tốc cực đại {v.max_brake_decel_mps2} m/s²
-          </span>
-        )
-      }
+      subtitle={v ? `Thông số mô phỏng của ${v.name}.` : undefined}
     >
       <ErrorNote message={error} />
 
@@ -131,7 +125,7 @@ export default function VehicleDetailPage() {
             <Card className="flex flex-col gap-3 p-5">
               <CardTitle>Vật lý CARLA</CardTitle>
               <div>
-                <Spec label="Khối lượng" value={withUnit(v.mass_kg, 0, "kg")} hint="VehiclePhysicsControl.mass — runner luôn ép" />
+                <Spec label="Khối lượng" value={withUnit(v.mass_kg, 0, "kg")} hint="Khối lượng được áp dụng khi mô phỏng" />
                 <Spec label="Hệ số cản gió" value={withUnit(v.physics.drag_coefficient, 2, "")} />
                 <Spec
                   label="Trọng tâm (x, y, z)"
