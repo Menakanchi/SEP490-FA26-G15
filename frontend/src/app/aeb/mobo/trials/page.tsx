@@ -103,7 +103,7 @@ export default function AebMoboTrialsPage() {
               }}
               options={(runs ?? []).map((r) => ({
                 value: r.id,
-                label: `Run #${r.id} · ${r.name}`,
+                label: `Đợt #${r.id} · ${r.name}`,
                 sublabel: `${r.completed_trials} lượt thử`,
               }))}
               className="min-w-0 max-w-md"
@@ -203,7 +203,7 @@ export default function AebMoboTrialsPage() {
                     <td className="pl-5 pr-3 py-3.5 font-mono font-bold text-vehicsim-ink">#{t.trial_number}</td>
                     <td className="px-3 py-3.5">
                       <Tag tone={["INITIAL_DESIGN", "SOBOL_INIT"].includes(t.sampling_source) ? "neutral" : "info"}>
-                        {["INITIAL_DESIGN", "SOBOL_INIT"].includes(t.sampling_source) ? "Khởi tạo Sobol/Random" : "qEHVI Bayes"}
+                        {["INITIAL_DESIGN", "SOBOL_INIT"].includes(t.sampling_source) ? "Khởi tạo ban đầu" : "Bayesian GP"}
                       </Tag>
                     </td>
                     <td className="px-3 py-3.5 font-mono text-[12px] text-vehicsim-muted">

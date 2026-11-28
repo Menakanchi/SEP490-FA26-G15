@@ -56,7 +56,7 @@ export default function AebCandidatesPage() {
             <Tag tone="info">Ứng viên</Tag>
           </div>
           <Link href="/aeb/versions" className="text-[12px] font-bold text-vehicsim-decision hover:underline">
-            Xem toàn bộ phiên bản trong kho tri thức →
+            Xem toàn bộ phiên bản AEB →
           </Link>
         </div>
 

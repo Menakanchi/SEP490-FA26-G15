@@ -22,7 +22,7 @@ interface VehicSimPageProps {
   children: React.ReactNode;
 }
 
-export function VehicSimPage({ crumbs, title, badges, actions, showContext = true, hideMissingProjectError = false, children }: VehicSimPageProps) {
+export function VehicSimPage({ crumbs, title, badges, subtitle, actions, showContext = true, hideMissingProjectError = false, children }: VehicSimPageProps) {
   const { ctx, error, canResetProject, noProjectInScope, selectProject } = useVehicSimContext();
   const { user } = useAuth();
   const pathname = usePathname();
@@ -60,6 +60,8 @@ export function VehicSimPage({ crumbs, title, badges, actions, showContext = tru
       </div>
 
       <h1 className="sr-only">{title ?? crumbs.at(-1)?.label ?? "VehicSim"}</h1>
+
+      {subtitle && <div className="-mt-2 min-w-0 break-words text-[13px] leading-relaxed text-vehicsim-muted">{subtitle}</div>}
 
       {error && !(hideMissingProjectError && noProjectInScope) && (
         <div role="alert" className="rounded-[16px] border border-solid border-vehicsim-danger/30 bg-vehicsim-danger-bg px-4 py-3 text-[13px] text-vehicsim-danger">

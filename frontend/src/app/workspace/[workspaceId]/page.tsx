@@ -585,16 +585,16 @@ export default function WorkspaceDetailPage() {
               </div>
             )}
             <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line">
-              <TableScroll label="Bảng thành viên workspace" minWidth={920}>
+              <TableScroll label="Bảng thành viên workspace" minWidth={997}>
                 <div className="flex h-11 items-center border-b border-solid border-slate-700 bg-slate-800 px-4 text-[12.5px] font-black uppercase tracking-wider text-white">
                   <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
                   <span className="w-[220px] shrink-0 pr-4">Người dùng</span>
-                  <span className="w-[120px] shrink-0">Vai trò</span>
-                  <span className="w-[95px] shrink-0">Project</span>
-                  <span className="w-[85px] shrink-0">Task mở</span>
-                  <span className="w-[170px] shrink-0 pr-3">Thêm bởi</span>
-                  <span className="w-[105px] shrink-0">Ngày vào</span>
-                  <span className="w-[85px] shrink-0 text-right" />
+                  <span className="w-[130px] shrink-0">Vai trò</span>
+                  <span className="w-[100px] shrink-0">Project</span>
+                  <span className="w-[90px] shrink-0">Task mở</span>
+                  <span className="w-[180px] shrink-0 pr-3">Thêm bởi</span>
+                  <span className="w-[110px] shrink-0">Ngày vào</span>
+                  <span className="w-[90px] shrink-0 text-right" />
                 </div>
                 {members && members.length === 0 && (
                   <EmptyState title="Workspace chưa có thành viên">Bấm “+ Thêm thành viên” để tìm tài khoản và cấp vai trò.</EmptyState>

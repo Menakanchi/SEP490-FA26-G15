@@ -74,14 +74,17 @@ export function AnalysisPager({ page, size, total, loading, label = "Phân trang
 }
 /** Trang kết quả kiểm chứng (bước ⑤) được phép làm nơi quay về; chỉ đúng mẫu nội bộ, không nhận link ra ngoài. */
 const VERIFY_RETURN = /^\/validation\/regression\/(\d{1,12})$/;
+const REVIEW_RETURN = /^\/validation\/recommendations\/(\d{1,12})\/review$/;
 
 export function analysisReturn(value: string | null) {
-  if (value && VERIFY_RETURN.test(value)) return value;
+  if (value && (VERIFY_RETURN.test(value) || REVIEW_RETURN.test(value))) return value;
   return value?.startsWith("/analysis/failures?") ? value : "/analysis/failures?view=runs";
 }
 
 /** Nơi quay về của trang chi tiết run / phát lại: màn Phân tích (mặc định) hoặc trang kiểm chứng đã mở link. */
 export function analysisOrigin(returnTo: string): { back: string; crumbs: { label: string; href?: string }[]; testId: number | null } {
+  const review = REVIEW_RETURN.exec(returnTo);
+  if (review) return { back: "← Về màn hình duyệt", crumbs: [{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Duyệt khuyến nghị", href: returnTo }], testId: Number(review[1]) };
   const match = VERIFY_RETURN.exec(returnTo);
   if (!match) return { back: "← Về danh sách đang xem", crumbs: [{ label: "Phân tích" }, { label: "Danh sách phân tích", href: returnTo }], testId: null };
   const code = `RT-${match[1].padStart(3, "0")}`;

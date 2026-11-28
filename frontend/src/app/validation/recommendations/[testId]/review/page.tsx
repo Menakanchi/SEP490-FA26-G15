@@ -65,6 +65,8 @@ export default function ReviewPage() {
   const firstRegressed = r.summary.pairs?.find((p) => p.change === "regressed" && hasReplay(p));
   const firstReplay = firstFixed ?? firstRegressed ?? r.summary.pairs?.find(hasReplay);
 
+  const playbackHref = (runId: number) => `/analysis/failures/${runId}/playback?${new URLSearchParams({ returnTo: `/validation/recommendations/${r.id}/review` })}`;
+
   const checklist = [
     <>
       Tôi đã xem kết quả kiểm thử hồi quy{" "}
@@ -76,7 +78,7 @@ export default function ReviewPage() {
     <>Tôi đã xem các đánh đổi và họ kịch bản bị ảnh hưởng</>,
     <>
       {firstReplay ? <>Tôi đã phát lại ít nhất một{" "}
-        <Link href={`/analysis/failures/${firstReplay.candidate_run_id}/playback`} className="font-semibold underline">
+        <Link href={playbackHref(firstReplay.candidate_run_id)} className="font-semibold underline">
           {firstFixed ? "kịch bản được sửa" : firstRegressed ? "kịch bản bị xấu đi" : "kịch bản trong kiểm thử"}
         </Link>
       </> : "Tôi đã xem danh sách các ca trong kiểm thử (không có lượt phát lại)"}
@@ -84,7 +86,7 @@ export default function ReviewPage() {
         <>
           {" "}
           và một{" "}
-          <Link href={`/analysis/failures/${firstRegressed.candidate_run_id}/playback`} className="font-semibold underline">
+          <Link href={playbackHref(firstRegressed.candidate_run_id)} className="font-semibold underline">
             kịch bản bị xấu đi
           </Link>
         </>

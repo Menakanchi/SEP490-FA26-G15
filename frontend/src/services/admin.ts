@@ -16,4 +16,10 @@ export const adminApi = {
       method: id === null ? "POST" : "PUT", body: JSON.stringify(body),
     });
   },
+  workspaceMembers(id: number) {
+    return apiRequest<AdminRow[]>(`${base}/workspaces/${id}/members`);
+  },
+  workspaceStatus(id: number, archived: boolean) {
+    return apiRequest<AdminRow>(`${base}/workspaces/${id}/${archived ? "archive" : "restore"}`, { method: "POST" });
+  },
 };

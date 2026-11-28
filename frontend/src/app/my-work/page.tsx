@@ -313,15 +313,15 @@ function MyWorkContent() {
               </EmptyState>
             )}
             {shownTasks.length > 0 && (
-              <TableScroll label="Bảng nhiệm vụ được giao" minWidth={970}>
+              <TableScroll label="Bảng nhiệm vụ được giao" minWidth={1040}>
                 <div className="flex h-11 items-center border-y border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
                   <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
                   <span className="w-[265px] shrink-0 pr-4">Nhiệm vụ & Workspace</span>
-                  <span className="w-[105px] shrink-0">Ưu tiên</span>
-                  <span className="w-[105px] shrink-0">Hạn</span>
-                  <span className="w-[155px] shrink-0">Trạng thái</span>
-                  <span className="w-[135px] shrink-0">Tiến độ</span>
-                  <span className="w-[165px] shrink-0 text-right pr-2">Thao tác</span>
+                  <span className="w-[110px] shrink-0">Ưu tiên</span>
+                  <span className="w-[110px] shrink-0">Hạn</span>
+                  <span className="w-[160px] shrink-0">Trạng thái</span>
+                  <span className="w-[140px] shrink-0">Tiến độ</span>
+                  <span className="w-[170px] shrink-0 text-right pr-2">Thao tác</span>
                 </div>
                 {shownTasks.map((t, idx) => {
                   const d = draftOf(t);

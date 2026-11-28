@@ -18,7 +18,7 @@ try {
     if (path === "/auth/login") return reply({ access_token: "fixture-only", token_type: "bearer", expires_in: 3600, user: actor });
     if (req.method() !== "GET") return reply({ detail: "Writes disabled in fixture" }, 405);
     if (path === "/auth/me") return reply(actor);
-    if (path === "/vehicsim/context") return reply({ project: { id: 999912, name: "Fixture" }, workspace: { id: 1, name: "Fixture" }, vehicle: { id: 2, name: "Fixture" }, system: { id: 1, name: "AEB", baseline: { id: 7, label: "v7" } }, versions: [{ id: 8, label: "v8", status: "CANDIDATE" }], families: [{ id: 42, code: "A", name: "Họ A" }, { id: 43, code: "B", name: "Họ B" }], parameters: [], reviewer_projects: [], reviewer_can_decide: false });
+    if (path === "/vehicsim/context") return reply({ project: { id: 999912, name: "Fixture" }, workspace: { id: 1, name: "Fixture" }, vehicle: { id: 2, name: "Fixture" }, system: { id: 1, name: "AEB", baseline: { id: 7, label: "v7" } }, versions: [{ id: 8, label: "v8", status: "CANDIDATE" }], families: [{ id: 42, code: "A", name: "Họ A" }, { id: 43, code: "B", name: "Họ B" }], parameters: [], reviewer_projects: [], reviewer_can_decide: true, project_writable: true });
     if (path === "/vehicsim/regression/preview") {
       const id = Number(new URL(req.url()).searchParams.get("scenario_id"));
       if (id === 42 && !held) { held = true; await new Promise(resolve => { releaseFirst = resolve; }); }

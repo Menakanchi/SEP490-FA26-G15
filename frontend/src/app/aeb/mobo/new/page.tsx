@@ -35,8 +35,8 @@ export default function AebMoboNewPage() {
   const handoffKey = `${ctx?.project.id}:${ctx?.system.baseline?.id}:${rawHandoffId}:${handoffDigest}:${datasetRevision}`;
   const [handoffResult, setHandoffResult] = useState<{ key: string; data: V3CampaignInput | null; error: string | null } | null>(null);
   const handoff = handoffResult?.key === handoffKey ? handoffResult.data : null;
-  const handoffError = sourceConflict ? "Chỉ chọn một nguồn bàn giao: handoff V3 hoặc dataset V2. Mở lại liên kết từ Phân tích lỗi."
-    : handoffLinked && (!handoffId || !handoffDigest || !/^[a-f0-9]{64}$/.test(handoffDigest)) ? "Liên kết handoff V3 thiếu hoặc sai định danh/checksum. Mở lại từ Phân tích lỗi."
+  const handoffError = sourceConflict ? "Chỉ chọn một tập bàn giao. Mở lại liên kết từ Phân tích lỗi."
+    : handoffLinked && (!handoffId || !handoffDigest || !/^[a-f0-9]{64}$/.test(handoffDigest)) ? "Liên kết bàn giao thiếu hoặc sai mã kiểm tra. Mở lại từ Phân tích lỗi."
     : handoffResult?.key === handoffKey ? handoffResult.error : null;
   const source = !sourceConflict ? handoffLinked ? handoff : dataset : null;
 
@@ -75,9 +75,9 @@ export default function AebMoboNewPage() {
           || typeof snapshot.dataset_digest !== "string" || !/^[a-f0-9]{64}$/.test(snapshot.dataset_digest)
           || typeof snapshot.reference.simulator !== "string"
           || !(snapshot.reference.simulator.startsWith("carla-") || snapshot.reference.simulator.startsWith("vehicsim-kinematic-")))
-        throw new Error("Dataset chưa đủ điều kiện bàn giao hoặc baseline đã thay đổi. Quay lại Phân tích lỗi để kiểm tra nguồn.");
+        throw new Error("Tập phân tích chưa đủ điều kiện bàn giao hoặc bản cơ sở đã thay đổi. Quay lại Phân tích lỗi để kiểm tra nguồn.");
       if (active) setDatasetResult({ key: datasetKey, data: snapshot, error: null });
-    }).catch(err => { if (active) setDatasetResult({ key: datasetKey, data: null, error: err instanceof Error ? vi(err.message) : "Không kiểm tra được dataset đã chốt." }); });
+    }).catch(err => { if (active) setDatasetResult({ key: datasetKey, data: null, error: err instanceof Error ? vi(err.message) : "Không kiểm tra được tập đã chốt." }); });
     return () => { active = false; };
   }, [datasetId, datasetKey, ctx, handoffLinked]);
 
@@ -85,9 +85,9 @@ export default function AebMoboNewPage() {
     if (!handoffId || !handoffDigest || !/^[a-f0-9]{64}$/.test(handoffDigest) || !ctx || sourceConflict) return;
     let active = true;
     failureAnalysisV3.campaign(ctx.project.id, handoffId, handoffDigest).then(value => {
-      if (value.baseline.id !== ctx.system.baseline?.id) throw new Error("Baseline của handoff V3 đã thay đổi. Quay lại Phân tích lỗi để rà soát nguồn.");
+      if (value.baseline.id !== ctx.system.baseline?.id) throw new Error("Bản cơ sở của tập bàn giao đã thay đổi. Quay lại Phân tích lỗi để rà soát nguồn.");
       if (active) setHandoffResult({ key: handoffKey, data: value, error: null });
-    }).catch(err => { if (active) setHandoffResult({ key: handoffKey, data: null, error: err instanceof FAError ? `${err.message} (${err.code})` : err instanceof Error ? vi(err.message) : "Không kiểm tra được handoff V3." }); });
+    }).catch(err => { if (active) setHandoffResult({ key: handoffKey, data: null, error: err instanceof FAError ? err.message : err instanceof Error ? vi(err.message) : "Không kiểm tra được tập bàn giao." }); });
     return () => { active = false; };
   }, [handoffId, handoffDigest, handoffKey, ctx, sourceConflict]);
 
@@ -95,7 +95,7 @@ export default function AebMoboNewPage() {
     e.preventDefault();
     if (!canWrite || submissionLock.current) return;
     if (linked && !source) {
-      setError(handoffLinked ? "Cần kiểm tra thành công handoff V3 trước khi tạo đợt tối ưu." : "Cần kiểm tra thành công dataset đã chốt trước khi tạo đợt tối ưu.");
+      setError(handoffLinked ? "Cần kiểm tra thành công tập bàn giao trước khi tạo đợt tối ưu." : "Cần kiểm tra thành công tập đã chốt trước khi tạo đợt tối ưu.");
       return;
     }
     if (!scenarioId || !ctx?.families.some(family => family.id === scenarioId)) {
@@ -147,11 +147,11 @@ export default function AebMoboNewPage() {
     >
       <ErrorNote message={error} />
       {!canWrite && <p className="rounded-xl border border-vehicsim-line bg-vehicsim-surface p-4 text-sm">Tài khoản của bạn chỉ có quyền xem, không thể tạo đợt tối ưu.</p>}
-      {handoffLinked && <section className="rounded-xl border border-vehicsim-line bg-vehicsim-surface p-5" aria-label="Handoff Failure Analysis V3">
-        {handoff && !sourceConflict ? <><h2 className="font-bold">Handoff V3 · {handoff.scenario.name}</h2><p className="mt-2 text-[13px] text-vehicsim-muted">Baseline {handoff.baseline.label} · xe #{handoff.reference.vehicle_id} · {handoff.reference.simulator} · dt {handoff.reference.dt} s</p><p className="mt-2 text-[13px]">{handoff.optimization_run_ids.length} run tối ưu · {handoff.validation_run_ids.length} run xác minh độc lập. Campaign và GP sử dụng đúng partition và miền đã xác nhận trong handoff V3.</p><details className="mt-3 text-[12px]"><summary>Nguồn và miền tham số đã xác nhận</summary><p className="mt-2 break-all">Handoff: {handoff.handoff_id} · SHA-256: {handoff.handoff_digest}</p><p className="mt-2">Run tối ưu: {handoff.optimization_run_ids.join(", ")}. Run xác minh: {handoff.validation_run_ids.join(", ")}.</p><dl>{Object.entries(handoff.search_space).map(([code, [low, high]]) => <div key={code} className="mt-2"><dt>{code}</dt><dd>{low}–{high}</dd></div>)}</dl></details></>
-          : handoffError ? <><ErrorNote message={handoffError} />{handoffId && !sourceConflict && <PillButton onClick={() => setDatasetRevision(value => value + 1)}>Kiểm tra lại handoff V3</PillButton>}</>
-          : <p role="status">Đang kiểm tra nguồn và checksum handoff V3…</p>}
-        <div className="mt-3"><PillButton href="/analysis/failures?view=dataset">Về phân tích V3</PillButton></div>
+      {handoffLinked && <section className="rounded-xl border border-vehicsim-line bg-vehicsim-surface p-5" aria-label="Tập bàn giao từ phân tích">
+        {handoff && !sourceConflict ? <><h2 className="font-bold">Tập bàn giao · {handoff.scenario.name}</h2><p className="mt-2 text-[13px] text-vehicsim-muted">Bản cơ sở {handoff.baseline.label} · xe #{handoff.reference.vehicle_id} · {handoff.reference.simulator} · bước thời gian {handoff.reference.dt} s</p><p className="mt-2 text-[13px]">{handoff.optimization_run_ids.length} lượt tối ưu · {handoff.validation_run_ids.length} lượt xác minh độc lập. Đợt tối ưu dùng đúng các lượt chạy và miền tham số đã xác nhận.</p><details className="mt-3 text-[12px]"><summary>Nguồn và miền tham số đã xác nhận</summary><p className="mt-2 break-all">Mã bàn giao: {handoff.handoff_id} · SHA-256: {handoff.handoff_digest}</p><p className="mt-2">Lượt tối ưu: {handoff.optimization_run_ids.join(", ")}. Lượt xác minh: {handoff.validation_run_ids.join(", ")}.</p><dl>{Object.entries(handoff.search_space).map(([code, [low, high]]) => <div key={code} className="mt-2"><dt>{code}</dt><dd>{low}–{high}</dd></div>)}</dl></details></>
+          : handoffError ? <><ErrorNote message={handoffError} />{handoffId && !sourceConflict && <PillButton onClick={() => setDatasetRevision(value => value + 1)}>Kiểm tra lại tập bàn giao</PillButton>}</>
+          : <p role="status">Đang kiểm tra tập bàn giao…</p>}
+        <div className="mt-3"><PillButton href="/analysis/failures?view=dataset">Về phân tích lỗi</PillButton></div>
       </section>}
       {datasetLinked && !handoffLinked && <section className="rounded-xl border border-vehicsim-line bg-vehicsim-surface p-5" aria-label="Dataset Failure Analysis">
         {dataset ? <><h2 className="font-bold">Tập đã chốt #{dataset.id} · {dataset.scenario.name}</h2><p className="mt-2 text-[13px] text-vehicsim-muted">Baseline {dataset.baseline.label} · xe #{dataset.reference.vehicle_id} · {dataset.reference.simulator} · dt {dataset.reference.dt} s</p><p className="mt-2 text-[13px]">{dataset.optimization_run_ids.length} run tối ưu · {dataset.validation_run_ids.length} run xác minh độc lập. Đợt chạy giữ đúng run, seed và checksum của tập đã chốt.</p></>

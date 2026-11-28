@@ -6,7 +6,7 @@ import type { DatabaseKind, DatabaseInspection } from "./failureAnalysisDatabase
 import styles from "./FailureAnalysisV3.module.css";
 const failure = (e: unknown) => {
   if (e instanceof FAError && ["STORED_SOURCE_IDENTITY_MISMATCH", "DB_PRODUCER_RESULT_REVISION_MISMATCH"].includes(e.code)) return "Nguồn dữ liệu không khớp định danh hoặc checksum đã lưu. Chưa thể phân tích; hãy kiểm tra lại nguồn.";
-  return e instanceof FAError && e.status === 413 ? "Nguồn vượt ngân sách tiếp nhận của Module 3. Không cắt bớt member; chọn một run hoặc đề nghị tăng giới hạn phù hợp." : e instanceof Error ? e.message : "Chưa đọc được nguồn CARLA.";
+  return e instanceof FAError && e.status === 413 ? "Dữ liệu vượt giới hạn tiếp nhận. Hãy chọn một lượt chạy hoặc liên hệ người phụ trách." : e instanceof Error ? e.message : "Chưa đọc được nguồn CARLA.";
 };
 const issueMessage = (code: unknown): string => {
   switch (code) {

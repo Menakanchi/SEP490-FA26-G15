@@ -378,7 +378,10 @@ quản lý, thêm / bớt thành viên, giao / sửa / xoá task, duyệt báo c
 `EngineerWorkspaceController` giữ `/my-workspaces`, `/my-tasks`, `/my-reports`, chi tiết task / báo cáo và chat; cập nhật tiến độ và
 nộp báo cáo chỉ còn ở `/my/...` bên dưới (route `PATCH|PUT /tasks/{id}/status`, `POST /reports` trùng đã gỡ).
 Sửa workspace (06/11/2026): `PUT /workspaces/{id}` cho Manager được gán đổi tên / mô tả workspace ACTIVE (tên unique, hạn mức
-`workspace_update`); đổi Manager / lưu trữ vẫn ở `/admin/workspaces`. Chat `GET /workspaces/{id}/messages` trả `limit` tin mới nhất,
+`workspace_update`); đổi Manager / lưu trữ vẫn ở `/admin/workspaces`. Admin xem thành viên qua
+`GET /admin/workspaces/{id}/members`, lưu trữ/mở lại qua `POST /admin/workspaces/{id}/archive|restore`;
+lưu trữ bị từ chối khi còn lượt chạy, tối ưu hoặc kiểm thử chưa kết thúc. Thành viên và project được giữ nguyên.
+Chat `GET /workspaces/{id}/messages` trả `limit` tin mới nhất,
 `?after=<id>` chỉ trả tin sau id đó, `?before=<id>` trả `limit` tin ngay trước id đó (nút "Xem tin cũ hơn"; không gửi cả hai). Chat realtime: `GET /workspaces/{id}/messages/stream` (Server-Sent Events, cùng quyền với đọc tin)
 gửi `ready` khi nối và `message` cho mỗi tin, đẩy sau khi transaction commit (`WorkspaceChatHub`). Frontend mở bằng `fetch` để
 token đi qua header `Authorization` (`apiEventStream`), mỗi lần nối lại tải bù bằng `?after=`. Kênh tự đóng sau 10 phút để kiểm lại

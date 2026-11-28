@@ -26,7 +26,7 @@ try {
     if (request.method() !== "GET") { problems.push(`Unexpected write: ${request.method()} ${path}`); return reply({}, 405); }
     if (path === "/auth/me") return reply(actor);
     if (path === "/vehicsim/notifications") return reply({ items: [], unread_count: 0 });
-    if (path === "/vehicsim/context") return reply({ project: { id: 1, name: "Fixture" }, workspace: { id: 8, name: "Fixture" }, vehicle: { id: 1, name: "Fixture" }, system: { id: 1, baseline: null }, versions: [], families: [], parameters: [], reviewer_projects: [], reviewer_can_decide: false });
+    if (path === "/vehicsim/context") return reply({ project: { id: 1, name: "Fixture" }, workspace: { id: 8, name: "Fixture" }, vehicle: { id: 1, name: "Fixture" }, system: { id: 1, baseline: null }, versions: [], families: [], parameters: [], reviewer_projects: [], reviewer_can_decide: true, project_writable: true });
     if (path === "/vehicsim/projects") {
       const status = url.searchParams.get("status");
       if (!status) return reply(list([]));

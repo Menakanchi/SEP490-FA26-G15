@@ -63,6 +63,7 @@ try {
       vehicle: { id: 2, name: "Fixture car" }, system: { id: 1, name: "AEB", baseline: { id: 7, label: "v7" } },
       versions: [{ id: 7, label: "v7", status: "BASELINE" }], families: [{ id: 42, name: "Metric fixture", code: "CP" }], parameters: [], reviewer_projects: [] });
     if (p === "/vehicsim/regression") return reply({ items: [], kpis: { total: 0, passed: 0, failed: 0, running: 0 } });
+    if (p === "/vehicsim/analysis/v3/explorer/scenarios/42/runs") return reply({project_id:actor.id,items:[],total:0,limit:1,offset:0});
     if (p === "/vehicsim/analysis/v3/sources") return reply({items:[],limit:20,offset:0}); // FE-R4: empty FA storage is independent of legacy runs.
     if (/^\/vehicsim\/analysis\/v3\/database\/(runs|collections)$/.test(p)) return reply({schema_version:"vehicsim.fa-db-input/v1",selection_kind:p.endsWith("collections")?"COLLECTION":"RUN",project_id:Number(route.request().headers()["x-vehicsim-project"]),items:[],limit:20,offset:0}); // Independent database source fixture.
     if (p === "/vehicsim/notifications") return reply({ items: [], unread_count: 0 });
@@ -132,6 +133,14 @@ try {
 
   if(!baseline){
     await page.setViewportSize({width:1440,height:900});
+    // Review evidence must return to the review that opened it, without accepting external redirects.
+    const reviewReturn="/validation/recommendations/9/review";
+    await page.goto(base+"/analysis/failures/101/playback?returnTo="+encodeURIComponent(reviewReturn));
+    await controls.waitFor();
+    assert.equal(await page.getByRole("link",{name:"← Về màn hình duyệt",exact:true}).getAttribute("href"),reviewReturn);
+    await page.goto(base+"/analysis/failures/101/playback?returnTo="+encodeURIComponent("https://example.invalid"));
+    await controls.waitFor();
+    assert.equal(await page.getByRole("link",{name:"← Về danh sách đang xem",exact:true}).getAttribute("href"),"/analysis/failures?view=runs");
     // Replay must distinguish a recorded shadow decision from an active AEB intervention.
     // This fixture deliberately keeps aeb=true and both events in every mode, including OFF.
     for (const mode of ["OFF", "ON", null]) {
@@ -281,7 +290,8 @@ try {
     assert(requests.length>0);
     // Unmount cleans the loop; returning to the route starts paused.
     await play().click();await page.getByRole("link",{name:"Xem phân tích run",exact:true}).click();
-    await page.getByRole("region",{name:"Kết luận phân tích",exact:true}).waitFor();
+    try { await page.getByRole("region",{name:"Kết luận phân tích",exact:true}).waitFor(); }
+    catch (error) { console.error("Run analysis navigation failed:", page.url(), await page.locator("body").innerText(), errors); throw error; }
     await page.waitForFunction(()=>window.__playbackRaf.pending.size===0);
     await page.goBack();await controls.waitFor();assert(await play().isVisible());
   }

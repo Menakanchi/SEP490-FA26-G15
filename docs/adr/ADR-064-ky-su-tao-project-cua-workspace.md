@@ -3,6 +3,8 @@
 **Trạng thái:** Accepted 24/11/2026 — theo yêu cầu trực tiếp của người dùng: Kỹ sư (ENGINEER) tạo được project.
 **Thay thế một phần:** phần "Kỹ sư chạy trên một project chung" của [ADR-034](ADR-034-role-he-thong-va-role-trong-workspace.md) và [ADR-035](ADR-035-nam-role-he-thong-bo-cau-hinh-xe-va-meomeo.md) (TD-30); mở rộng cách chọn project theo workspace của [ADR-048](ADR-048-pham-vi-workspace-reviewer.md) sang Kỹ sư.
 
+**Cập nhật 28/11/2026:** ADR-073 từng thay thế phần hạn chế sửa/lưu trữ/xóa project của Kỹ sư, nhưng đã bị [ADR-074](ADR-074-ky-su-chi-xem-project-workspace.md) thay thế: hạn chế của ADR-064 có hiệu lực trở lại.
+
 ## Bối cảnh
 
 Project của workspace chỉ có một: project nhóm do `POST /bootstrap` tạo. Chỉ Experiencer tạo được project (cá nhân). Trang workspace và tài liệu thiết kế (UC-70) đã mô tả "Kỹ sư trong workspace tự tạo project; Quản lý không tạo project", nhưng API chưa có.

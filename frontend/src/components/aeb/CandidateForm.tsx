@@ -134,7 +134,7 @@ export function CandidateForm({
 
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-bold text-vehicsim-ink">
-            Nhãn <span className="font-normal text-[12px] text-vehicsim-muted">(không bắt buộc, mặc định v&#123;n&#125;)</span>
+            Nhãn <span className="font-normal text-[12px] text-vehicsim-muted">(không bắt buộc, hệ thống tự đặt theo số phiên bản)</span>
           </span>
           <input
             value={label}

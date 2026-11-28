@@ -182,6 +182,7 @@ export interface ProjectJourney {
 export interface VehicSimContextData {
   reviewer_projects: { id: number; name: string; workspace_name: string; can_decide: boolean }[];
   reviewer_can_decide: boolean;
+  project_writable?: boolean;
   project: { id: number; name: string };
   workspace: { id: number; name: string } | null;
   vehicle: { id: number; name: string } | null;

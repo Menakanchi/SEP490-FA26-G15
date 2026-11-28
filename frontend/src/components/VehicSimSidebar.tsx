@@ -87,7 +87,7 @@ const taskIcon = (
   </svg>
 );
 
-const SOON = "Chưa có trong đợt MVP";
+const SOON = "Chưa hỗ trợ";
 
 const GROUPS: Group[] = [
   { key: "dashboard", label: "Tổng quan", icon: gridIcon, href: "/", prefix: "/", exact: true },

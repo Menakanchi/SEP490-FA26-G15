@@ -59,6 +59,7 @@ class WorkspaceTaskServiceTest {
         workspaces = new WorkspaceService(members, notifications, mock(WorkspaceChatHub.class));
         service = new WorkspaceTaskService(workspaces, members, tasks, notifications);
         when(members.find(WS)).thenReturn(workspace("ACTIVE"));
+        when(members.lockActiveWorkspace(WS)).thenReturn(true);
         when(members.isMember(WS, ENGINEER)).thenReturn(true);
         when(members.findUser(ENGINEER)).thenReturn(new UserAccount(ENGINEER, "e@example.com", "ENGINEER", true));
         when(tasks.projectStatusInWorkspace(WS, PROJECT)).thenReturn("ACTIVE");
@@ -82,6 +83,14 @@ class WorkspaceTaskServiceTest {
     }
 
     // ------------------------------------------------------------------ M6: giao task
+
+    @Test
+    void concurrentArchiveObservedByLockPreventsTaskCreation() {
+        when(members.lockActiveWorkspace(WS)).thenReturn(false);
+        assertThatThrownBy(() -> service.create(MANAGER, "MANAGER", WS, req("TODO", 0, null, null, null)))
+                .isInstanceOf(InvalidRequestException.class).hasMessageContaining("lưu trữ");
+        verify(tasks, never()).insert(anyLong(), any(), anyString(), any(), anyString(), anyString(), anyInt(), any(), anyLong(), any());
+    }
 
     @Test
     void createsATaskWithDefaultsAndTrimmedText() {

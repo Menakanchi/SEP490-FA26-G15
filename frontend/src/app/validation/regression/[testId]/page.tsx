@@ -199,7 +199,7 @@ export default function RegressionResultsPage() {
               <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-5">
                 <Kpi label="Kịch bản" value={counts.scenarios} note={`${d.family} · cùng seed`} />
                 <Kpi label="Được sửa" value={counts.fixed} tone="text-vehicsim-ok" note="va chạm/suýt va chạm → an toàn hơn" />
-                <Kpi label="Xấu đi" value={counts.regressed} tone={counts.regressed ? "text-vehicsim-danger" : "text-vehicsim-ink"} note="kết quả hoặc verdict tệ hơn" />
+                <Kpi label="Xấu đi" value={counts.regressed} tone={counts.regressed ? "text-vehicsim-danger" : "text-vehicsim-ink"} note="kết quả hoặc đánh giá xấu hơn" />
                 <Kpi label="Không đổi" value={counts.unchanged} note="kết quả như cũ" />
                 <Kpi
                   label="Tỉ lệ va chạm"

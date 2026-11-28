@@ -67,7 +67,7 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
   // ADR-064: Kỹ sư và Người duyệt cùng chọn project trong các workspace mình thuộc về (header X-VehicSim-Project).
   const isTeamMember = isReviewer || role === "ENGINEER";
   const adminPage = usePathname().startsWith("/admin");
-  const canWrite = WRITE_ROLES.includes(role ?? "");
+  const canWrite = WRITE_ROLES.includes(role ?? "") && (role !== "ENGINEER" || (!error && ready && (ctx?.project_writable ?? ctx?.reviewer_can_decide) === true));
   const canDecide = isReviewer && !error && ready && ctx?.reviewer_can_decide === true;
   const canRunRegression = canWrite || canDecide;
 
