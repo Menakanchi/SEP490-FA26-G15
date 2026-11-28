@@ -280,6 +280,8 @@ Hàng đợi dọn thư mục run local, được ghi cùng transaction xóa pro
 
 Worker kiểm marker trước và sau xóa file, nhưng không thể chứng minh trạng thái mount nếu mount biến mất rồi trở lại giữa hai lần kiểm. Dọn một thư mục giữ khóa vùng ID run vắng đến commit để tránh ID được tạo lại mất file; việc tạo run khác có thể bị chờ trong lúc dọn thư mục lớn. Các DB và phiên bản backend cùng dùng root phải tuân thủ cùng binding; backend cũ chưa ghi hàng đợi không đảm bảo dọn bền vững khi chạy song song.
 
+Backend đặt timeout kết nối MySQL mặc định 10 giây và timeout đọc socket 60 giây. Có thể điều chỉnh bằng `VSOS_JDBC_CONNECT_TIMEOUT_MS` và `VSOS_JDBC_SOCKET_TIMEOUT_MS` (mili giây); dùng giá trị dương, đủ lớn cho tải thực tế. Thuộc tính Hikari này ưu tiên hơn tham số cùng tên trong URL JDBC, kể cả URL được cấu hình riêng. Timeout đọc áp dụng cho mọi truy vấn, không phải giới hạn tổng thời gian transaction hoặc thao tác file. Khi mất phản hồi COMMIT, kết quả transaction có thể chưa rõ: kiểm trạng thái đã lưu trước khi thử lại thao tác ghi; hàng đợi cleanup được thiết kế để phục hồi theo trạng thái thực tế.
+
 ### 6.1 Tài khoản
 
 #### `roles` — FE-02
