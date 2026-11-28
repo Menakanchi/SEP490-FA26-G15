@@ -21,6 +21,20 @@ public class Queries {
         this.db = db;
     }
 
+    /**
+     * Called in the job-creation transaction; shares a lock with workspace/project archive.
+     * Trả {@code true} khi project hoặc workspace đang lưu trữ, tức chỉ đọc (service ánh xạ ra 409); repository không phụ thuộc tầng web.
+     */
+    public boolean lockProjectForJobIsReadOnly(long projectId) {
+        Row row = db.first("""
+                SELECT p.status, p.workspace_id, w.status AS workspace_status
+                  FROM projects p LEFT JOIN workspaces w ON w.id=p.workspace_id
+                 WHERE p.id=? FOR SHARE
+                """, projectId);
+        if (row == null) throw new NotFoundException("project");
+        return !"ACTIVE".equals(row.str("status")) || (!row.isNull("workspace_id") && !"ACTIVE".equals(row.str("workspace_status")));
+    }
+
     public List<Row> versions(long projectId, boolean newestFirst) {
         return db.list("SELECT * FROM aeb_versions WHERE project_id = ? ORDER BY version_no " + (newestFirst ? "DESC" : "ASC"), projectId);
     }

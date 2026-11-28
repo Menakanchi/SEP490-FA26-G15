@@ -305,7 +305,7 @@ export default function ScenarioFamiliesPage() {
             }}
           />
           <button type="button" onClick={() => setEditing(null)} className="self-end text-[12px] font-semibold text-vehicsim-muted hover:underline">
-            Huỷ sửa
+            Hủy sửa
           </button>
         </div>
       )}
@@ -427,7 +427,7 @@ export default function ScenarioFamiliesPage() {
                       <b className="text-vehicsim-ink font-bold">{shown.runs.COMPLETED ?? 0}</b> đã xong
                     </span>
                     <span className="text-[10.5px] text-vehicsim-faint" title="Gồm lượt baseline, lượt AEB tắt, lượt của tối ưu MOBO và kiểm thử hồi quy">
-                      mọi mục đích
+                      gồm mọi loại lượt chạy
                     </span>
                     {!old && pending > 0 && (
                       <button

@@ -22,6 +22,17 @@ export function AdminWorkspaceEditor({ row, returnFocusTo, onCancel, onSaved }: 
   const [phase, setPhase] = useState<Phase>("form"), [pending, setPending] = useState<Body | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({}), [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [members, setMembers] = useState<AdminRow[] | null>(null);
+  const [memberError, setMemberError] = useState("");
+  useEffect(() => {
+    if (!row) return;
+    let live = true;
+    adminApi.workspaceMembers(row.id).then(data => {
+      if (!Array.isArray(data)) throw new Error("Danh sách thành viên không hợp lệ.");
+      if (live) setMembers(data);
+    }).catch(error => { if (live) setMemberError(message(error)); });
+    return () => { live = false; };
+  }, [row]);
   const saveLock = useRef(false);
   const nameRef = useRef<HTMLInputElement>(null), errorRef = useRef<HTMLDivElement>(null), backRef = useRef<HTMLButtonElement>(null), keepRef = useRef<HTMLButtonElement>(null), closeRef = useRef<HTMLButtonElement>(null);
   const managerSearchRef = useRef<HTMLInputElement>(null);
@@ -101,6 +112,7 @@ export function AdminWorkspaceEditor({ row, returnFocusTo, onCancel, onSaved }: 
           {!row || managerChanged ? <div className={styles.impact} aria-label="Ảnh hưởng khi giao Manager"><strong>Giao Manager phụ trách</strong><p>{managerLabel(selected)} sẽ nhận thông báo được giao quản lý workspace sau khi lưu thành công.</p><p>Hệ thống kiểm tra lại tài khoản phải còn vai trò MANAGER và đang hoạt động khi lưu.</p>{managerChanged && <p>Thành viên và project hiện có được giữ nguyên khi giao lại Manager.</p>}</div> : <p className={styles.note}>Manager phụ trách giữ nguyên; thay đổi tên hoặc mô tả không gửi thông báo giao workspace.</p>}
         </section> : <>
           {row && <dl className={styles.summary} aria-label="Thông tin workspace hiện tại"><div><dt>Trạng thái</dt><dd>{WORKSPACE_STATUSES[String(row.status)]}</dd></div><div><dt>Thành viên</dt><dd>{workspaceCount(row.member_count)}</dd></div><div><dt>Project</dt><dd>{workspaceCount(row.project_count)}</dd></div></dl>}
+          {row && <section aria-label="Thành viên workspace"><h3>Thành viên workspace</h3>{memberError ? <p role="alert">{memberError}</p> : members === null ? <p role="status">Đang tải thành viên…</p> : members.length === 0 ? <p>Chưa có thành viên.</p> : <ul>{members.map(member => <li key={member.id}>{String(member.full_name || member.email)} · {String(member.email)} · {member.role === "ENGINEER" ? "Kỹ sư" : member.role === "REVIEWER" ? "Người duyệt" : String(member.role)}{!member.is_active && " · Đã khóa"}</li>)}</ul>}</section>}
           {readOnly ? <><p className={styles.note}>Workspace đã lưu trữ, chỉ được xem thông tin.</p><dl className={workspace.details}><dt>Manager phụ trách</dt><dd>{managerLabel(initialManager)}</dd><dt>Mô tả</dt><dd>{initial.description || "Chưa có mô tả."}</dd><dt>Ngày tạo</dt><dd>{workspaceDate(row?.created_date ?? null)}</dd><dt>Cập nhật</dt><dd>{workspaceDate(row?.updated_at ?? null)}</dd></dl></> : <form id="admin-workspace-form" noValidate onSubmit={prepare}>
             {Object.values(errors).some(Boolean) && <p role="alert" className={styles.error}>Vui lòng kiểm tra các trường được đánh dấu bên dưới.</p>}
             <fieldset className={styles.fieldset} disabled={busy}><legend><Building2 size={16} aria-hidden="true" />Thông tin workspace</legend>

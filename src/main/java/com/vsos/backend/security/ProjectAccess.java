@@ -74,9 +74,13 @@ public class ProjectAccess {
     }
 
     public Row currentProject() {
-        if (!reviewer()) return scope.current();
-        Row selected = reviewerProject();
+        Row selected = reviewer() ? reviewerProject() : scope.current();
         if (selected == null) throw new NotFoundException("project trong workspace của bạn — hãy kiểm tra workspace và chọn hoặc tạo project phù hợp");
+        String method = request.getMethod();
+        if (("POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method) || "DELETE".equals(method))
+                && ("ARCHIVED".equals(selected.str("status")) || "ARCHIVED".equals(selected.str("workspace_status")))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project hoặc workspace đã lưu trữ, chỉ có thể xem dữ liệu");
+        }
         return selected;
     }
 

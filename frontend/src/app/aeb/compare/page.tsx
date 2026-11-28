@@ -12,7 +12,7 @@ import { VehicSimSelect } from "@/components/VehicSimSelect";
 import { KEY_PARAMS, STATUS_LABEL } from "@/components/aeb/aebTypes";
 
 export default function AebComparePage() {
-  const { ctx, canWrite } = useVehicSimContext();
+  const { ctx, canWrite, canRunRegression } = useVehicSimContext();
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -77,7 +77,7 @@ export default function AebComparePage() {
       crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Đối chiếu thông số" }]}
       actions={
         <div className="flex items-center gap-2">
-          {versionB?.status === "CANDIDATE" && canWrite && (
+          {versionB?.status === "CANDIDATE" && canRunRegression && (
             <PillButton variant="dark" href={`/validation/regression/new?candidate=${versionB.id}`}>
               Kiểm thử hồi quy ứng viên này
             </PillButton>
@@ -234,11 +234,11 @@ export default function AebComparePage() {
           ← Danh mục phiên bản
         </PillButton>
         <div className="flex items-center gap-3">
-          <PillButton href="/aeb/mobo" variant="light">
+          {canWrite && <PillButton href="/aeb/mobo" variant="light">
             <Sparkles className="size-4 shrink-0" />
             Tối ưu tiếp bằng MOBO
-          </PillButton>
-          {versionB?.status === "CANDIDATE" && canWrite && (
+          </PillButton>}
+          {versionB?.status === "CANDIDATE" && canRunRegression && (
             <PillButton href={`/validation/regression/new?candidate=${versionB.id}`} variant="dark">
               Kiểm thử hồi quy ứng viên này <ArrowRight className="size-4" />
             </PillButton>

@@ -62,7 +62,7 @@ export function TelemetryChart({ points, threshold, markers, shade, impactT, cur
     <p className={styles.note} data-chart-readout>
       Mốc xem {formatMetric(time, 3)} s · Mẫu gần nhất theo timestamp (hòa chọn mốc trước, không nội suy):
       TTC {formatMetric(nearestTtc?.value, 2, true)} s tại {formatMetric(nearestTtc?.t, 3)} s · Tốc độ {formatMetric(nearestSpeed?.value, 1, true)} km/h tại {formatMetric(nearestSpeed?.t, 3)} s.
-      Nguồn telemetry.ttc / telemetry.speed_kmh. — = thiếu hoặc ngoài khoảng đã ghi của nguồn.
+      Số liệu lấy từ lượt chạy đã lưu. — = thiếu hoặc ngoài khoảng dữ liệu đã ghi.
     </p>
     <ChartQuality data={ttc} label="TTC" /><ChartQuality data={speed} label="Tốc độ" policy={false} />
     <ChartMarkerLegend markers={visibleMarkers} />

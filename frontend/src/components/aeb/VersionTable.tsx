@@ -7,6 +7,13 @@ import { Pagination, Tag, cx, fmt, paramValue } from "@/components/VehicSimUi";
 import type { AebVersion, ParameterDef } from "@/types/vehicsim";
 import { KEY_PARAMS, PARAM_NAMES, STATUS_LABEL, STATUS_TONE, changedNote } from "./aebTypes";
 
+function displayNotes(notes: string | null | undefined) {
+  if (!notes) return "—";
+  const generated = /^Trial (\d+) \((INITIAL_DESIGN|SOBOL_INIT|ACQUISITION)\)$/.exec(notes);
+  if (!generated) return notes;
+  return `Lượt thử ${generated[1]} (${generated[2] === "ACQUISITION" ? "Bayesian GP" : "Khởi tạo ban đầu"})`;
+}
+
 export function VersionTable({
   versions,
   catalog,
@@ -167,8 +174,8 @@ export function VersionTable({
                       </td>
                     );
                   })}
-                  <td className="px-4 py-3.5 text-[12px] text-vehicsim-muted max-w-[200px] truncate" title={v.notes ?? ""}>
-                    {v.notes ?? "—"}
+                  <td className="px-4 py-3.5 text-[12px] text-vehicsim-muted max-w-[200px] truncate" title={displayNotes(v.notes)}>
+                    {displayNotes(v.notes)}
                   </td>
                   <td className="px-3 py-3.5 text-[12px] text-vehicsim-faint whitespace-nowrap">
                     {fmt.date(v.created_at)}

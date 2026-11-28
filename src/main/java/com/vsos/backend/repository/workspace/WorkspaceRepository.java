@@ -58,6 +58,12 @@ public class WorkspaceRepository {
         return row == null ? null : toSummary(row);
     }
 
+    /** Lock the current workspace state until the caller's write transaction commits. */
+    public boolean lockActiveWorkspace(long workspaceId) {
+        Row row = db.first("SELECT status FROM workspaces WHERE id = ? FOR SHARE", workspaceId);
+        return row != null && "ACTIVE".equals(row.str("status"));
+    }
+
     /** Project thuộc workspace, kèm chủ project và số thành viên workspace được truy cập. */
     public List<ProjectItem> projectsOf(long workspaceId) {
         return db.list("""

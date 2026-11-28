@@ -28,10 +28,15 @@ class ReviewerScopeTest {
     void clearUser() { SecurityContextHolder.clearContext(); }
 
     private ProjectAccess request(RoleCode role, String selected) {
+        return request(role, selected, "GET");
+    }
+
+    private ProjectAccess request(RoleCode role, String selected, String method) {
         var user = new CustomUserDetails(User.builder().id(46L).email("qa@example.invalid").passwordHash("x").isActive(true)
                 .role(Role.builder().code(role).name(role.name()).build()).build());
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
         var request = new MockHttpServletRequest();
+        request.setMethod(method);
         if (selected != null) request.addHeader(ProjectAccess.PROJECT_HEADER, selected);
         return new ProjectAccess(request, new ProjectScope(request, teamProjects), scope);
     }
@@ -103,6 +108,37 @@ class ReviewerScopeTest {
         assertThat(outsider.hasProject()).isFalse();
         assertThatThrownBy(outsider::currentProject).isInstanceOf(NotFoundException.class);
         verify(teamProjects, never()).firstActiveTeamProject();
+    }
+
+    @Test
+    void archivedWorkspaceAndProjectRemainReadableButRejectWrites() {
+        for (RoleCode role : new RoleCode[]{RoleCode.ENGINEER, RoleCode.REVIEWER}) {
+            for (Row archived : new Row[]{
+                    new Row(Json.obj("id", 7L, "status", "ACTIVE", "workspace_status", "ARCHIVED")),
+                    new Row(Json.obj("id", 7L, "status", "ARCHIVED", "workspace_status", "ACTIVE"))}) {
+                when(db.first(contains("AND p.id = ?"), eq(46L), eq(7L))).thenReturn(archived);
+                assertThat(request(role, "7", "GET").currentProject()).isSameAs(archived);
+                for (String method : new String[]{"POST", "PATCH", "DELETE"}) {
+                    assertThatThrownBy(() -> request(role, "7", method).currentProject())
+                            .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                            .hasMessageContaining("chỉ có thể xem");
+                }
+            }
+        }
+    }
+
+    @Test
+    void adminAndManagerMayReadButNotWriteTheTeamProjectInAnArchivedWorkspace() {
+        Row archived = new Row(Json.obj("id", 1L, "status", "ACTIVE", "workspace_status", "ARCHIVED"));
+        when(teamProjects.firstActiveTeamProject()).thenReturn(archived);
+        for (RoleCode role : new RoleCode[]{RoleCode.ADMIN, RoleCode.MANAGER}) {
+            assertThat(request(role, null, "GET").currentProject()).isSameAs(archived);
+            for (String method : new String[]{"POST", "PUT", "PATCH", "DELETE"}) {
+                assertThatThrownBy(() -> request(role, null, method).currentProject())
+                        .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                        .hasMessageContaining("chỉ có thể xem");
+            }
+        }
     }
 
     @Test

@@ -10,7 +10,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const output = path.resolve(root, process.env.ADMIN_UI_OUTPUT || "data/admin-batch1-ui");
 await fs.mkdir(output, { recursive: true });
 const base = process.env.ADMIN_UI_URL || "http://localhost:3100";
-const viewports = [[1920,1080],[1440,900],[1366,768],[1024,768],[768,1024],[390,844],[375,812]];
+const viewports = [[1920,1080],[1440,900],[1366,768],[1024,768],[769,1024],[768,1024],[390,844],[375,812]];
 const shortViewports = [[320,256],[667,375],[1280,480]];
 const sections = [["users","Tài khoản"],["workspaces","Workspace"],["tech-references","Tài liệu kỹ thuật"]];
 const actor = { id:999999,email:"admin-ui@example.invalid",full_name:"Quản trị UI Fixture",role:"ADMIN" };
@@ -36,6 +36,7 @@ try {
     if(p==="/vehicsim/projects")return reply({items:[],total:0,page:1,page_size:20,active_count:0,archived_count:0});
     if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
     if(p.startsWith("/vehicsim/admin/")){
+      if(/^\/vehicsim\/admin\/workspaces\/\d+\/members$/.test(p)&&req.method()==="GET")return reply([]);
       if(req.method()!=="GET"){
         writes.push({path:p,method:req.method(),body:req.postDataJSON()});
         return reply({detail:"Fixture: không lưu được thay đổi. Dữ liệu nhập được giữ lại."},409);

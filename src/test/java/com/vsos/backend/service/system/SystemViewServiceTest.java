@@ -34,7 +34,7 @@ class SystemViewServiceTest {
                 "status", "ACTIVE", "carla_vehicle_model_id", null)));
         when(db.first(anyString(), eq(5L))).thenReturn(new Row(Json.obj("id", 5L, "name", "WS", "status", "ACTIVE")));
         var context = new SystemViewService(db, queries, runs, projects).context();
-        assertThat(context).containsEntry("vehicle", null).containsEntry("reviewer_can_decide", true);
+        assertThat(context).containsEntry("vehicle", null).containsEntry("reviewer_can_decide", true).containsEntry("project_writable", true);
         verify(queries, never()).activeVehicle(anyLong());
     }
 }

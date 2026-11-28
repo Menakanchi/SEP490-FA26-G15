@@ -104,6 +104,38 @@ class AdminServiceTest {
         when(repo.workspace(3,true)).thenReturn(new Row(Map.of("status","ARCHIVED")));
         assertThatThrownBy(()->service.updateWorkspace(1,3,new WorkspaceRequest("Lab",null,5L))).hasMessageContaining("lưu trữ");
     }
+    @Test void archiveRejectsActiveWorkAndRestoreKeepsChildren() {
+        when(repo.workspaceHasActiveWork(3)).thenReturn(true);
+        assertThatThrownBy(() -> service.setWorkspaceArchived(1,3,true)).hasMessageContaining("đang hoạt động");
+        verify(repo,never()).setWorkspaceStatus(anyLong(),anyString());
+        when(repo.workspaceHasActiveWork(3)).thenReturn(false);
+        service.setWorkspaceArchived(1,3,true);
+        verify(repo).setWorkspaceStatus(3,"ARCHIVED");
+        when(repo.workspace(3,true)).thenReturn(new Row(Map.of("id",3L,"status","ARCHIVED")));
+        service.setWorkspaceArchived(1,3,false);
+        verify(repo).setWorkspaceStatus(3,"ACTIVE");
+        clearInvocations(repo);
+        service.setWorkspaceArchived(1,3,true);
+        verify(repo,never()).setWorkspaceStatus(anyLong(),anyString());
+    }
+    @Test void memberListingRequiresExistingWorkspace() {
+        service.workspaceMembers(3);
+        verify(repo).workspaceMembers(3);
+        when(repo.workspace(44,false)).thenReturn(null);
+        assertThatThrownBy(() -> service.workspaceMembers(44)).isInstanceOf(com.vsos.backend.common.Vs.NotFoundException.class);
+        verify(repo,never()).workspaceMembers(44);
+    }
+    @Test void jobCreationLocksAndChecksWorkspaceAndProjectStatus() {
+        Db db=mock(Db.class);
+        Queries queries=new Queries(db);
+        when(db.first(anyString(),eq(3L))).thenReturn(new Row(Map.of("status","ACTIVE","workspace_id",2L,"workspace_status","ACTIVE")));
+        assertThat(queries.lockProjectForJobIsReadOnly(3)).isFalse();
+        verify(db).first(contains("FOR SHARE"),eq(3L));
+        when(db.first(anyString(),eq(3L))).thenReturn(new Row(Map.of("status","ACTIVE","workspace_id",2L,"workspace_status","ARCHIVED")));
+        assertThat(queries.lockProjectForJobIsReadOnly(3)).isTrue();
+        when(db.first(anyString(),eq(3L))).thenReturn(new Row(Map.of("status","ARCHIVED","workspace_id",2L,"workspace_status","ACTIVE")));
+        assertThat(queries.lockProjectForJobIsReadOnly(3)).isTrue();
+    }
     @Test void referenceNumericContractAndUniquenessAreEnforced() {
         assertThatThrownBy(()->service.createReference(1,reference(TechRefType.STANDARD,BigDecimal.ONE,true))).hasMessageContaining("CONSTANT");
         assertThatThrownBy(()->service.createReference(1,reference(TechRefType.CONSTANT,null,true))).hasMessageContaining("giá trị");

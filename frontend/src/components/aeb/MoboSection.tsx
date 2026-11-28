@@ -268,7 +268,7 @@ export function MoboSection({
               <div className="grid grid-cols-3 gap-2 text-[12px]">
                 <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
                   <span className="font-semibold text-vehicsim-ink block">Độ êm ái:</span>
-                  RMS Jerk (m/s³)
+                  Độ giật RMS (m/s³)
                 </div>
                 <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
                   <span className="font-semibold text-vehicsim-ink block">Giảm chấn:</span>
@@ -302,7 +302,7 @@ export function MoboSection({
         </div>
 
         <div className="flex h-11 items-center border-y border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
-          <span className="w-[80px]">Mã run</span>
+          <span className="w-[80px]">Mã đợt</span>
           <span className="w-[220px]">Tên đợt chạy</span>
           <span className="w-[120px]">Trạng thái</span>
           <span className="w-[140px]">Tiến độ thử nghiệm</span>
@@ -389,7 +389,7 @@ export function MoboSection({
           <div className="flex flex-col gap-2 border-b border-solid border-vehicsim-line pb-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="font-mono text-[18px] font-extrabold text-vehicsim-ink">Run #{activeRun.id}</span>
+                <span className="font-mono text-[18px] font-extrabold text-vehicsim-ink">Đợt #{activeRun.id}</span>
                 <h3 className="text-[17px] font-bold text-vehicsim-ink">{activeRun.name}</h3>
                 <Tag tone={activeRun.status === "RUNNING" ? "info" : activeRun.status === "COMPLETED" ? "ok" : "neutral"}>
                   {activeRun.status}
@@ -447,7 +447,7 @@ export function MoboSection({
                     <th className="px-4 py-3">Brake Activation Delay (s)</th>
                     <th className="px-4 py-3">Brake Build-up Rate (m/s³)</th>
                     <th className="px-4 py-3">Max Deceleration (m/s²)</th>
-                    <th className="px-4 py-3 text-vehicsim-decision">RMS Jerk (m/s³)</th>
+                    <th className="px-4 py-3 text-vehicsim-decision">Độ giật RMS (m/s³)</th>
                     <th className="px-4 py-3 text-vehicsim-danger">Tốc độ va chạm</th>
                     <th className="px-4 py-3 text-vehicsim-ink">Quãng phanh (m)</th>
                     <th className="px-4 py-3 text-right">Hành động</th>
@@ -509,7 +509,7 @@ export function MoboSection({
                     <th className="px-3 py-2">#</th>
                     <th className="px-3 py-2">Nguồn sinh</th>
                     <th className="px-3 py-2">qEHVI Acq</th>
-                    <th className="px-3 py-2">RMS Jerk</th>
+                    <th className="px-3 py-2">Độ giật RMS</th>
                     <th className="px-3 py-2">Va chạm (km/h)</th>
                     <th className="px-3 py-2">Quãng phanh</th>
                     <th className="px-3 py-2">Ràng buộc</th>
@@ -522,7 +522,7 @@ export function MoboSection({
                       <td className="px-3 py-2 font-mono font-bold text-vehicsim-ink">{t.trial_number}</td>
                       <td className="px-3 py-2">
                         <Tag tone={["INITIAL_DESIGN", "SOBOL_INIT"].includes(t.sampling_source) ? "neutral" : "info"}>
-                          {["INITIAL_DESIGN", "SOBOL_INIT"].includes(t.sampling_source) ? "Khởi tạo ban đầu" : "qEHVI Bayes"}
+                          {["INITIAL_DESIGN", "SOBOL_INIT"].includes(t.sampling_source) ? "Khởi tạo ban đầu" : "Bayesian GP"}
                         </Tag>
                       </td>
                       <td className="px-3 py-2 font-mono text-vehicsim-muted">
