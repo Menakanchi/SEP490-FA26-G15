@@ -1,0 +1,11 @@
+# Kiểm mất mạng và mount khi dọn project
+
+Ngày 28/11/2026. Dùng MySQL 8.4, data root và Docker network riêng; không thay đổi DB, volume hay cấu hình đang dùng.
+
+- Đã tái hiện lỗi trên backend cũ: unmount thật riêng `runs` trong mount namespace container, marker ở root vẫn còn; worker xóa job dù file vẫn tồn tại trên volume đã ngắt. Bản sửa kiểm cả marker root và marker `runs` trước và sau I/O. Script thiết lập xử lý cài đặt cũ bằng cách bổ sung marker `runs` sau khi người vận hành xác minh volume, không ghi đè marker khác UUID.
+- Script `scripts/test-project-cleanup-mount.ps1` chạy backend JAR trong container demo, unmount và mount lại thật lần lượt `runs` và toàn bộ data root. Với mỗi ca, job fixture đã commit được giữ khi mất mount, sau đó worker tự dọn khi mount lại; DB và file project khác còn nguyên. Script chỉ cấp `SYS_ADMIN` trong container demo, không bind đường dẫn host và tự dọn container, volume, network. Các ca mount dùng job fixture được chèn trực tiếp sau khi project giả đã xóa, không chạy toàn bộ API xóa project.
+- `ProjectCleanupNetworkMysqlTest`: 3/3 đạt trên Spring và MySQL demo. Docker disconnect thật ngay sau dọn file giữ job để retry khi nối lại. Hai ca mất ACK dùng proxy TCP chuyển COMMIT tới MySQL, nhận OK thật rồi reset socket phía backend: commit xóa project để lại job và worker mới dọn; commit xác nhận dọn đã xóa job, file đã dọn và retry an toàn. Đây không phải ngắt mạng hạ tầng đúng thời điểm commit. Project và file B nguyên trong các ca.
+- `ProjectLocalCleanupMysqlTest`, `ProjectDeleteConcurrencyMysqlTest`, `ProjectTransactionContextMysqlTest`, `RepoDocsTest`: 19/19 đạt trên MySQL demo riêng; script thiết lập marker kiểm thiếu `runs`, nâng cấp marker cũ, chạy lại và UUID sai. Tài nguyên demo đã dọn.
+- Điều kiện vận hành: phải chạy lại script thiết lập marker sau khi xác minh cả root và `runs` đúng volume; không để bản sao marker trên mountpoint bên dưới hoặc mount riêng ở bất kỳ thư mục con nào của `runs`. Hai lần kiểm marker không loại trừ mount mất rồi phục hồi giữa hai lần kiểm. Chưa kiểm mất mount trên mạng/NFS thực tế hoặc ngắt nguồn vật lý.
+
+Đã đọc `AGENTS.md`, `CLAUDE.md`, schema và hướng dẫn database, ADR index, kế hoạch dọn project trước đó, tech-debt và hướng dẫn lưu video. `CLAUDE.md` còn mô tả profile CARLA v15 cũ, code hiện hành là v16; công việc này không đổi CARLA.
