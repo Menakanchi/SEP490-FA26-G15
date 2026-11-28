@@ -43,6 +43,9 @@ public final class MoboEngine {
 
     /** Đề xuất cấu hình tiếp theo từ các trial đã chạy; {@code paretoTrialNumbers} là front hiện tại của chúng. */
     public MoboProposal propose(List<MoboTrial> trials) {
+        if (trials == null) {
+            throw new IllegalArgumentException("trials cannot be null");
+        }
         List<MoboTrial> valid = trials.stream()
                 .filter(MoboTrial::valid)
                 .filter(t -> {

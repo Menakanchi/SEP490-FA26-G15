@@ -36,11 +36,13 @@ class M1DConsumerCharacterizationTest {
     @Test void typedEngineTrialDoesNotCarryDatasetIdentity(){assertThat(Arrays.stream(MoboTrial.class.getRecordComponents()).map(java.lang.reflect.RecordComponent::getName))
             .containsExactly("number","params","rmsJerk","impactSpeed","stoppingDistance","constraintViolated");}
     @Test void existingTrialValidDoesNotGuardNan(){var trial=new MoboTrial(1,Map.of(),Double.NaN,1.,1.,false);assertThat(trial.valid()).isTrue();}
-    @Test void existingBoundsValidDoesNotGuardNan(){Map<String,Double> values=new TreeMap<>();for(String code:ParameterBounds.PARAM_KEYS)values.put(code,ParameterBounds.defaults().lower(code));
-        values.put("TTC_THRESHOLD",Double.NaN);assertThat(ParameterBounds.defaults().isValid(values)).isTrue();}
+    @Test void boundsValidRejectsNan(){Map<String,Double> values=new TreeMap<>();for(String code:ParameterBounds.PARAM_KEYS)values.put(code,ParameterBounds.defaults().lower(code));
+        values.put("TTC_THRESHOLD",Double.NaN);assertThat(ParameterBounds.defaults().isValid(values)).isFalse();}
     @Test void correctedConsumerDoesNotReuseThePreviousRevisionAuditAuthority(){assertThat(source.audited()).isFalse();
         assertThat(source.texts().get("OptimizationService")).doesNotContain("Math.min(3.5, Math.round((currentTtc + 0.1) * 100.0) / 100.0)")
-                .contains("new MoboEngine(bounds, nInitialPoints, MOBO_SEED)");}
+                .contains("new MoboEngine(bounds, nInitialPoints, MOBO_SEED)");
+        assertThat(source.gaps()).filteredOn(gap -> "FINITE_PARAMETER_BOUNDARY_NOT_GUARDED".equals(gap.get("code")))
+                .singleElement().extracting(gap -> gap.get("status")).isEqualTo("UNKNOWN");}
     @Test void allProbeExecutionIsExplicitlySyntheticAndNoDispatch(){assertThat(at(probe.data(),"/evidence_scope")).isEqualTo("SYNTHETIC_TEST_ONLY");
         assertThat(at(probe.data(),"/engine_called")).isEqualTo(false);assertThat(at(probe.data(),"/database_accessed")).isEqualTo(false);assertThat(at(probe.data(),"/campaign_executed")).isEqualTo(false);}
 }

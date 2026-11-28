@@ -1,6 +1,7 @@
 package com.vsos.core.mobo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -13,6 +14,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Lõi MOBO Java (ADR-042: không giữ lõi Python song song). {@code parity/mobo_cases.json} do bản Python
@@ -24,6 +27,56 @@ class MoboEngineTest {
 
     private static MoboTrial trial(int n, double jerk, double impact, double stop) {
         return new MoboTrial(n, Map.of(), jerk, impact, stop, false);
+    }
+
+    @Test
+    void utcid09RejectsNullTrialList() {
+        MoboEngine engine = new MoboEngine(ParameterBounds.defaults(), 5, 42);
+        assertThatThrownBy(() -> engine.propose(null))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("trials cannot be null");
+    }
+
+    @Test
+    void boundsRejectNonFiniteParameterValues() {
+        ParameterBounds bounds = ParameterBounds.defaults();
+        Map<String, Double> params = new LinkedHashMap<>();
+        for (String key : ParameterBounds.PARAM_KEYS) params.put(key, bounds.lower(key));
+        assertThat(bounds.isValid(params)).isTrue();
+        for (String key : ParameterBounds.PARAM_KEYS) {
+            for (double value : new double[]{Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY}) {
+                params.put(key, value);
+                assertThat(bounds.isValid(params)).as("%s = %s", key, value).isFalse();
+            }
+            params.put(key, bounds.lower(key));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "BRAKE_BUILDUP_RATE", "MAX_DECELERATION"})
+    void utcid11To14RejectEachInvertedBound(String key) {
+        Map<String, double[]> ranges = new LinkedHashMap<>(ParameterBounds.DEFAULT);
+        double[] original = ranges.get(key);
+        ranges.put(key, new double[] {original[1], original[0]});
+        assertThatThrownBy(() -> new ParameterBounds(ranges))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("bound min cannot exceed max: " + key);
+    }
+
+    @Test
+    void utcid35ReturnsFallbackWhenAllInitialCandidatesAreDuplicates() {
+        Map<String, double[]> fixed = new LinkedHashMap<>();
+        Map<String, Double> evaluated = new LinkedHashMap<>();
+        for (String key : ParameterBounds.PARAM_KEYS) {
+            double value = ParameterBounds.DEFAULT.get(key)[0];
+            fixed.put(key, new double[] {value, value});
+            evaluated.put(key, value);
+        }
+        ParameterBounds bounds = new ParameterBounds(fixed);
+        MoboTrial existing = new MoboTrial(1, evaluated, 1.0, 1.0, 1.0, true);
+        MoboProposal proposal = new MoboEngine(bounds, 1, 42).propose(List.of(existing));
+        assertThat(proposal.samplingSource()).isEqualTo(MoboEngine.INITIAL_DESIGN);
+        assertThat(proposal.params()).isEqualTo(evaluated);
+        assertThat(proposal.acquisitionValue()).isNull();
     }
 
     @Test

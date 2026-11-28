@@ -20,6 +20,18 @@ public final class ParameterBounds {
     private final Map<String, double[]> bounds;
 
     public ParameterBounds(Map<String, double[]> bounds) {
+        if (bounds == null) {
+            throw new IllegalArgumentException("bounds cannot be null");
+        }
+        for (String key : PARAM_KEYS) {
+            double[] range = bounds.get(key);
+            if (range == null || range.length != 2 || !Double.isFinite(range[0]) || !Double.isFinite(range[1])) {
+                throw new IllegalArgumentException("invalid bounds: " + key);
+            }
+            if (range[0] > range[1]) {
+                throw new IllegalArgumentException("bound min cannot exceed max: " + key);
+            }
+        }
         this.bounds = bounds;
     }
 
@@ -38,7 +50,7 @@ public final class ParameterBounds {
     public boolean isValid(Map<String, Double> params) {
         for (String k : PARAM_KEYS) {
             Double v = params.get(k);
-            if (v == null || v < lower(k) - 1e-6 || v > upper(k) + 1e-6) {
+            if (v == null || !Double.isFinite(v) || v < lower(k) - 1e-6 || v > upper(k) + 1e-6) {
                 return false;
             }
         }
