@@ -109,11 +109,11 @@ public class AdminRepository {
             VALUES(?,?,?,?,(SELECT id FROM roles WHERE code=?),?,?)
             """,email,last,middle,first,role,active,hash);
     }
-    public void updateUser(long id,String email,String last,String middle,String first,String role,boolean active,boolean revoke) {
+    public void updateUser(long id,String last,String middle,String first,String role,boolean active,boolean revoke) {
         db.update("""
-            UPDATE users SET email=?,last_name=?,middle_name=?,first_name=?,
+            UPDATE users SET last_name=?,middle_name=?,first_name=?,
               role_id=(SELECT id FROM roles WHERE code=?),is_active=?,auth_version=auth_version+? WHERE id=?
-            """,email,last,middle,first,role,active,revoke ? 1 : 0,id);
+            """,last,middle,first,role,active,revoke ? 1 : 0,id);
     }
     public long createWorkspace(String name,String description,long manager,long actor) {
         return db.insert("INSERT INTO workspaces(name,description,manager_id,created_by_user_id) VALUES(?,?,?,?)",

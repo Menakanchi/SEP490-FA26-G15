@@ -11,6 +11,7 @@ interface VehicSimContextValue {
   ctx: Ctx | null;
   error: string | null;
   canResetProject: boolean;
+  noProjectInScope: boolean;
   refresh: () => Promise<void>;
   /** Reviewer chọn project trong workspace của mình. */
   selectProject: (id: number | null) => void;
@@ -35,6 +36,7 @@ const VehicSimCtx = createContext<VehicSimContextValue>({
   ctx: null,
   error: null,
   canResetProject: false,
+  noProjectInScope: false,
   refresh: async () => {},
   selectProject: () => {},
   canWrite: false,
@@ -55,6 +57,7 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
   const [choosing, setChoosing] = useState(false);
   const [projectNotice, setProjectNotice] = useState<string | null>(null);
   const [canResetProject, setCanResetProject] = useState(false);
+  const [noProjectInScope, setNoProjectInScope] = useState(false);
   const [ready, setReady] = useState(false);
   const latest = useRef(0);
   const { user } = useAuth();
@@ -87,6 +90,7 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
       setChoosing(false);
       setError(null);
       setCanResetProject(false);
+      setNoProjectInScope(false);
     } catch (err) {
       if (call !== latest.current) return;
       if (isExperiencer && err instanceof ApiError && LOST_PROJECT.includes(err.code ?? "")) {
@@ -99,11 +103,15 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
       // Giữ lựa chọn cũ khi lỗi: không âm thầm đổi project trong lúc người dùng đang duyệt.
       if (isTeamMember) setCtx(null);
       setCanResetProject(false);
+      setNoProjectInScope(false);
       setError(err instanceof Error ? err.message : "Không tải được ngữ cảnh VehicSim");
       if (isTeamMember && err instanceof ApiError && err.status === 404) {
         try {
           const available = await vehicsimApi.reviewerProjects();
-          if (call === latest.current) setCanResetProject(available.length > 0);
+          if (call === latest.current) {
+            setCanResetProject(available.length > 0);
+            setNoProjectInScope(available.length === 0);
+          }
         } catch { /* Không hiện nút chọn lại khi chưa biết còn project có thể chọn. */ }
       }
     } finally {
@@ -113,13 +121,17 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
 
   const openProject = useCallback(
     (id: number | null, target?: string) => {
-      setSelectedProjectId(id);
+      if (isTeamMember) {
+        selectReviewerProject(id);
+        setReady(false);
+      }
+      else setSelectedProjectId(id);
       setCtx(null);
       setProjectNotice(null);
       if (target) router.push(target);
       void refresh();
     },
-    [refresh, router],
+    [refresh, router, isTeamMember],
   );
 
   const selectProject = useCallback(
@@ -138,7 +150,7 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- tải ngữ cảnh một lần khi vào khu VehicSim
-    if (role && !adminPage) void refresh();
+    if (role && role !== "MANAGER" && !adminPage) void refresh();
   }, [refresh, role, adminPage]);
 
   // Reviewer / Kỹ sư chờ project được chốt rồi mới mount màn con; role khác giữ hành vi cũ (màn con tự xử lý ctx = null).
@@ -147,7 +159,7 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
   return (
     <VehicSimCtx.Provider
       value={{
-        ctx, error, canResetProject, refresh, selectProject, canWrite, canRunRegression, canDecide,
+        ctx, error, canResetProject, noProjectInScope, refresh, selectProject, canWrite, canRunRegression, canDecide,
         isExperiencer, choosing, projectNotice, clearProjectNotice, openProject,
       }}
     >

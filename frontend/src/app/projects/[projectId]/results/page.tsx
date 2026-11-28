@@ -7,7 +7,7 @@ import { Play } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { Card, ClassBadge, EmptyState, ErrorNote, PillButton, StatCard, cx, fmt, simulatorLabel } from "@/components/VehicSimUi";
-import { vi } from "@/components/vehicsimI18n";
+import { vi, viSummary } from "@/components/vehicsimI18n";
 import { useProjectItem } from "@/components/project/ProjectJourneyContext";
 import { OpenProjectCard, TERMS, Term } from "@/components/project/ProjectUi";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -32,7 +32,8 @@ function outcomeOf(v: Variant): CellOutcome {
   return v.metrics?.outcome ?? "UNCLASSIFIED";
 }
 
-function variantLabel(v: Variant): string {
+function variantLabel(v: Variant, category: string): string {
+  if (category !== "CP_CROSSING") return viSummary(v.summary);
   return [
     v.ego_speed_kmh !== null && `${fmt.num(v.ego_speed_kmh)} km/h`,
     v.trigger_distance_m !== null && `bước ra cách ${fmt.num(v.trigger_distance_m)} m`,
@@ -95,13 +96,13 @@ function OutcomeGrid({ variants }: { variants: Variant[] }) {
   );
 }
 
-function WorstCase({ variant, failure }: { variant: Variant; failure?: FailureItem }) {
+function WorstCase({ variant, failure, category }: { variant: Variant; failure?: FailureItem; category: string }) {
   const m = variant.metrics;
   const outcome = outcomeOf(variant);
   return (
     <Card className="flex min-w-0 flex-1 flex-col gap-3 p-5">
       <span className={cx("w-fit rounded-full px-3 py-1 text-[13px] font-semibold", CELL[outcome].cls)}>{CELL[outcome].label}</span>
-      <span className="text-[15px] font-bold text-vehicsim-ink">{variantLabel(variant)}</span>
+      <span className="text-[15px] font-bold text-vehicsim-ink">{variantLabel(variant, category)}</span>
       <dl className="flex flex-col gap-1 text-[14px]">
         {m?.collision_occurred && (
           <div className="flex justify-between gap-4">
@@ -231,7 +232,7 @@ export default function ProjectResultsPage() {
             <StatCard label="An toàn" value={count("SAFE")} />
             <StatCard label="Suýt va chạm" value={count("NEAR_MISS")} valueClass={count("NEAR_MISS") ? "text-vehicsim-warn" : undefined} />
             <StatCard label="Va chạm" value={count("COLLISION")} valueClass={count("COLLISION") ? "text-vehicsim-danger" : undefined} />
-            <StatCard label="Phanh oan" value={count("FALSE_BRAKING")} note="AEB phanh khi người dừng ở lề" tone="info" />
+            <StatCard label="Phanh oan" value={count("FALSE_BRAKING")} tone="info" />
           </div>
           {dataset.counts.not_run > 0 && (
             <p className="text-[14px] text-vehicsim-muted">
@@ -245,8 +246,7 @@ export default function ProjectResultsPage() {
           <Card className="flex flex-col gap-4 p-6">
             <h2 className="text-[17px] font-bold text-vehicsim-ink">AEB hỏng ở đâu?</h2>
             <p className="text-[14px] text-vehicsim-muted">
-              Mỗi ô là kết quả tệ nhất của các <Term tip={TERMS.variant}>biến thể</Term> cùng tốc độ xe và khoảng cách người bước ra;{" "}
-              <Term tip={TERMS.falseBraking}>phanh oan</Term> là AEB phanh khi người đã dừng ở lề.
+              Mỗi ô là kết quả tệ nhất của các <Term tip={TERMS.variant}>biến thể</Term> cùng tốc độ xe và khoảng cách kích hoạt.
             </p>
             <OutcomeGrid variants={variants} />
           </Card>
@@ -256,11 +256,11 @@ export default function ProjectResultsPage() {
             {worst.length > 0 ? (
               <div className="flex w-full items-stretch gap-4">
                 {worst.map((v) => (
-                  <WorstCase key={v.scenario_version_id} variant={v} failure={v.run_id === null ? undefined : failureByRun.get(v.run_id)} />
+                  <WorstCase key={v.scenario_version_id} variant={v} category={dataset.scenario.category} failure={v.run_id === null ? undefined : failureByRun.get(v.run_id)} />
                 ))}
               </div>
             ) : (
-              <p className="text-[14px] text-vehicsim-muted">Mọi tình huống đã chạy đều an toàn với AEB {dataset.baseline.label}.</p>
+              <p className="text-[14px] text-vehicsim-muted">Không có ca va chạm, suýt va chạm hoặc phanh oan trong các lượt đã chạy.</p>
             )}
           </section>
 

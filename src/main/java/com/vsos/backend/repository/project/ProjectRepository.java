@@ -39,6 +39,9 @@ public class ProjectRepository {
     }
 
     private static final String PERSONAL = " WHERE p.workspace_id IS NULL AND p.created_by_user_id = ? AND p.status = ? AND p.name LIKE ?";
+    private static final String ACCESSIBLE_WORKSPACE = " WHERE p.status = ? AND p.name LIKE ?"
+            + " AND ((p.workspace_id IS NULL AND p.created_by_user_id = ?) OR EXISTS"
+            + " (SELECT 1 FROM workspace_members wm WHERE wm.workspace_id = p.workspace_id AND wm.user_id = ?))";
 
     public List<Row> pagePersonal(long ownerId, String status, String query, int limit, int offset) {
         return db.list(SELECT + PERSONAL + " ORDER BY p.updated_at DESC, p.id DESC LIMIT ? OFFSET ?", ownerId, status, like(query), limit, offset);
@@ -46,6 +49,14 @@ public class ProjectRepository {
 
     public int countPersonal(long ownerId, String status, String query) {
         return ((Number) db.scalar("SELECT COUNT(*) FROM projects p" + PERSONAL, ownerId, status, like(query))).intValue();
+    }
+
+    public List<Row> pageAccessibleToEngineer(long userId, String status, String query, int limit, int offset) {
+        return db.list(SELECT + ACCESSIBLE_WORKSPACE + " ORDER BY p.updated_at DESC, p.id DESC LIMIT ? OFFSET ?", status, like(query), userId, userId, limit, offset);
+    }
+
+    public int countAccessibleToEngineer(long userId, String status, String query) {
+        return ((Number) db.scalar("SELECT COUNT(*) FROM projects p" + ACCESSIBLE_WORKSPACE, status, like(query), userId, userId)).intValue();
     }
 
     private static String like(String query) {

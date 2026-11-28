@@ -89,6 +89,7 @@ export default function WorkspaceTasksPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const id = Number(workspaceId);
   const { user } = useAuth();
+  const userId = user?.id;
   const allowed = WORKSPACE_ROLES.includes(user?.roleCode ?? "");
   const isManagerOrAdmin = WORKSPACE_MANAGER_ROLES.includes(user?.roleCode ?? "");
 
@@ -139,10 +140,10 @@ export default function WorkspaceTasksPage() {
       (tasks ?? []).filter(
         (t) =>
           (!status || t.status === status) &&
-          (!onlyMine || t.assignee?.id === user?.id) &&
+          (!onlyMine || (t.assignee != null && userId != null && String(t.assignee.id) === String(userId))) &&
           (!assignee || (assignee === "0" ? t.assignee === null : String(t.assignee?.id) === assignee)),
       ),
-    [tasks, status, assignee, onlyMine, user?.id],
+    [tasks, status, assignee, onlyMine, userId],
   );
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 8;
@@ -281,7 +282,7 @@ export default function WorkspaceTasksPage() {
       }
     >
       {!allowed ? (
-        <EmptyState title="Chỉ Quản lý workspace được vào màn này. Quản trị viên sử dụng mục Quản trị → Workspace." />
+        <EmptyState title="Màn này dành cho Quản lý, Kỹ sư và Người duyệt của workspace. Quản trị viên sử dụng mục Quản trị → Workspace." />
       ) : (
         <>
           <ErrorNote message={error} />
@@ -291,7 +292,7 @@ export default function WorkspaceTasksPage() {
             </div>
           )}
 
-          <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
+          <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-5">
             <StatCard label="Đang mở" value={tasks ? open.length : "…"} note="chưa hoàn thành" />
             <StatCard
               label="Quá hạn"
@@ -417,7 +418,7 @@ export default function WorkspaceTasksPage() {
           )}
 
           <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
-            <div className="flex items-center gap-2 px-5 py-4">
+            <div className="flex flex-wrap items-center gap-2 px-5 py-4">
               <span className="mr-2 text-[15px] font-bold text-vehicsim-ink">{tasks ? `${visible.length} task` : "…"}</span>
               <FilterSelect<TaskStatus>
                 label="Trạng thái"
@@ -431,7 +432,7 @@ export default function WorkspaceTasksPage() {
                 options={[{ value: "0", label: "Chưa giao" }, ...members.map((m) => ({ value: String(m.user_id), label: m.full_name }))]}
                 onChange={(a) => { setAssignee(a); setPage(1); }}
               />
-              <button
+              {!isManagerOrAdmin && <button
                 type="button"
                 onClick={() => { setOnlyMine((v) => !v); setPage(1); }}
                 className={cx(
@@ -442,11 +443,11 @@ export default function WorkspaceTasksPage() {
                 )}
               >
                 {onlyMine ? "✓ Task của tôi" : "Task của tôi"}
-              </button>
+              </button>}
             </div>
             {tasks && visible.length === 0 && (
               <EmptyState title={tasks.length ? "Không có task nào khớp bộ lọc" : "Chưa có task"}>
-                {active && !tasks.length ? "Bấm “Giao task” để giao việc đầu tiên cho thành viên." : undefined}
+                {active && !tasks.length ? (isManagerOrAdmin ? "Bấm “Giao task” để giao việc đầu tiên cho thành viên." : "Chưa có task nào được giao cho bạn.") : undefined}
               </EmptyState>
             )}
             {visible.length > 0 && (
@@ -482,13 +483,13 @@ export default function WorkspaceTasksPage() {
                         {t.report_count ? ` · ${t.report_count} báo cáo` : ""}
                       </span>
                     </span>
-                    <span className="w-[170px] shrink-0 truncate pr-3 text-[13px] text-vehicsim-muted">
+                    <span className="w-[160px] shrink-0 truncate pr-3 text-[13px] text-vehicsim-muted">
                       {t.assignee?.full_name ?? <span className="italic text-vehicsim-faint">Chưa giao</span>}
                     </span>
-                    <span className="w-[100px] shrink-0">
+                    <span className="w-[95px] shrink-0">
                       <Tag tone={PRIORITY[t.priority].tone}>{PRIORITY[t.priority].label}</Tag>
                     </span>
-                    <span className="w-[150px] shrink-0 pr-3">
+                    <span className="w-[145px] shrink-0 pr-3">
                       {active && (isManagerOrAdmin || t.status !== "DONE") ? (
                         <select
                           aria-label={`Trạng thái của ${t.title}`}
@@ -507,7 +508,7 @@ export default function WorkspaceTasksPage() {
                         <Tag tone={STATUS[t.status].tone}>{STATUS[t.status].label}</Tag>
                       )}
                     </span>
-                    <span className="flex w-[130px] shrink-0 items-center gap-2 pr-3">
+                    <span className="flex w-[125px] shrink-0 items-center gap-2 pr-3">
                       <span className="h-[6px] flex-1 overflow-hidden rounded-full bg-vehicsim-line">
                         <span
                           className={cx("block h-full rounded-full", t.status === "DONE" ? "bg-vehicsim-ok" : "bg-vehicsim-primary")}
@@ -516,7 +517,7 @@ export default function WorkspaceTasksPage() {
                       </span>
                       <span className="w-[34px] text-right text-[12px] font-semibold text-vehicsim-ink">{t.progress_pct}%</span>
                     </span>
-                    <span className={cx("w-[100px] shrink-0 text-[13px]", t.overdue ? "font-semibold text-vehicsim-danger" : "text-vehicsim-faint")}>
+                    <span className={cx("w-[95px] shrink-0 text-[13px]", t.overdue ? "font-semibold text-vehicsim-danger" : "text-vehicsim-faint")}>
                       {dateLabel(t.due_date)}
                       {t.overdue && <span className="block text-[11px]">quá hạn</span>}
                     </span>
@@ -542,7 +543,7 @@ export default function WorkspaceTasksPage() {
                               Xoá
                             </button>
                           </>
-                        ) : t.assignee?.id === user?.id ? (
+                        ) : t.assignee != null && userId != null && String(t.assignee.id) === String(userId) ? (
                           <button
                             type="button"
                             disabled={busy}

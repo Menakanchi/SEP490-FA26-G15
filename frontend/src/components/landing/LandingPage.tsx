@@ -90,7 +90,7 @@ export function LandingPage() {
               <Link href="/register" className="hidden rounded-lg px-4 py-2 text-[13.5px] font-semibold text-slate-300 hover:text-white sm:block">
                 Tạo tài khoản
               </Link>
-              <Link href="/login" className="rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-[13.5px] font-semibold backdrop-blur hover:bg-white/20">
+              <Link href="/login" className="rounded-lg border border-white/30 bg-slate-950 px-4 py-2 text-[13.5px] font-semibold text-white hover:bg-slate-800">
                 Đăng nhập
               </Link>
             </>
@@ -126,7 +126,7 @@ export function LandingPage() {
               <Link href="/register" className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-3 text-[14.5px] font-bold text-[#04130c] hover:bg-emerald-400">
                 Bắt đầu miễn phí <ArrowRight aria-hidden className="size-4" />
               </Link>
-              <Link href="/login" className="inline-flex items-center rounded-xl border border-white/20 bg-white/5 px-6 py-3 text-[14.5px] font-semibold backdrop-blur hover:bg-white/15">
+              <Link href="/login" className="inline-flex items-center rounded-xl border border-white/30 bg-slate-950 px-6 py-3 text-[14.5px] font-semibold text-white hover:bg-slate-800">
                 Đăng nhập
               </Link>
             </div>
@@ -156,7 +156,7 @@ export function LandingPage() {
             <Link href="/register" className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-3 text-[14.5px] font-bold text-[#04130c] hover:bg-emerald-400">
               Tạo tài khoản <ArrowRight aria-hidden className="size-4" />
             </Link>
-            <Link href="/login" className="inline-flex items-center rounded-xl border border-white/20 bg-white/5 px-6 py-3 text-[14.5px] font-semibold backdrop-blur hover:bg-white/15">
+            <Link href="/login" className="inline-flex items-center rounded-xl border border-white/30 bg-slate-950 px-6 py-3 text-[14.5px] font-semibold text-white hover:bg-slate-800">
               Đăng nhập
             </Link>
           </div>

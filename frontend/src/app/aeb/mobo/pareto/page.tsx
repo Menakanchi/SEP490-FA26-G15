@@ -11,7 +11,7 @@ import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
 import { VehicSimSelect } from "@/components/VehicSimSelect";
 import { formatMeasurement, formatMetric } from "@/components/analysis/analysisMetricFormat";
-import { isFeasibleTrial } from "@/components/aeb/optimizationEvidence";
+import { isFeasibleTrial, RUN_STATUS_LABEL } from "@/components/aeb/optimizationEvidence";
 import { vi } from "@/components/vehicsimI18n";
 
 export default function AebMoboParetoPage() {
@@ -22,8 +22,8 @@ export default function AebMoboParetoPage() {
   const [runs, setRuns] = useState<OptimizationRun[] | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [paretoResult, setParetoResult] = useState<{ runId: number; items: OptimizationTrial[] } | null>(null);
-  // Tải lại trạng thái "đã chọn" khi danh sách Pareto được tải lại (sau khi chọn ứng viên).
-  const trialSelections = useTrialSelections(paretoResult);
+  // Tải trạng thái đã chọn và cập nhật ngay khi chọn thành công.
+  const { selections: trialSelections, markSelected } = useTrialSelections(paretoResult);
   const paretoTrials = paretoResult?.runId === selectedRunId ? paretoResult.items.filter(isFeasibleTrial) : null;
   const selectionLock = useRef(false);
   const [selectingTrialId, setSelectingTrialId] = useState<number | null>(null);
@@ -73,6 +73,7 @@ export default function AebMoboParetoPage() {
     setError(null);
     try {
       const res = await vehicsimApi.selectOptimizationCandidate(selectedRunId, trialId);
+      markSelected(res.candidate_aeb_version_id, res.regression_test_id);
       setCandidateResult({
         runId: selectedRunId,
         id: res.candidate_aeb_version_id,
@@ -166,7 +167,7 @@ export default function AebMoboParetoPage() {
         {activeRun && (
           <div className="flex items-center gap-3 text-[12px] text-vehicsim-muted">
             <span>
-              Trạng thái: <strong>{activeRun.status}</strong>
+              Trạng thái: <strong>{RUN_STATUS_LABEL[activeRun.status] ?? "Không xác định"}</strong>
             </span>
             <span>·</span>
             <span>
@@ -182,7 +183,7 @@ export default function AebMoboParetoPage() {
           <div className="flex items-center gap-2">
             <TrendingUp className="size-5 text-vehicsim-ok" />
             <h3 className="text-[16px] font-bold text-vehicsim-ink">
-              Biên Pareto Frontier ({paretoTrials?.length ?? 0} phương án tối ưu)
+              Biên Pareto ({paretoTrials?.length ?? 0} phương án tối ưu)
             </h3>
           </div>
           <span className="text-[12px] text-vehicsim-muted">

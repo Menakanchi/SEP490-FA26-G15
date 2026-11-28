@@ -116,7 +116,7 @@ export default function ForgotPasswordPage() {
               required
               autoComplete="email"
               className={inputClass}
-              placeholder="name@company.com"
+              placeholder="ten@congty.vn"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
@@ -148,7 +148,7 @@ export default function ForgotPasswordPage() {
       footer={footer}
     >
       <form onSubmit={handleResetSubmit} className="space-y-4">
-        <OtpCodeField email={email} value={code} onChange={setCode} onResend={sendCode} />
+        <OtpCodeField email={email} value={code} onChange={setCode} onResend={sendCode} conditionalDelivery />
 
         <div>
           <label htmlFor="reset-password" className={labelClass}>

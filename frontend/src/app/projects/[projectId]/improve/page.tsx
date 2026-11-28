@@ -85,7 +85,7 @@ export default function ProjectImprovePage() {
           effort="Khoảng 2 phút"
           detail="Đổi từng tham số và ghi lý do; ứng viên chạy lại đúng các tình huống và seed của baseline khi kiểm chứng."
           cta="Tự chỉnh"
-          href={opened ? "/aeb?tab=manual" : undefined}
+          href={opened ? "/aeb/manual" : undefined}
         />
         <WayCard
           icon={<Sparkles className="size-5" />}
@@ -93,7 +93,7 @@ export default function ProjectImprovePage() {
           effort="Vài phút tới vài chục phút, tuỳ số lần thử"
           detail="Hệ thống thử nhiều bộ tham số và đưa ra các phương án cân bằng giữa va chạm, độ êm và quãng phanh; bạn chọn một phương án để kiểm chứng."
           cta="Chạy tối ưu"
-          href={opened ? "/aeb?tab=mobo" : undefined}
+          href={opened ? "/aeb/mobo" : undefined}
         />
       </div>
 

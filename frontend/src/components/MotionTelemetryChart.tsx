@@ -17,7 +17,7 @@ export const MOTION_SIGNALS: { key: MotionSignal; label: string; unit: string; s
   { key: "ego_x_m", label: "Vị trí ego X", unit: "m", source: "Tọa độ X theo hệ mô phỏng của run." },
   { key: "target_y_m", label: "Vị trí target Y", unit: "m", source: "Ground truth mục tiêu theo trục Y trong hệ mô phỏng của run." },
   { key: "target_vy_mps", label: "Vận tốc target Y", unit: "m/s", source: "Thành phần vận tốc có hướng theo trục Y; không phải độ lớn vận tốc." },
-  { key: "perceived_y_m", label: "Vị trí nhận thức Y", unit: "m", source: "Giá trị perceived_y do lõi ghi; không mặc định là đo từ sensor thật." },
+  { key: "perceived_y_m", label: "Vị trí nhận thức Y", unit: "m", source: "Vị trí nhận thức được hệ thống ghi lại; không mặc định là số đo từ cảm biến thật." },
   { key: "ttc_perceived_s", label: "TTC nhận thức", unit: "s", source: "TTC perception đã lưu; thiếu dữ liệu được để trống." },
   { key: "ttc_gt_s", label: "TTC ground truth", unit: "s", source: "TTC ground truth đã lưu; không thay thế TTC nhận thức bị thiếu." },
 ];
@@ -80,7 +80,7 @@ export function MotionTelemetryChart({ points, markers, cursor, selectedField, o
       <p className={styles.note} data-chart-readout aria-live="off">
         Mốc xem {formatMetric(time, 3)} s · Mẫu gần nhất theo timestamp (hòa chọn mốc trước, không nội suy):
         {nearest ? ` t = ${formatMetric(nearest.t, 3)} s · ${signal.label}: ${formatMetric(nearest.value, signal.unit === "m/s³" ? 3 : 2, nonNegative)} ${signal.unit}` : " Chưa có mẫu trong khoảng đã ghi của nguồn."}
-        {" "}Nguồn motion_telemetry.{field}. — = không có số đo hợp lệ tại mẫu.
+        {" "}Nguồn: số đo chuyển động đã ghi. — = không có số đo hợp lệ tại mẫu.
       </p>
       <p className={styles.note}>Dùng thanh thời gian phía trên bằng phím mũi tên/Home/End hoặc chạm để xem mẫu. Di chuột để so timestamp; cuộn ngang vùng biểu đồ trên màn hẹp.</p>
       <ChartQuality data={data} />

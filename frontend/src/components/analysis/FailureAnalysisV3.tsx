@@ -46,8 +46,8 @@ export function FailureAnalysisV3({ project, canWrite, families }: { project: nu
     {executionId ? <><button className={`analysis-button ${styles.back}`} onClick={() => navigation(null)}>← Chọn kết quả khác</button><ExecutionView key={executionId} id={executionId} reportId={reportId} project={project} onReport={id => navigation(executionId, id)} /></>
       : reportId ? <ErrorState error={new FAError("EXECUTION_LINK_REQUIRED", "Không tìm thấy lần phân tích của kết quả này.")} /> : <>
         <FailureAnalysisScenarioExplorer project={project} canWrite={canWrite} families={families} onReport={(execution, report) => navigation(execution, report)} onExecution={id => navigation(id)} />
-        <details className={styles.details}><summary>Phân tích theo nguồn kết quả</summary><FailureAnalysisDatabasePicker project={project} canWrite={canWrite} disabled={busy} onPending={setBusy} onExecution={id => navigation(id)} /></details>
-        <details className={styles.details}><summary>Kết quả phân tích trước đây</summary>
+        <details hidden className={styles.details}><summary>Phân tích theo nguồn kết quả</summary><FailureAnalysisDatabasePicker project={project} canWrite={canWrite} disabled={busy} onPending={setBusy} onExecution={id => navigation(id)} /></details>
+        <details hidden className={styles.details}><summary>Kết quả phân tích trước đây</summary>
           <ErrorState error={error} />
           <div className={styles.toolbar}><label>Chọn dữ liệu<select value={selected} onChange={e => { operation.current++; setSelected(e.target.value); }} disabled={busy}><option value="">Chọn dữ liệu</option>{sources?.map(s => <option key={s.id} value={s.id}>{sourceLabel(s)}</option>)}</select></label>
           <button className="analysis-button" disabled={!selected || busy || !canWrite} onClick={() => void analyze()}>{busy ? "Đang phân tích…" : "Phân tích lại"}</button></div>

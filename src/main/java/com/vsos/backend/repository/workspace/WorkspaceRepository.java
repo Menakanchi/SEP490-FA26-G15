@@ -58,12 +58,12 @@ public class WorkspaceRepository {
         return row == null ? null : toSummary(row);
     }
 
-    /** Project thuộc workspace, kèm chủ project và số thành viên. */
+    /** Project thuộc workspace, kèm chủ project và số thành viên workspace được truy cập. */
     public List<ProjectItem> projectsOf(long workspaceId) {
         return db.list("""
                 SELECT p.id, p.name, p.status, p.created_date,
                        o.id AS owner_id, %s AS owner_name, o.email AS owner_email,
-                       (SELECT COUNT(*) FROM project_members pm WHERE pm.project_id = p.id) AS member_count
+                       (SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = p.workspace_id) AS member_count
                   FROM projects p
                   JOIN users o ON o.id = p.created_by_user_id
                  WHERE p.workspace_id = ?

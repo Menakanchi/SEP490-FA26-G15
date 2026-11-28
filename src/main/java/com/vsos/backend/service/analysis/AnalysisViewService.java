@@ -492,6 +492,14 @@ public class AnalysisViewService {
         }
 
         Map<String, Object> out = new LinkedHashMap<>(header(b));
+        // Cùng mô tả đã lưu mà danh sách kết quả dùng; đây là giả thuyết theo luật,
+        // không phải xác nhận nguyên nhân vật lý của báo cáo chẩn đoán.
+        if (b.failure() != null && b.failure().getLong("id") != null) {
+            Row primaryCause = db.first("SELECT description FROM root_causes WHERE failure_id = ? AND is_primary = 1", b.failure().lng("id"));
+            String description = primaryCause == null ? null : primaryCause.str("description");
+            if (description == null || description.isBlank()) description = b.failure().str("description");
+            if (description != null && !description.isBlank()) out.put("recorded_cause", description);
+        }
         out.put("metrics", Json.obj(
                 "impact_speed_kmh", impact == null ? null : Vs.round(impact * 3.6, 1),
                 "min_distance_m", run.dbl("min_distance_m"),
@@ -662,6 +670,9 @@ public class AnalysisViewService {
         Map<String, Object> raw = b.raw();
         Double simulated = b.run().dbl("simulated_duration_s");
         Map<String, Object> out = new LinkedHashMap<>(header(b));
+        // The recorded decision events can be shadow decisions for OFF runs.
+        // Expose the authoritative run mode so clients do not present them as applied AEB intervention.
+        if (b.run().str("aeb_mode") != null) out.put("aeb_mode", b.run().str("aeb_mode"));
         out.put("related_runs", related);
         out.put("motion_telemetry", com.vsos.core.simulation.RecordedTelemetry.project(Json.asList(raw.get("frames")), Json.asDouble(raw.get("crossing_x"))));
         out.put("source","RECORDED_SIMULATOR_RESULT");

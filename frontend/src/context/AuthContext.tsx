@@ -43,7 +43,7 @@ function writeAvatar(userId: number | string, dataUrl: string | undefined): void
     if (dataUrl) localStorage.setItem(avatarKey(userId), dataUrl);
     else localStorage.removeItem(avatarKey(userId));
   } catch {
-    // Ảnh lớn có thể vượt quota localStorage — bỏ qua, không làm hỏng phiên.
+    throw new Error("Thông tin đã được lưu, nhưng không lưu được ảnh trên trình duyệt. Hãy thử ảnh nhỏ hơn.");
   }
 }
 
@@ -195,8 +195,9 @@ export function useAuth(): AuthContextType {
 
 /** Trang đích sau khi đăng nhập, theo role. */
 export function homeFor(role: Role): string {
-  // EXPERIENCER bắt đầu từ danh sách project cá nhân; ADMIN vào màn quản trị; role khác vào dashboard.
+  // MANAGER làm việc trong workspace; ADMIN vào màn quản trị hệ thống.
   if (role === "experience") return "/projects";
   if (role === "admin") return "/admin/users";
+  if (role === "manager") return "/workspace";
   return "/";
 }
