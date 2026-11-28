@@ -77,7 +77,7 @@ export default function AebMoboTrialsPage() {
       actions={
         <div className="flex items-center gap-2">
           <PillButton href={`/aeb/mobo/pareto${selectedRunId ? `?run_id=${selectedRunId}` : ""}`} variant="dark">
-            Xem biên Pareto Frontier
+            Xem biên Pareto
           </PillButton>
           <PillButton href="/aeb/mobo" variant="light">
             Về danh sách đợt chạy
@@ -183,6 +183,10 @@ export default function AebMoboTrialsPage() {
                   <th className="pl-5 pr-3 py-3.5 whitespace-nowrap">Lượt thử</th>
                   <th className="leading-tight px-3 py-3.5">Nguồn sinh mẫu</th>
                   <th className="leading-tight px-3 py-3.5">Điểm tiềm năng (qEHVI)</th>
+                  <th className="px-3 py-3.5">TTC (s)</th>
+                  <th className="px-3 py-3.5">Trễ phanh (s)</th>
+                  <th className="px-3 py-3.5">Giảm tốc (m/s²)</th>
+                  <th className="px-3 py-3.5">Tăng lực phanh (m/s³)</th>
                   <th className="leading-tight px-3 py-3.5 text-emerald-300">RMS Jerk (m/s³)</th>
                   <th className="leading-tight px-3 py-3.5 text-rose-300">Va chạm (m/s)</th>
                   <th className="leading-tight px-3 py-3.5 text-slate-200">Quãng phanh (m)</th>
@@ -195,13 +199,16 @@ export default function AebMoboTrialsPage() {
                   <tr key={t.id} className={cx("hover:bg-vehicsim-row transition-colors", t.is_pareto_optimal && "bg-vehicsim-ok-bg/25")}>
                     <td className="pl-5 pr-3 py-3.5 font-mono font-bold text-vehicsim-ink">#{t.trial_number}</td>
                     <td className="px-3 py-3.5">
-                      <Tag tone={t.sampling_source === "INITIAL_DESIGN" ? "neutral" : "info"}>
-                        {t.sampling_source === "INITIAL_DESIGN" ? "Khởi tạo Sobol/Random" : "qEHVI Bayes"}
+                      <Tag tone={["INITIAL_DESIGN", "SOBOL_INIT"].includes(t.sampling_source) ? "neutral" : "info"}>
+                        {["INITIAL_DESIGN", "SOBOL_INIT"].includes(t.sampling_source) ? "Khởi tạo Sobol/Random" : "qEHVI Bayes"}
                       </Tag>
                     </td>
                     <td className="px-3 py-3.5 font-mono text-[12px] text-vehicsim-muted">
                       {formatMetric(t.acquisition_value, 5)}
                     </td>
+                    {["TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "MAX_DECELERATION", "BRAKE_BUILDUP_RATE"].map((code) => (
+                      <td key={code} className="px-3 py-3.5 tabular-nums">{formatMetric(t.parameters?.[code], 3)}</td>
+                    ))}
                     <td className="px-3 py-3.5 font-semibold text-vehicsim-decision">
                       {formatObjective(t.rms_jerk_mps3)}
                     </td>

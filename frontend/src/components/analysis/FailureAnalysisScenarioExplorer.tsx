@@ -32,7 +32,8 @@ export function FailureAnalysisScenarioExplorer({ project, canWrite, families, o
   onReport: (execution: string, report: string) => void; onExecution: (execution: string) => void;
 }) {
   const router = useRouter(), params = useSearchParams();
-  const scenario = integer(params.get("fa_scenario"));
+  // Existing entry points use scenario_id; fa_scenario is the explorer's own navigation state.
+  const scenario = integer(params.get("fa_scenario")) ?? integer(params.get("scenario_id"));
   const search = params.get("fa_q") ?? "", rawOffset = Number(params.get("fa_offset") ?? 0);
   const offset = Number.isSafeInteger(rawOffset) && rawOffset >= 0 && rawOffset <= 100000 ? rawOffset : 0;
   const [draft, setDraft] = useState(search), [open, setOpen] = useState<Record<number, boolean>>({});
@@ -48,6 +49,7 @@ export function FailureAnalysisScenarioExplorer({ project, canWrite, families, o
   }, [search]);
   function navigate(values: Record<string, string | number | null>, push = false) {
     const next = new URLSearchParams(window.location.search);
+    if ("fa_scenario" in values) next.delete("scenario_id");
     for (const [key, value] of Object.entries(values)) { if (value === null || value === "") next.delete(key); else next.set(key, String(value)); }
     const url = `/analysis/failures${next.size ? `?${next}` : ""}`;
     if (push) router.push(url, { scroll: false }); else window.history.replaceState(null, "", url);

@@ -10,7 +10,7 @@ const base=process.env.ANALYSIS_UI_URL||"http://127.0.0.1:3300";
 const output=path.resolve(process.env.MOBO_UI_OUTPUT||"../data/postmerge-mobo");
 await fs.mkdir(output,{recursive:true});
 await fs.rm(path.join(output,"result.json"),{force:true});
-const errors=[],unexpected=[],writes=[],pending=[];
+const errors=[],unexpected=[],writes=[],pending=[],cancellations=[];
 const campaignWrites=[];
 const contextWrites=[],contextExecutions=[],datasetReads=[];
 let datasetMode="normal",campaignStatus=200,failedCampaign=false;
@@ -30,7 +30,7 @@ const v3Execution={resource_schema:"vehicsim.fa-rest-resource/v1",resource_kind:
 let empty=false,delayFirst=false,holdSelection=false;
 const user={id:77,email:"mobo@example.invalid",full_name:"MOBO Fixture",role:"ENGINEER",is_active:true};
 const runs=[1,2].map(id=>({id,name:"Campaign "+id,scenario_id:5,status:"COMPLETED",completed_trials:4,max_trials:4,pareto_count:1}));
-const row={id:101,trial_number:1,status:"COMPLETED",sampling_source:"INITIAL_DESIGN",constraint_violated:false,is_pareto_optimal:true,acquisition_value:null,rms_jerk_mps3:0.0001,impact_speed_mps:0.0001,stopping_distance_m:1,parameters:{TTC_THRESHOLD:1.5123456789123,BRAKE_ACTIVATION_DELAY:0.1234567891234,BRAKE_BUILDUP_RATE:10.123456789123,MAX_DECELERATION:8.123456789123}};
+const row={id:101,trial_number:1,status:"COMPLETED",sampling_source:"SOBOL_INIT",constraint_violated:false,is_pareto_optimal:true,acquisition_value:null,rms_jerk_mps3:0.0001,impact_speed_mps:0.0001,stopping_distance_m:1,parameters:{TTC_THRESHOLD:1.5123456789123,BRAKE_ACTIVATION_DELAY:0.1234567891234,BRAKE_BUILDUP_RATE:10.123456789123,MAX_DECELERATION:8.123456789123}};
 const source=await fs.readFile(new URL("../src/components/aeb/optimizationEvidence.ts",import.meta.url),"utf8");
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
 const {hasCompleteTrialEvidence,isFeasibleTrial}=await import("data:text/javascript;base64,"+Buffer.from(compiled).toString("base64"));
@@ -85,6 +85,10 @@ try {
    const missing={...row,id:id*100+90,trial_number:id*100+90,stopping_distance_m:null};
    return reply(match[2]==="pareto"?[completed,missing]:[completed,{...row,id:102,trial_number:2,status:"RUNNING",is_pareto_optimal:false},{...row,id:103,trial_number:3,status:"FAILED",is_pareto_optimal:false},{...row,id:104,trial_number:4,constraint_violated:true,is_pareto_optimal:false},missing]);
   }
+  if(p.match(/^\/vehicsim\/optimizations\/\d+\/cancel$/)&&req.method()==="POST"){
+   cancellations.push(p);const run=runs.find(item=>item.id===Number(p.split("/")[3]));if(run)run.status="CANCELLED";
+   return reply({id:run.id,status:"CANCELLED"});
+  }
   if(p.match(/^\/vehicsim\/optimizations\/\d+\/select\/\d+$/)&&req.method()==="POST"){
    writes.push(p);if(holdSelection)await new Promise(resolve=>pending.push(resolve));
    return reply({candidate_aeb_version_id:p.includes('/optimizations/2/')?21:20,regression_test_id:30});
@@ -102,6 +106,8 @@ try {
  }),"Table header contrast is readable");
  await page.goto(base+"/aeb/mobo/trials?run_id=1");
  await page.getByRole("button",{name:"Hợp lệ (1)",exact:true}).waitFor();
+ assert.equal(await page.getByText("Khởi tạo Sobol/Random",{exact:true}).count(),5);
+ for(const name of ["TTC (s)","Trễ phanh (s)","Giảm tốc (m/s²)","Tăng lực phanh (m/s³)"])assert.equal(await page.getByRole("columnheader",{name,exact:true}).count(),1);
  await readableHeaders();
  assert.equal(await page.getByRole("columnheader",{name:"Va chạm (m/s)",exact:true}).count(),1);
  assert.equal(await page.getByRole("cell",{name:"Chưa đánh giá",exact:true}).count(),3,"Completed without a stopping metric remains unassessed");
@@ -219,6 +225,10 @@ try {
  for(const query of [`handoff_id=${handoffId}`,`handoff_id=invalid&handoff_digest=${handoffDigest}`,`handoff_id=${handoffId}&handoff_digest=${handoffDigest}&dataset_id=91`]){await page.goto(base+"/aeb/mobo/new?"+query);await page.getByRole("region",{name:"Handoff Failure Analysis V3",exact:true}).getByRole("alert").waitFor();assert(await page.getByRole("button",{name:/Bắt đầu tối ưu/}).isDisabled());}
  assert.equal(datasetReads.length,beforeV3Reads,"V3 campaign errors never fetch a V2 dataset as fallback");assert.equal(campaignWrites.length,3,"Invalid V3 requests never create an alternate campaign");
  v3Campaign=false;
+ runs[0].status="PENDING";
+ page.once("dialog",dialog=>dialog.accept());
+ await page.goto(base+"/aeb/mobo?run_id=1");await page.getByRole("button",{name:"Dừng đợt chạy",exact:true}).click();
+ await page.getByRole("button",{name:"Dừng đợt chạy",exact:true}).waitFor({state:"hidden"});assert.deepEqual(cancellations,["/vehicsim/optimizations/1/cancel"]);
  empty=true;
  for(const route of ["trials","pareto"]){await page.goto(base+"/aeb/mobo/"+route);await page.getByText("Chưa có đợt tối ưu",{exact:true}).waitFor();assert(await page.getByRole("button",{name:"Chọn đợt tối ưu hoá",exact:true}).isDisabled());}
  assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);

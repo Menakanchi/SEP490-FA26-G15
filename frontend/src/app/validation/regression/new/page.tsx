@@ -255,7 +255,7 @@ function NewRegressionForm() {
                 checked={false}
                 disabled
                 title="Kịch bản mới sinh"
-                detail="Vùng rủi ro cao theo active learning — có khi phần Tối ưu hoá (FE-13) hoàn thành"
+                detail="Các tình huống rủi ro cao được đề xuất tự động. Chức năng này chưa sẵn sàng."
                 tag="Bộ sinh kịch bản"
               />
             )}
@@ -383,7 +383,7 @@ function SetOption({
         checked ? "border-vehicsim-primary" : "border-vehicsim-line",
         disabled && "opacity-50",
       )}
-      title={disabled ? (disabledHint ?? "Chưa có trong MVP") : undefined}
+      title={disabled ? (disabledHint ?? "Chức năng chưa sẵn sàng") : undefined}
     >
       {disabled ? <span className="size-4 shrink-0 rounded-[4px] border border-solid border-vehicsim-check" /> : <Checkbox checked={checked} label={title} onChange={(v) => onChange?.(v)} />}
       <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
