@@ -36,7 +36,7 @@ services:
       MYSQL_USER: ${MYSQL_USER:-vehicsim}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-vehicsim}
     ports:
-      - "3306:3306"
+      - "${MYSQL_BIND_HOST:-127.0.0.1}:3306:3306"
     volumes:
       - ./database/mysql:/docker-entrypoint-initdb.d:ro
       - mysql_data:/var/lib/mysql
@@ -54,7 +54,7 @@ services:
     image: redis:7.4-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
-      - "6379:6379"
+      - "${REDIS_BIND_HOST:-127.0.0.1}:6379:6379"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
