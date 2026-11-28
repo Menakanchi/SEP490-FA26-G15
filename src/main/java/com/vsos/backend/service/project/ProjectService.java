@@ -74,7 +74,7 @@ public class ProjectService {
         return list(userId, false, status, query, page, pageSize);
     }
 
-    public ProjectList list(long userId, boolean workspaceOwner, String status, String query, int page, int pageSize) {
+    public ProjectList list(long userId, boolean engineer, String status, String query, int page, int pageSize) {
         if (!ACTIVE.equals(status) && !ARCHIVED.equals(status)) {
             throw new Vs.InvalidRequestException("status phải là ACTIVE hoặc ARCHIVED");
         }
@@ -82,10 +82,10 @@ public class ProjectService {
             throw new Vs.InvalidRequestException("page phải ≥ 1 và page_size trong khoảng 1–" + PAGE_SIZE_MAX);
         }
         String q = query == null ? "" : query.strip();
-        if (workspaceOwner) {
-            List<ProjectItem> items = projects.pageOwnedWorkspace(userId, status, q, pageSize, (page - 1) * pageSize).stream().map(this::toItem).toList();
-            return new ProjectList(items, projects.countOwnedWorkspace(userId, status, q), page, pageSize,
-                    projects.countOwnedWorkspace(userId, ACTIVE, q), projects.countOwnedWorkspace(userId, ARCHIVED, q));
+        if (engineer) {
+            List<ProjectItem> items = projects.pageAccessibleToEngineer(userId, status, q, pageSize, (page - 1) * pageSize).stream().map(this::toItem).toList();
+            return new ProjectList(items, projects.countAccessibleToEngineer(userId, status, q), page, pageSize,
+                    projects.countAccessibleToEngineer(userId, ACTIVE, q), projects.countAccessibleToEngineer(userId, ARCHIVED, q));
         }
         List<ProjectItem> items = projects.pagePersonal(userId, status, q, pageSize, (page - 1) * pageSize).stream().map(this::toItem).toList();
         return new ProjectList(items, projects.countPersonal(userId, status, q), page, pageSize, projects.countPersonal(userId, ACTIVE, q),

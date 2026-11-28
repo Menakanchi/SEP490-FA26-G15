@@ -386,10 +386,17 @@ export function runCode(id: number): string {
   return `#${String(id).padStart(4, "0")}`;
 }
 
+/** Nhãn đơn vị chỉ dùng để hiển thị; giá trị lưu và API không thay đổi. */
+export function displayUnit(unit?: string | null): string {
+  if (!unit || unit === "ratio") return "";
+  return unit.replace(/m\/s2\b/g, "m/s²").replace(/m\/s3\b/g, "m/s³");
+}
+
 /** Hiển thị giá trị tham số AEB theo đơn vị. */
 export function paramValue(value: number | undefined, unit: string): string {
   if (value === undefined) return "—";
-  const u = unit === "ratio" ? "" : unit === "m/s2" ? " m/s²" : unit === "m/s3" ? " m/s³" : ` ${unit}`;
+  const label = displayUnit(unit);
+  const u = label ? ` ${label}` : "";
   return `${fmt.num(value)}${u}`;
 }
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Plus, RefreshCw, Search, BookOpen, X } from "lucide-react";
+import { displayUnit } from "@/components/VehicSimUi";
 import { adminApi, type AdminPageData, type AdminRow } from "@/services/admin";
 import { readReferenceQuery, referenceErrorMessage, referenceListUrl, referenceQueryParams, REFERENCE_PAGE_SIZES, REFERENCE_KINDS, REFERENCE_SORTS, REFERENCE_STATUSES, type ReferenceListQuery } from "./adminReferences";
 import styles from "./AdminTable.module.css";
@@ -11,6 +12,7 @@ import { workspaceDate } from "./adminWorkspacesQuery";
 import reference from "./AdminReferences.module.css";
 
 type Result = { key: string; data?: AdminPageData; error?: string };
+const displayNumber = (value: unknown) => value == null ? "—" : String(value).replace(/(\.\d*?[1-9])0+$|\.0+$/, "$1");
 
 function SearchForm({ value, onSearch }: { value: string; onSearch: (q: string) => void }) {
   const [search, setSearch] = useState({ applied: value, draft: value });
@@ -127,7 +129,7 @@ export function AdminReferencesTable() {
               return <tr key={row.id}>
                 <th scope="row"><span className={styles.name}>{String(row.ref_name || "Tài liệu #" + row.id)}</span><span className={styles.email}>{String(row.ref_code ?? "—")} · ID #{row.id}</span></th>
                 <td>{REFERENCE_KINDS[String(row.ref_type)] ?? "Chưa rõ"}</td>
-                <td><span className={styles.name}>{row.ref_value == null ? "—" : String(row.ref_value)}</span><small className={styles.email}>{String(row.unit ?? "—")}</small></td>
+                <td><span className={styles.name}>{displayNumber(row.ref_value)}</span><small className={styles.email}>{row.unit === "ratio" ? "không thứ nguyên" : displayUnit(row.unit == null ? null : String(row.unit)) || "—"}</small></td>
                 <td><span className={styles.status + " " + (enabled ? styles.active : styles.inactive)}>{enabled ? "Đang bật" : disabled ? "Đã tắt" : "Chưa rõ"}</span></td>
                 <td>{workspaceDate(row.updated_at)}</td>
                 <td className={styles.actions}><button className={styles.button} aria-label={"Chỉnh sửa tài liệu " + row.ref_code} disabled={openingId !== null} onClick={event => { setReturnFocusTo(event.currentTarget); void edit(row.id); }}>{openingId === row.id ? "Đang mở…" : "Chỉnh sửa"}</button></td>

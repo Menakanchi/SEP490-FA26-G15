@@ -31,7 +31,7 @@ export function assertInspection(value: unknown, runId: number): asserts value i
   }
   // Reject text/object substitutions that would crash recorded-data renderers. Nullable
   // numeric measurements remain untouched and are formatted as unknown by existing helpers.
-  textFields(d, ["status", "outcome", "headline", "failure_type", "failure_class", "simulator", "vehicle", "summary", "config", "date"]);
+  textFields(d, ["status", "outcome", "headline", "failure_type", "failure_class", "recorded_cause", "simulator", "vehicle", "summary", "config", "date"]);
   textFields(d.environment as Record<string, unknown>, ["category", "weather", "time_of_day"]);
   for (const row of d.configuration as Record<string, unknown>[]) textFields(row, ["code", "name", "unit"]);
   for (const row of d.similar as Record<string, unknown>[]) textFields(row, ["variant", "summary"]);

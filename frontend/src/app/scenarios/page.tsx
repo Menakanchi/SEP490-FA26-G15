@@ -337,7 +337,7 @@ export default function ScenarioFamiliesPage() {
       {!isNew && (
         <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
         <div className="flex items-center px-5 py-4">
-          <span className="text-[15px] font-bold text-vehicsim-ink">{items ? `${items.length} ${items.length === 1 ? "family" : "families"}` : "…"}</span>
+          <span className="text-[15px] font-bold text-vehicsim-ink">{items ? `${items.length} họ kịch bản` : "…"}</span>
         </div>
         {items && items.length === 0 && (
           <EmptyState title="Chưa có họ kịch bản nào">Tạo họ đầu tiên (ví dụ người đi bộ băng ngang) rồi chạy cơ sở để có ca lỗi.</EmptyState>

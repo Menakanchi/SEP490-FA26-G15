@@ -187,7 +187,7 @@ export default function AebMoboTrialsPage() {
                   <th className="px-3 py-3.5">Trễ phanh (s)</th>
                   <th className="px-3 py-3.5">Giảm tốc (m/s²)</th>
                   <th className="px-3 py-3.5">Tăng lực phanh (m/s³)</th>
-                  <th className="leading-tight px-3 py-3.5 text-emerald-300">RMS Jerk (m/s³)</th>
+                  <th className="leading-tight px-3 py-3.5 text-emerald-300">Độ giật RMS (m/s³)</th>
                   <th className="leading-tight px-3 py-3.5 text-rose-300">Va chạm (m/s)</th>
                   <th className="leading-tight px-3 py-3.5 text-slate-200">Quãng phanh (m)</th>
                   <th className="leading-tight px-3 py-3.5">Ràng buộc</th>
@@ -230,7 +230,7 @@ export default function AebMoboTrialsPage() {
                     <td className="px-3 py-3.5 text-right">
                       {t.is_pareto_optimal && isFeasibleTrial(t) ? (
                         <span className="rounded-full bg-vehicsim-ok-bg px-2.5 py-0.5 text-[10px] font-bold text-vehicsim-ok">
-                          PARETO
+                          Pareto
                         </span>
                       ) : (
                         <span className="text-vehicsim-faint">—</span>

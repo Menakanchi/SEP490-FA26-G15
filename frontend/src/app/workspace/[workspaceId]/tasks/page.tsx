@@ -292,7 +292,7 @@ export default function WorkspaceTasksPage() {
             </div>
           )}
 
-          <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
+          <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-5">
             <StatCard label="Đang mở" value={tasks ? open.length : "…"} note="chưa hoàn thành" />
             <StatCard
               label="Quá hạn"

@@ -56,7 +56,7 @@ export default function RecommendationPage() {
                 : superseded ? "Ứng viên này đã được quyết định ở một kiểm thử hồi quy khác" : undefined}
               className="print:hidden"
             >
-              Duyệt quyết định
+              {r.recommendation_status === "BASELINE_CHANGED" ? "Xem lựa chọn quyết định" : "Duyệt quyết định"}
             </PillButton>}
           </>
         )
@@ -199,7 +199,7 @@ export default function RecommendationPage() {
                     : r.recommendation_status === "SUPERSEDED"
                       ? "Hết hiệu lực: ứng viên này đã được quyết định ở một kiểm thử hồi quy khác, không cần duyệt khuyến nghị này nữa."
                       : r.recommendation_status === "BASELINE_CHANGED"
-                        ? "Bản cơ sở đã đổi kể từ khi chạy kiểm thử: không chấp nhận được nữa, hãy chạy lại kiểm thử hồi quy với bản cơ sở hiện hành."
+                        ? "Bản cơ sở đã đổi: không thể chấp nhận ứng viên bằng kiểm thử này. Bạn vẫn có thể từ chối hoặc yêu cầu kiểm thử thêm."
                         : "Đang chờ Người duyệt (Reviewer) quyết định."}
                 </p>
               )}

@@ -7,6 +7,7 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { EmptyState, ErrorNote, FilterSelect, Pagination, PillButton, REGRESSION_STATUS, StatCard, StatusBadge, cx, fmt, TableScroll } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
+import { vi } from "@/components/vehicsimI18n";
 import type { RegressionList, RegressionStatus } from "@/types/vehicsim";
 
 const POLL_MS = 3000;
@@ -161,7 +162,7 @@ export default function RegressionListPage() {
                   </span>
                   <span className="flex w-[180px] shrink-0 flex-col gap-[2px] pr-3">
                     <span className="text-[13px] font-bold text-vehicsim-ink">{i.code}</span>
-                    <span className="truncate text-[11.5px] text-vehicsim-faint">{i.name}</span>
+                    <span className="truncate text-[11.5px] text-vehicsim-faint">{vi(i.name)}</span>
                   </span>
                   <span className="min-w-[140px] flex-1 truncate pr-3 text-[12.5px] font-semibold text-vehicsim-ink" title={`${i.baseline} → ${i.candidate}`}>
                     {i.baseline} → {i.candidate}

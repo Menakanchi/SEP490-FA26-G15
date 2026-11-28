@@ -174,7 +174,7 @@ export default function ProfilePage() {
             <div>
               <label htmlFor="profile-password-new" className={labelClass}>Mật khẩu mới</label>
               <input id="profile-password-new" type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} maxLength={72} aria-describedby="profile-password-rule" className={inputClass} required />
-              <p id="profile-password-rule" className="mt-1.5 text-xs text-vehicsim-muted">Ít nhất {MIN_PASSWORD_LENGTH} ký tự.</p>
+              <p id="profile-password-rule" className="mt-1.5 text-xs text-vehicsim-muted">Ít nhất {MIN_PASSWORD_LENGTH} ký tự, tối đa 72 byte UTF-8.</p>
             </div>
             <div>
               <label htmlFor="profile-password-confirm" className={labelClass}>Xác nhận mật khẩu mới</label>

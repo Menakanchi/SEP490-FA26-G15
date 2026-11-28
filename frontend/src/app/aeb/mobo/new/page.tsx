@@ -160,7 +160,7 @@ export default function AebMoboNewPage() {
         <div className="mt-3"><PillButton href={`/analysis/failures?view=dataset${datasetId ? `&dataset_id=${datasetId}` : ""}`}>Về tập phân tích</PillButton></div>
       </section>}
 
-      <section className="flex flex-col gap-6 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 shadow-sm">
+      {canWrite && <section className="flex flex-col gap-6 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 shadow-sm">
         <div className="border-b border-solid border-vehicsim-line pb-4">
           <h2 className="text-[17px] font-bold text-vehicsim-ink">
             Cấu hình tham số đợt chạy MOBO
@@ -301,7 +301,7 @@ export default function AebMoboNewPage() {
             </PillButton>
           </div>
         </form>
-      </section>
+      </section>}
     </VehicSimPage>
   );
 }

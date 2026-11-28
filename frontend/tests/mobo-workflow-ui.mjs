@@ -124,6 +124,7 @@ try {
  await page.waitForResponse(response=>response.url().endsWith("/optimizations/1/trials"));
  assert.equal(await page.getByRole("cell",{name:"#101",exact:true}).count(),0);
  await page.goto(base+"/aeb/mobo/pareto?run_id=1");await page.getByRole("button",{name:"Chọn làm ứng viên",exact:true}).waitFor();
+ await page.getByText("Trạng thái:").getByText("Hoàn tất",{exact:true}).waitFor();
  assert.equal(await page.getByRole("columnheader",{name:"Ngưỡng TTC (s)",exact:true}).count(),1);
  assert.equal(await page.getByRole("cell",{name:"1.512",exact:true}).count(),1);
  assert.equal(await page.getByRole("cell",{name:"1.512",exact:true}).getAttribute("title"),"1.5123456789123");

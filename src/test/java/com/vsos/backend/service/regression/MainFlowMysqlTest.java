@@ -121,6 +121,17 @@ class MainFlowMysqlTest {
         bootstrap.ensureDefaultProject(admin); // Repeated bootstrap must never grant outsiders membership.
         String engineer=login("audit-engineer@example.invalid"),reviewer=login("audit-reviewer@example.invalid");
         String outsider=login("audit-outsider@example.invalid");
+        // Team project was created by the admin, not by this engineer; workspace membership grants visibility.
+        var engineerProjects=json("GET",BASE+"/projects",engineer,null,200);
+        assertThat(Json.asList(engineerProjects.get("items")).stream().map(Json::asMap).toList())
+                .anySatisfy(item -> assertThat(id(item,"id")).isEqualTo(projectId));
+        assertThat(Json.asList(json("GET",BASE+"/projects",outsider,null,200).get("items"))).isEmpty();
+        var workspace=json("GET",BASE+"/workspaces/"+workspaceId,engineer,null,200);
+        assertThat(Json.asList(workspace.get("projects")).stream().map(Json::asMap).toList())
+                .anySatisfy(item -> {
+                    assertThat(id(item,"id")).isEqualTo(projectId);
+                    assertThat(((Number)item.get("member_count")).intValue()).isEqualTo(2);
+                });
         request("GET",BASE+"/families",null,null,401);
         var definition=Json.obj("name","Phân tích lỗi — audit","ego_speeds_kmh",List.of(40,70),"trigger_distances_m",List.of(30),
                 "pedestrian_speeds_mps",List.of(1.5),"stops_at_curb",List.of(false,true),"weathers",List.of("CLEAR"),
