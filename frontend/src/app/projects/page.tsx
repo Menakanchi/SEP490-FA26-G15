@@ -49,7 +49,7 @@ export default function ListProjectPage() {
     void reload();
   }, [reload]);
 
-  if (list && isExperiencer && !search && list.active_count + list.archived_count === 0) return <Welcome />;
+  if (list && isExperiencer && !search && list.active_count + list.archived_count === 0) return <>{actions.view}<Welcome /></>;
 
   const pages = list ? Math.max(1, Math.ceil(list.total / PAGE_SIZE)) : 1;
   const go = (id: number, href: string) => (ctx?.project.id === id ? router.push(href) : openProject(id, href));
@@ -96,8 +96,8 @@ export default function ListProjectPage() {
             </button>
           ))}
         </div>
-        <form role="search" onSubmit={submitSearch} className="flex items-center gap-2">
-          <label className="flex h-10 w-[280px] items-center gap-2 rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-4">
+        <form role="search" onSubmit={submitSearch} className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+          <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-4 sm:w-[280px] sm:flex-none">
             <Search aria-hidden className="size-4 shrink-0 text-vehicsim-muted" />
             <input
               value={query}
@@ -124,7 +124,7 @@ export default function ListProjectPage() {
           <div className="grid w-full grid-cols-1 gap-5 lg:grid-cols-2 2xl:grid-cols-3">
             {list.items.map((p) => engineer && p.workspace_id != null ? (
               <div key={p.id} className="flex flex-col gap-3 rounded-xl border border-vehicsim-line bg-vehicsim-surface p-5">
-                <strong>{p.name}</strong>
+                <strong className="min-w-0 [overflow-wrap:anywhere]">{p.name}</strong>
                 <span className="text-sm text-vehicsim-muted">{p.vehicle_name ?? "Chưa chọn xe"} · {p.status === "ACTIVE" ? "Đang hoạt động" : "Lưu trữ"}</span>
                 <div><PillButton onClick={() => go(p.id, "/")}>Mở project</PillButton></div>
               </div>

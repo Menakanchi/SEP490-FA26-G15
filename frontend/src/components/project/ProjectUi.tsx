@@ -284,7 +284,7 @@ const COPY: Record<ProjectAction, { title: string; body: string; confirm: string
   },
   delete: {
     title: "Xoá vĩnh viễn project?",
-    body: "Mọi kịch bản, lượt chạy, phân tích, kiểm thử và file kết quả của project sẽ bị xoá và không thể khôi phục.",
+    body: "Kịch bản, lượt chạy, phân tích và kiểm thử sẽ bị xoá và không thể khôi phục. File cục bộ được dọn tự động; video trên lưu trữ ngoài vẫn được giữ theo chính sách.",
     confirm: "Xoá vĩnh viễn",
     done: "Đã xoá",
   },
@@ -366,17 +366,17 @@ export function useProjectActions(
       {action && copy && (
         <Modal title={copy.title} busy={busy} onClose={() => setAction(null)}>
           <form onSubmit={confirm} className="flex flex-col gap-4">
-            <p className="text-[14px] leading-[1.55] text-vehicsim-muted">
+            <p className="min-w-0 text-[14px] leading-[1.55] text-vehicsim-muted [overflow-wrap:anywhere]">
               <span className="font-semibold text-vehicsim-ink">“{action.project.name}”</span>: {copy.body}
             </p>
             {action.kind === "delete" && (
-              <label className="flex flex-col gap-[6px] text-[13px] font-medium text-vehicsim-muted">
+              <label className="flex min-w-0 flex-col gap-[6px] text-[13px] font-medium text-vehicsim-muted [overflow-wrap:anywhere]">
                 Gõ “{action.project.name}” để xác nhận
                 <input
                   value={confirmName}
                   onChange={(e) => setConfirmName(e.target.value)}
                   autoFocus
-                  className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                  className="h-[42px] w-full min-w-0 rounded-[12px] border border-solid border-vehicsim-line-strong px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
                 />
               </label>
             )}

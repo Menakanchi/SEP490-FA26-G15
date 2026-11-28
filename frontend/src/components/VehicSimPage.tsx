@@ -42,11 +42,11 @@ export function VehicSimPage({ crumbs, title, badges, actions, showContext = tru
               <React.Fragment key={c.label}>
                 {i > 0 && <ChevronRight aria-hidden className="size-3.5 shrink-0 text-vehicsim-faint" />}
                 {c.href && !last ? (
-                  <Link href={c.href} className="font-medium text-slate-500 hover:text-slate-900 transition-colors">
+                  <Link href={c.href} className="min-w-0 max-w-full font-medium text-slate-500 transition-colors hover:text-slate-900 [overflow-wrap:anywhere]">
                     {c.label}
                   </Link>
                 ) : (
-                  <span aria-current={last ? "page" : undefined} className={last ? "font-bold text-slate-900" : "font-medium text-slate-500"}>{c.label}</span>
+                  <span aria-current={last ? "page" : undefined} className={`min-w-0 max-w-full [overflow-wrap:anywhere] ${last ? "font-bold text-slate-900" : "font-medium text-slate-500"}`}>{c.label}</span>
                 )}
               </React.Fragment>
             );
@@ -76,11 +76,11 @@ export function VehicSimPage({ crumbs, title, badges, actions, showContext = tru
 
       {/* Thanh ngữ cảnh Dự án, Phương tiện & Bản cơ sở thay cho thanh hành trình cũ */}
       {showCurrentContext && (ctx?.vehicle || baseline) && (
-        <div className="flex flex-wrap items-center gap-6 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-2.5 text-[13px] shadow-xs print:hidden">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-6 gap-y-2 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-3 text-[13px] print:hidden">
           {ctx?.project && (
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <span className="font-medium text-vehicsim-muted">Dự án:</span>
-              <span className="font-bold text-vehicsim-ink">{ctx.project.name}</span>
+              <span className="min-w-0 break-words font-bold text-vehicsim-ink">{ctx.project.name}</span>
             </div>
           )}
           {ctx?.vehicle && (

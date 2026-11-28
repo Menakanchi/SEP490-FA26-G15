@@ -16,7 +16,7 @@ export default function ProjectSettingsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const id = Number(projectId);
   const router = useRouter();
-  const { ctx, refresh } = useVehicSimContext();
+  const { ctx, refresh, isExperiencer } = useVehicSimContext();
   const [loaded, setLoaded] = useState<{ project: ProjectItem; vehicles: VehicleOption[] } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -76,6 +76,7 @@ export default function ProjectSettingsPage() {
         {loaded && project && (
           <>
             <ProjectSummary project={project} />
+            {isExperiencer ? <>
             <ProjectSettingsForm
               initial={{ name: project.name, ...splitDescription(project.description), vehicleId: project.vehicle_id }}
               vehicles={loaded.vehicles}
@@ -108,6 +109,11 @@ export default function ProjectSettingsPage() {
                 />
               </div>
             </SettingsSection>
+            </> : (
+              <SettingsSection title="Chỉ xem" description="Vai trò hiện tại không thể thay đổi hoặc xoá project cá nhân.">
+                <p className="text-[14px] leading-[1.5] text-vehicsim-muted">Bạn vẫn có thể xem thông tin và kết quả đã lưu của project.</p>
+              </SettingsSection>
+            )}
           </>
         )}
       </div>
