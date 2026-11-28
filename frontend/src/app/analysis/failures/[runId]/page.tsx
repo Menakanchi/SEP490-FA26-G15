@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { ErrorNote, runCode } from "@/components/VehicSimUi";
+import { vi } from "@/components/vehicsimI18n";
 import { AnalysisScope, AnalysisLoading, analysisError, analysisOrigin, analysisReturn, analysisRunId } from "@/components/analysisUi";
 import { assertInspection, legacyDisagreements } from "@/components/analysis/analysisResultData";
 import { classificationPresentation } from "@/components/analysis/analysisClassificationData";
@@ -45,7 +46,7 @@ function Content() {
   const [diagnosis, setDiagnosis] = useState<{ key: string; data: DiagnosticReport | null; error: string | null } | null>(null);
   const diagnosisKey = `${projectId}:${scenarioId}:${runId}:${refresh}`;
   useEffect(() => {
-    if (!projectId || !scenarioId || id === null || run?.status !== "COMPLETED") return;
+    if (!projectId || !scenarioId || id === null || run?.status !== "COMPLETED" || run.aeb_mode === "OFF") return;
     let active = true;
     const query = new URLSearchParams({ run_id: String(id), limit: "1", offset: "0", sort: "id_desc" });
     failureAnalysisV3.explorerRuns(projectId, scenarioId, query).then(async page => {
@@ -54,10 +55,10 @@ function Content() {
       if (active) setDiagnosis({ key: diagnosisKey, data: report, error: null });
     }).catch(error => { if (active) setDiagnosis({ key: diagnosisKey, data: null, error: analysisError(error) }); });
     return () => { active = false; };
-  }, [projectId, scenarioId, id, run?.scenario_version_id, run?.status, diagnosisKey]);
-  const diagnostic = diagnosis?.key === diagnosisKey ? diagnosis.data : null;
-  const diagnosticError = diagnosis?.key === diagnosisKey ? diagnosis.error : null;
-  const diagnosticLoading = !!projectId && !!scenarioId && run?.status === "COMPLETED" && diagnosis?.key !== diagnosisKey;
+  }, [projectId, scenarioId, id, run?.scenario_version_id, run?.status, run?.aeb_mode, diagnosisKey]);
+  const diagnostic = run?.aeb_mode !== "OFF" && diagnosis?.key === diagnosisKey ? diagnosis.data : null;
+  const diagnosticError = run?.aeb_mode !== "OFF" && diagnosis?.key === diagnosisKey ? diagnosis.error : null;
+  const diagnosticLoading = !!projectId && !!scenarioId && run?.status === "COMPLETED" && run.aeb_mode !== "OFF" && diagnosis?.key !== diagnosisKey;
   const v3 = diagnostic ? diagnosticPresentation(diagnostic.report) : null;
   const hypotheses = diagnostic ? hypothesisPresentation(diagnostic.report) : [];
   const cause = object(diagnostic?.report.confirmed_root_cause);
@@ -82,9 +83,9 @@ function Content() {
         <p>{run?.family} · {run?.variant}</p><h2>{conclusion}</h2><p>{collision}.</p>
         {diagnosticLoading && <p role="status">Đang tải chẩn đoán đã lưu…</p>}
         {diagnosticError && <p role="alert">Không tải được chẩn đoán đã lưu: {diagnosticError}</p>}
-        {!isReference && v3 && <><p>{v3.behaviorText}.</p><p className="analysis-caption">Nhận định từ báo cáo V3 đã lưu; hiệu lực context cần kiểm tra lại trước khi ra quyết định.</p></>}
-        {!isReference && !v3 && state?.trusted && d.failure_type && <p>Phân loại đã lưu: {state.classification}.</p>}
-        {!isReference && !v3 && disagreements.length > 0 && <p role="status">Các thông tin đã lưu chưa thống nhất; chưa thể đưa ra kết luận chắc chắn.</p>}
+        {!isReference && v3 && <><p>{v3.behaviorText}.</p><p className="analysis-caption">Nhận định từ báo cáo đã lưu; cần kiểm tra lại điều kiện áp dụng trước khi ra quyết định.</p></>}
+        {!isReference && state?.trusted && d.failure_type && <p>Phân loại theo kết quả chạy: {state.classification}.</p>}
+        {!isReference && disagreements.length > 0 && <p role="status">Các thông tin đã lưu chưa thống nhất; chưa thể đưa ra kết luận chắc chắn.</p>}
         {isReference && <p>Lượt này chỉ dùng để đối chiếu, không tham gia đánh giá hoặc bàn giao tối ưu AEB.</p>}
         <p className="analysis-caption">Va chạm và lỗi AEB là hai kết quả khác nhau.</p>
       </section>
@@ -94,7 +95,7 @@ function Content() {
         {impact !== "—" && <div className={styles.row}><dt>Tốc độ va chạm tương đối</dt><dd>{impact} m/s</dd></div>}
         {stopping !== "—" && <div className={styles.row}><dt>Quãng đường dừng</dt><dd>{stopping} <small>(có thể ngoại suy)</small></dd></div>}
       </dl></section>}
-      {!isReference && <section className="analysis-panel"><h2>Nguyên nhân và hướng kiểm tra</h2><p>{hasConfirmedCause ? `Nguyên nhân được xác nhận theo báo cáo: ${causeLabels[String(cause.value)] ?? "chưa hỗ trợ hiển thị tên nguyên nhân"}.` : diagnostic ? "Chưa có nguyên nhân được xác nhận trong báo cáo." : "Chưa có chẩn đoán V3 để xác định nguyên nhân."}</p>{hypotheses.length > 0 && <ul>{hypotheses.map((item, i) => <li key={`${item.type}-${i}`}>{item.label} · {item.status}</li>)}</ul>}</section>}
+      {!isReference && <section className="analysis-panel"><h2>Nguyên nhân và hướng kiểm tra</h2><p>{hasConfirmedCause ? `Nguyên nhân được xác nhận theo báo cáo: ${causeLabels[String(cause.value)] ?? "chưa hỗ trợ hiển thị tên nguyên nhân"}.` : diagnostic ? "Chưa có nguyên nhân được xác nhận trong báo cáo." : "Chưa có báo cáo chẩn đoán bổ sung."}</p>{state?.trusted && d.recorded_cause && <p>Nhận định theo kết quả đã lưu: {vi(d.recorded_cause)} Cần kiểm chứng thêm nguyên nhân.</p>}{hypotheses.length > 0 && <ul>{hypotheses.map((item, i) => <li key={`${item.type}-${i}`}>{item.label} · {item.status}</li>)}</ul>}</section>}
       {run?.status === "COMPLETED" && run.trace_available && <div><Link className="analysis-button" href={`/analysis/failures/${runId}/playback?${playbackQuery}`}>Phát lại mô phỏng</Link></div>}
     </div>}
   </VehicSimPage>;

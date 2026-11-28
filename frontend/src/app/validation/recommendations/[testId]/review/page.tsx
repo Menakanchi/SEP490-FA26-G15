@@ -59,6 +59,7 @@ export default function ReviewPage() {
   const rejectBlock = r.candidate.status !== "CANDIDATE" ? "Ứng viên này đã được quyết định ở một kiểm thử khác" : null;
   const firstFixed = r.summary.pairs?.find((p) => p.change === "fixed");
   const firstRegressed = r.summary.pairs?.find((p) => p.change === "regressed");
+  const firstPair = r.summary.pairs?.find((p) => Number.isSafeInteger(p.candidate_run_id) && p.candidate_run_id > 0);
 
   const checklist = [
     <>
@@ -69,25 +70,13 @@ export default function ReviewPage() {
       ({counts?.regressed ?? 0} ca xấu đi, {counts?.fixed ?? 0} ca được sửa)
     </>,
     <>Tôi đã xem các đánh đổi và họ kịch bản bị ảnh hưởng</>,
-    <>
+    firstFixed || firstRegressed || firstPair ? <>
       Tôi đã phát lại ít nhất một{" "}
-      {firstFixed ? (
-        <Link href={`/analysis/failures/${firstFixed.candidate_run_id}/playback`} className="font-semibold underline">
-          kịch bản được sửa
-        </Link>
-      ) : (
-        "kịch bản được sửa"
-      )}
-      {firstRegressed && (
-        <>
-          {" "}
-          và một{" "}
-          <Link href={`/analysis/failures/${firstRegressed.candidate_run_id}/playback`} className="font-semibold underline">
-            kịch bản bị xấu đi
-          </Link>
-        </>
-      )}
-    </>,
+      {firstFixed && <Link href={`/analysis/failures/${firstFixed.candidate_run_id}/playback`} className="font-semibold underline">kịch bản được sửa</Link>}
+      {firstFixed && firstRegressed && " và một "}
+      {firstRegressed && <Link href={`/analysis/failures/${firstRegressed.candidate_run_id}/playback`} className="font-semibold underline">kịch bản bị xấu đi</Link>}
+      {!firstFixed && !firstRegressed && firstPair && <Link href={`/analysis/failures/${firstPair.candidate_run_id}/playback`} className="font-semibold underline">kịch bản được kiểm thử</Link>}
+    </> : <>Tôi đã xem các lượt chạy và kết quả kiểm thử hiện có</>,
     <>Tôi đã xem trạng thái bằng chứng độ bền vững, Pareto và độ nhạy của ứng viên này; các bằng chứng chưa chạy không được xem là đã đạt</>,
     ...(r.simulator_caveat?.carla && !r.simulator_caveat.calibrated
       ? [<>Tôi hiểu rằng số CARLA chưa hiệu chuẩn phanh, chỉ để quan sát và đối chiếu, không phải chứng nhận an toàn</>]
@@ -171,6 +160,7 @@ export default function ReviewPage() {
       <ErrorNote message={error} />
       {final && <ErrorNote message={`Khuyến nghị này đã có quyết định cuối (${RECOMMENDATION_STATUS[r.recommendation_status].label}).`} />}
       {superseded && <ErrorNote message="Khuyến nghị hết hiệu lực: ứng viên này đã được quyết định ở một kiểm thử hồi quy khác." />}
+      {r.recommendation_status === "BASELINE_CHANGED" && <ErrorNote message="Bản cơ sở đã đổi: không thể chấp nhận ứng viên bằng kiểm thử này. Bạn vẫn có thể từ chối hoặc yêu cầu kiểm thử thêm." />}
       {!canDecide && <ErrorNote message={user?.roleCode === "REVIEWER"
         ? ctx?.reviewer_can_decide === false ? "Project hoặc workspace đã lưu trữ, chỉ được xem lịch sử." : "Đang kiểm tra quyền của project."
         : "Chỉ Người duyệt (REVIEWER) được ra quyết định; người làm không tự duyệt việc của mình."} />}

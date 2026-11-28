@@ -59,7 +59,7 @@ export function PlaybackEvents({ entries, activeEvent, enabled, ignored, mode, o
     {ignored > 0 && <p className="analysis-caption">{ignored} sự kiện có timestamp không hợp lệ hoặc nằm ngoài khoảng phát.</p>}
     <div className={styles.eventList}>{entries.map((entry, index) => <button key={entry.id} type="button" className={styles.event} data-event-id={entry.id}
       aria-label={`${index + 1}. ${eventName(entry.record, mode)} · ${formatMetric(entry.record.t, 3)} s`}
-      aria-current={entry.record === activeEvent ? "step" : undefined} disabled={!enabled} onClick={() => onSeek(entry.record.t)} title={`events[kind=${entry.record.kind}].t = ${formatMetric(entry.record.t, 3)} s`}>
+      aria-current={entry.record === activeEvent ? "step" : undefined} disabled={!enabled} onClick={() => onSeek(entry.record.t)} title={`Thời điểm sự kiện đã ghi: ${formatMetric(entry.record.t, 3)} s`}>
       <i style={{ background: eventColor(entry.record) }} /><time>{formatMetric(entry.record.t, 3)} s</time><span>{eventName(entry.record, mode)}</span>
     </button>)}</div>
   </section>;

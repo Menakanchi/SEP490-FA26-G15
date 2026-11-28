@@ -24,6 +24,13 @@ function Spec({ label, value, hint }: { label: string; value: React.ReactNode; h
 
 /** Một cảm biến: tên + loại, vị trí (tọa độ cố định hoặc quy tắc gắn theo bounding box), mục đích và thuộc tính blueprint. */
 function SensorRow({ sensor: s }: { sensor: VehicleSensor }) {
+  const sensorLabels: Record<string, string> = { RADAR: "Radar", OBSTACLE: "Vật cản", COLLISION: "Va chạm", RGB_CAMERA: "Camera", IMU: "IMU" };
+  const purpose = s.purpose
+    ?.replace("Perception của AEB ca người đi bộ (từ .xosc v9, ADR-043); xe phía trước vẫn dùng ground truth", "AEB dùng radar để nhận biết người đi bộ; với xe phía trước sử dụng dữ liệu mục tiêu trong mô phỏng")
+    .replace("Ghi radar vào sensors/frames.csv để phân tích; AEB không đọc", "Ghi dữ liệu radar để phân tích; không điều khiển AEB")
+    .replace("Ghi khoảng cách vật cản động vào sensors/frames.csv", "Ghi khoảng cách tới vật cản chuyển động")
+    .replace("Ghi sensors/collisions.json; controller AEB gắn thêm một bản ở cùng chỗ để xác nhận va chạm", "Ghi sự kiện va chạm để đối chiếu với hệ thống AEB")
+    .replace("Ảnh và video xem lại trên web; không dùng cho perception", "Ảnh và video xem lại; không dùng để nhận biết mục tiêu");
   const where = s.location_m
     ? `(${s.location_m.x.toFixed(2)}, ${s.location_m.y.toFixed(2)}, ${s.location_m.z.toFixed(2)}) m`
     : s.mount ?? "—";
@@ -33,17 +40,16 @@ function SensorRow({ sensor: s }: { sensor: VehicleSensor }) {
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <span className="flex flex-wrap items-center gap-2 text-[13.5px] font-semibold text-vehicsim-ink">
           {s.name}
-          <Tag tone="neutral">{s.sensor_type}</Tag>
-          {s.condition && <Tag tone="info">{s.condition}</Tag>}
+          <Tag tone="neutral">{sensorLabels[s.sensor_type] ?? s.sensor_type}</Tag>
+          {s.condition && <Tag tone="info">{s.condition.startsWith("Khi chạy với --camera") ? "Khi bật ghi hình" : s.condition}</Tag>}
           {!s.is_enabled && <Tag tone="warn">Tắt</Tag>}
         </span>
         <span className="text-[13px] text-vehicsim-ink sm:text-right">{where}</span>
       </div>
-      {s.purpose && <p className="text-[12.5px] leading-relaxed text-vehicsim-muted">{s.purpose}</p>}
-      <p className="break-words font-mono text-[11.5px] text-vehicsim-muted">
-        {s.carla_blueprint_id}
-        {attributes.length > 0 && ` · ${attributes.map(([k, value]) => `${k}=${String(value)}`).join(", ")}`}
-      </p>
+      {purpose && <p className="text-[12.5px] leading-relaxed text-vehicsim-muted">{purpose}</p>}
+      {attributes.length > 0 && <details className="text-[11.5px] text-vehicsim-muted"><summary>Thông số cảm biến</summary>
+        <p className="break-words">{attributes.map(([k, value]) => `${k}=${String(value)}`).join(", ")}</p>
+      </details>}
     </li>
   );
 }

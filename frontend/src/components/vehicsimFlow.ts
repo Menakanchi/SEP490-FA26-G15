@@ -16,7 +16,7 @@ export function teamJourneyLinks(reviewer: boolean): Record<JourneyStepKey, { la
     IMPROVE: [
       { label: "Tổng quan cải tiến", href: "/aeb" },
       { label: "Tối ưu tự động (MOBO)", href: "/aeb/mobo" },
-      { label: "Chỉnh tay tham số", href: "/aeb/manual" },
+      ...(!reviewer ? [{ label: "Chỉnh tay tham số", href: "/aeb/manual" }] : []),
       { label: "Danh sách phiên bản", href: "/aeb/versions" },
       { label: "Đối chiếu thông số", href: "/aeb/compare" },
     ],

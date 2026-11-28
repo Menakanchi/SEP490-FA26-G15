@@ -436,7 +436,7 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | Candidate chạy đúng seed baseline | _chưa có test_ (TD-33) |
 | Test FAILED không Accept được; test chưa xong không quyết định được | `RegressionDecisionTest#aFailedTestCanNeverBeAccepted`, `RegressionDecisionTest#aTestThatHasNotFinishedCannotBeDecided` |
 | Quyết định cần lý do + xác nhận; quyết định cuối không bị ghi đè | `RegressionDecisionTest#decisionNeedsAReasonAndExplicitConfirmation`, `RegressionDecisionTest#aFinalDecisionCannotBeOverwritten` |
-| Baseline đã đổi ⇒ không Accept/Reject test cũ | `RegressionDecisionTest#acceptIsRefusedWhenTheBaselineChangedSinceTheTestRan`, `RegressionDecisionTest#acceptOrRejectIsRefusedWhenTheCandidateWasAlreadyDecidedElsewhere` |
+| Baseline đã đổi ⇒ không Accept test cũ; candidate đã quyết định ở test khác ⇒ không Accept/Reject | `RegressionDecisionTest#acceptIsRefusedWhenTheBaselineChangedSinceTheTestRan`, `RegressionDecisionTest#acceptOrRejectIsRefusedWhenTheCandidateWasAlreadyDecidedElsewhere`, `ReviewDecisionServiceTest#utcid07` |
 | Tiêu chí regression bắt buộc không tắt được; kết luận (confidence) cần PASS + không ca nào xấu đi + đủ kịch bản | `RegressionRulesTest#defaultsKeepRequiredCriteriaOn`, `RegressionRulesTest#confidenceNeedsPassAndNoRegressionAndEnoughScenarios` |
 | Tham số candidate nằm trong khoảng; preview khớp bộ kịch bản thật của test | _chưa có test_ (TD-33) |
 | Candidate chạy đúng seed của run baseline (đã có test, bổ sung cho dòng "_chưa có test_" ở trên) | `RegressionPairingTest#aRegressionRunCopiesTheSeedOfItsBaselineRunNotTheDefaultSeed` |

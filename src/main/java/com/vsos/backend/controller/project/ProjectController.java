@@ -40,7 +40,7 @@ public class ProjectController {
     private final ProjectService projects;
     private final VehicSimAccess access;
 
-    @Operation(summary = "Danh sách project cá nhân theo trạng thái, tìm theo tên, phân trang")
+    @Operation(summary = "Project cá nhân; với Kỹ sư thêm project trong workspace mà mình là thành viên")
     @GetMapping
     public ProjectList list(@RequestParam(defaultValue = "ACTIVE") String status, @RequestParam(defaultValue = "") String q,
                             @RequestParam(defaultValue = "1") int page, @RequestParam(name = "page_size", defaultValue = "9") int pageSize,

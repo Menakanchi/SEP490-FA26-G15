@@ -60,6 +60,6 @@ export function AnalysisRunTelemetry({ detail: d, markers, cursor, signal, onSig
       {note && <p className={styles.source}>Nhận định từ backend: {vi(note)} <Link href="/aeb" className="font-semibold text-vehicsim-decision hover:underline">Tạo cấu hình ứng viên ở mục AEB →</Link></p>}
     </section>
     <MotionTelemetryChart timeEnd={timeEnd} nominalStep={nominalStep} hoverTime={hoverTime} onHoverTime={onHoverTime} points={d.motion_telemetry ?? []} markers={markers} cursor={cursor} selectedField={signal} onFieldChange={onSignal} />
-    <p className="analysis-caption">Nguồn: motion_telemetry do backend chiếu từ frame đã lưu. TTC nhận thức dùng gap/tốc độ tiếp cận khi đủ điều kiện; không thay bằng TTC GT. Jerk ở đây phục vụ quan sát; objective RMS jerk ở Tổng quan vẫn là giá trị đã lưu, không tính lại từ đường biểu diễn.</p>
+    <p className="analysis-caption">Số liệu được dựng từ các khung đã lưu. TTC nhận thức dùng khoảng cách và tốc độ tiếp cận khi đủ điều kiện, không thay bằng TTC thực tế mô phỏng. Biểu đồ độ giật dùng để quan sát; chỉ số RMS ở Tổng quan là giá trị đã lưu, không tính lại từ biểu đồ.</p>
   </div>;
 }

@@ -25,16 +25,8 @@ import {
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
 import { formatMetric, formatMeasurement } from "@/components/analysis/analysisMetricFormat";
-import { hasCompleteTrialEvidence, isFeasibleTrial } from "@/components/aeb/optimizationEvidence";
+import { hasCompleteTrialEvidence, isFeasibleTrial, RUN_STATUS_LABEL } from "@/components/aeb/optimizationEvidence";
 import { vi } from "@/components/vehicsimI18n";
-
-const RUN_STATUS_LABEL: Record<string, string> = {
-  PENDING: "Đang chờ",
-  RUNNING: "Đang chạy",
-  COMPLETED: "Hoàn tất",
-  FAILED: "Thất bại",
-  CANCELLED: "Đã hủy",
-};
 
 export default function AebMoboStudioPage() {
   const router = useRouter();
@@ -274,7 +266,7 @@ export default function AebMoboStudioPage() {
         { label: "Tối ưu tự động MOBO" },
       ]}
       actions={
-        <div className="flex items-center gap-2">
+        canWrite && <div className="flex items-center gap-2">
           <PillButton
             href={newCampaignHref}
             variant="dark"

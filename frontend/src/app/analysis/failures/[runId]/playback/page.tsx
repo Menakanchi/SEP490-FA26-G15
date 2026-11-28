@@ -149,7 +149,7 @@ function PlaybackContent() {
   // Ambiguous duplicate timestamps cannot establish an exact frame/projection join.
   const motion = frame ? motionIndex.get(frame.t) ?? undefined : undefined;
   const chartMarkers = useMemo(() => events.map(event => ({ t: event.t, label: eventName(event, pb?.aeb_mode), color: eventColor(event),
-    source: `events[kind=${event.kind}].t` })), [events, pb?.aeb_mode]);
+    source: "Sự kiện mô phỏng đã ghi" })), [events, pb?.aeb_mode]);
   const { related, paired } = relatedRun(pb, compareId);
   const detailHref = `/analysis/failures/${runId}?section=telemetry&t=${t}&signal=${signal}&${returnQuery}${compareQuery(compareId)}`;
   const enabled = Boolean(view?.durationValid && frames.length);

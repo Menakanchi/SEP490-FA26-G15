@@ -150,10 +150,10 @@ class ProjectServiceTest {
     }
 
     @Test
-    void engineerListsWorkspaceProjectsOwnedWhileStillAMember() {
-        when(projects.pageOwnedWorkspace(OWNER, "ACTIVE", "", 9, 0)).thenReturn(List.of(project("ACTIVE")));
-        when(projects.countOwnedWorkspace(OWNER, "ACTIVE", "")).thenReturn(1);
-        when(projects.countOwnedWorkspace(OWNER, "ARCHIVED", "")).thenReturn(0);
+    void engineerListsProjectsAccessibleThroughWorkspaceMembership() {
+        when(projects.pageAccessibleToEngineer(OWNER, "ACTIVE", "", 9, 0)).thenReturn(List.of(project("ACTIVE")));
+        when(projects.countAccessibleToEngineer(OWNER, "ACTIVE", "")).thenReturn(1);
+        when(projects.countAccessibleToEngineer(OWNER, "ARCHIVED", "")).thenReturn(0);
 
         ProjectList list = service.list(OWNER, true, "ACTIVE", "", 1, 9);
 

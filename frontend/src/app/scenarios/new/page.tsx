@@ -184,7 +184,7 @@ export default function DescribeScenarioPage() {
               <ErrorNote
                 message={
                   result.source === "llm"
-                    ? `LLM chưa tự sửa hết sau ${result.repairs} lần: ${result.issues.join("; ")}. Hãy sửa tay bên dưới.`
+                    ? `Còn giá trị cần chỉnh sau ${result.repairs} lần kiểm tra: ${result.issues.join("; ")}. Hãy sửa bên dưới.`
                     : `Có giá trị cần chỉnh: ${result.issues.join("; ")}. Hãy sửa tay bên dưới trước khi lưu.`
                 }
               />
@@ -416,14 +416,12 @@ function gridFromIr(ir: DescribedIr, origins: Partial<Record<DescribeKey, FieldO
 function SourceBadge({ result }: { result: DescribeResult }) {
   if (result.source === "rules") {
     return (
-      <span title={result.llm_error ?? undefined}>
-        <Tag tone="warn">Trích bằng luật — LLM không dùng được</Tag>
-      </span>
+      <Tag tone="warn">Trích xuất bằng quy tắc</Tag>
     );
   }
   return (
     <Tag tone="neutral">
-      LLM {result.model ?? ""} · {result.llm_calls} lượt gọi{result.repairs ? ` · sửa ${result.repairs} lần` : ""} · ${result.cost_usd.toFixed(4)}
+      Đã trích xuất bằng AI{result.repairs ? ` · đã chỉnh ${result.repairs} lần` : ""}
     </Tag>
   );
 }
