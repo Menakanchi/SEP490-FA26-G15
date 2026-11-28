@@ -129,12 +129,12 @@ class AdminServiceTest {
         Db db=mock(Db.class);
         Queries queries=new Queries(db);
         when(db.first(anyString(),eq(3L))).thenReturn(new Row(Map.of("status","ACTIVE","workspace_id",2L,"workspace_status","ACTIVE")));
-        queries.lockWritableProjectForJob(3);
+        assertThat(queries.lockProjectForJobIsReadOnly(3)).isFalse();
         verify(db).first(contains("FOR SHARE"),eq(3L));
         when(db.first(anyString(),eq(3L))).thenReturn(new Row(Map.of("status","ACTIVE","workspace_id",2L,"workspace_status","ARCHIVED")));
-        assertThatThrownBy(() -> queries.lockWritableProjectForJob(3)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThat(queries.lockProjectForJobIsReadOnly(3)).isTrue();
         when(db.first(anyString(),eq(3L))).thenReturn(new Row(Map.of("status","ARCHIVED","workspace_id",2L,"workspace_status","ACTIVE")));
-        assertThatThrownBy(() -> queries.lockWritableProjectForJob(3)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThat(queries.lockProjectForJobIsReadOnly(3)).isTrue();
     }
     @Test void referenceNumericContractAndUniquenessAreEnforced() {
         assertThatThrownBy(()->service.createReference(1,reference(TechRefType.STANDARD,BigDecimal.ONE,true))).hasMessageContaining("CONSTANT");

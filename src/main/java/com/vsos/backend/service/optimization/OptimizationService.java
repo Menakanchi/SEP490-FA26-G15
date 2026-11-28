@@ -396,7 +396,10 @@ public class OptimizationService {
             Integer maxTrials, Integer nInitialPoints, String customSearchSpaceJson, String customObjectiveConfigJson,
             String name, String simulatorType, Long datasetId, String datasetDigest, String handoffId, String handoffDigest) {
 
-        queries.lockWritableProjectForJob(projectId);
+        if (queries.lockProjectForJobIsReadOnly(projectId)) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                    "Project hoặc workspace đang lưu trữ, chỉ có thể xem");
+        }
 
 
 
