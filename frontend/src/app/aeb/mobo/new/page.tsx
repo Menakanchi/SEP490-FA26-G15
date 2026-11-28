@@ -206,6 +206,7 @@ export default function AebMoboNewPage() {
                 onChange={(e) => setMaxTrials(Number(e.target.value))}
                 className="h-[44px] rounded-xl border border-solid border-vehicsim-line-strong px-3.5 text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-primary"
               />
+              <span className="text-[12px] text-vehicsim-muted">Từ 2 đến 50 lượt.</span>
             </label>
 
             <label className="flex flex-col gap-2">
@@ -218,6 +219,7 @@ export default function AebMoboNewPage() {
                 onChange={(e) => setNInitialPoints(Number(e.target.value))}
                 className="h-[44px] rounded-xl border border-solid border-vehicsim-line-strong px-3.5 text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-primary"
               />
+              <span className="text-[12px] text-vehicsim-muted">Từ 2 đến 15, không vượt số lượt thử.</span>
             </label>
           </div>
 
@@ -231,8 +233,9 @@ export default function AebMoboNewPage() {
                 type="button"
                 onClick={() => setSimulatorType("KINEMATIC")}
                 disabled={linked}
+                aria-pressed={simulatorType === "KINEMATIC"}
                 className={cx(
-                  "flex h-[44px] items-center justify-between rounded-xl border px-4 text-left transition",
+                  "flex min-h-[44px] flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-2 text-left transition",
                   simulatorType === "KINEMATIC"
                     ? "border-vehicsim-primary bg-vehicsim-primary/5 shadow-xs ring-1 ring-vehicsim-primary"
                     : "border-vehicsim-line-strong bg-vehicsim-surface hover:bg-vehicsim-soft text-vehicsim-muted hover:text-vehicsim-ink"
@@ -242,7 +245,7 @@ export default function AebMoboNewPage() {
                   Mô phỏng Động học (Kinematic)
                 </span>
                 <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[11.5px] font-bold text-emerald-900">
-                  Mô phỏng nhanh
+                  Động học
                 </span>
               </button>
 
@@ -250,15 +253,16 @@ export default function AebMoboNewPage() {
                 type="button"
                 onClick={() => setSimulatorType("CARLA")}
                 disabled={linked}
+                aria-pressed={simulatorType === "CARLA"}
                 className={cx(
-                  "flex h-[44px] items-center justify-between rounded-xl border px-4 text-left transition",
+                  "flex min-h-[44px] flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-2 text-left transition",
                   simulatorType === "CARLA"
                     ? "border-vehicsim-primary bg-vehicsim-primary/5 shadow-xs ring-1 ring-vehicsim-primary"
                     : "border-vehicsim-line-strong bg-vehicsim-surface hover:bg-vehicsim-soft text-vehicsim-muted hover:text-vehicsim-ink"
                 )}
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-[13.5px] font-bold text-vehicsim-ink truncate">
+                  <span className="text-[13.5px] font-bold text-vehicsim-ink">
                     Mô phỏng CARLA 3D (OpenSCENARIO)
                   </span>
                   {carlaStatus && !carlaStatus.connected && (
@@ -268,7 +272,7 @@ export default function AebMoboNewPage() {
                   )}
                 </div>
                 <span className="rounded-md bg-sky-50 border border-sky-200 px-2 py-0.5 text-[11.5px] font-bold text-sky-900 shrink-0">
-                  Chính xác cao
+                  CARLA 3D
                 </span>
               </button>
             </div>
@@ -288,7 +292,7 @@ export default function AebMoboNewPage() {
 
 
 
-          <div className="flex items-center justify-end gap-2 border-t border-solid border-vehicsim-line pt-5">
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-solid border-vehicsim-line pt-5">
             <PillButton variant="light" href="/aeb/mobo">
               Hủy bỏ
             </PillButton>

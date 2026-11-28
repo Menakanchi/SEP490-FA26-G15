@@ -30,8 +30,8 @@ export function CandidateForm({
   onCreated: (id: number, label: string) => void;
 }) {
   const parents = versions.filter((v) => v.status !== "REJECTED");
-  const [parentId, setParentId] = useState<number>(() => (versions.find((v) => v.status === "BASELINE") ?? versions[0]).id);
-  const parent = versions.find((v) => v.id === parentId) ?? versions[0];
+  const [parentId, setParentId] = useState<number>(() => (parents.find((v) => v.status === "BASELINE") ?? parents[0]).id);
+  const parent = parents.find((v) => v.id === parentId) ?? parents[0];
   const [values, setValues] = useState<Record<string, string>>({});
   const [label, setLabel] = useState("");
   const [notes, setNotes] = useState("");
@@ -170,15 +170,15 @@ export function CandidateForm({
             <div
               key={p.code}
               className={cx(
-                "flex items-center justify-between gap-3 rounded-lg border border-solid p-3 transition",
+                "flex flex-col items-stretch gap-3 rounded-lg border border-solid p-3 transition sm:flex-row sm:items-center sm:justify-between",
                 isChanged
                   ? "border-vehicsim-decision/50 bg-vehicsim-decision-bg/25"
                   : "border-vehicsim-line bg-vehicsim-surface hover:border-vehicsim-line-strong"
               )}
             >
               <div className="flex flex-col gap-1 min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[14px] font-bold text-vehicsim-ink truncate">{PARAM_NAMES[p.code] ?? p.name}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[14px] font-bold text-vehicsim-ink">{PARAM_NAMES[p.code] ?? p.name}</span>
                   <span className={cx("rounded px-1.5 py-0.5 text-[11px] font-semibold shrink-0", catStyle.cls)}>
                     {catStyle.label}
                   </span>
@@ -187,7 +187,7 @@ export function CandidateForm({
                   Phạm vi: <strong className="font-semibold text-vehicsim-ink">{p.min_value} – {p.max_value}</strong> {displayUnit(p.unit)}
                 </span>
                 {isInvalid && (
-                  <span className="text-[11px] font-semibold text-vehicsim-danger">
+                  <span id={`aeb-${p.code}-error`} className="text-[11px] font-semibold text-vehicsim-danger">
                     {current(p).trim() === "" || Number.isNaN(numVal)
                       ? "Giá trị không hợp lệ"
                       : `Phải từ ${p.min_value} đến ${p.max_value} ${displayUnit(p.unit)}`}
@@ -203,6 +203,8 @@ export function CandidateForm({
                   step={stepFor(p)}
                   value={current(p)}
                   aria-label={PARAM_NAMES[p.code] ?? p.name}
+                  aria-invalid={isInvalid}
+                  aria-describedby={isInvalid ? `aeb-${p.code}-error` : undefined}
                   onChange={(e) => handleInputChange(p, e.target.value)}
                   onBlur={() => handleBlur(p)}
                   className={cx(

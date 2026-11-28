@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
-import { EmptyState, ErrorNote, FilterSelect, Pagination, RECOMMENDATION_STATUS, RecommendationBadge, StatCard, cx, fmt, TableScroll } from "@/components/VehicSimUi";
+import { EmptyState, ErrorNote, FilterSelect, Pagination, PillButton, RECOMMENDATION_STATUS, RecommendationBadge, StatCard, cx, fmt, TableScroll } from "@/components/VehicSimUi";
 import { BaselineEntry } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { DecisionHistory, RecommendationItem, RecommendationStatus } from "@/types/vehicsim";
@@ -17,14 +17,16 @@ export default function RecommendationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<RecommendationStatus | "">("");
   const [history, setHistory] = useState<DecisionHistory | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     vehicsimApi.recommendations()
-      .then(setItems)
+      .then((data) => { setItems(data); setError(null); })
       .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách khuyến nghị"));
-    vehicsimApi.decisionHistory().then(setHistory).catch(() => setHistory(null));
+    vehicsimApi.decisionHistory().then((data) => { setHistory(data); setHistoryError(null); }).catch((err) => setHistoryError(err instanceof Error ? err.message : "Không tải được lịch sử quyết định"));
   }, []);
+  useEffect(load, [load]);
 
   const visible = useMemo(() => (items ?? []).filter((i) => !status || i.status === status), [items, status]);
   const count = (s: RecommendationStatus) => (items ?? []).filter((i) => i.status === s).length;
@@ -39,6 +41,8 @@ export default function RecommendationsPage() {
       crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Khuyến nghị" }]}
     >
       <ErrorNote message={error} />
+      {error && <PillButton onClick={() => { setError(null); load(); }}>Thử tải lại</PillButton>}
+      {!items && !error && <p role="status" className="text-sm text-vehicsim-muted">Đang tải danh sách khuyến nghị…</p>}
       <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard label="Chờ duyệt" value={items ? count("PENDING") : "…"} valueClass="text-vehicsim-warn" tone="warn" note="cần quyết định" />
         <StatCard label="Đã chấp nhận" value={items ? count("ACCEPT") : "…"} valueClass="text-vehicsim-ok" tone="ok" note="đã thành bản cơ sở" />
@@ -47,9 +51,9 @@ export default function RecommendationsPage() {
       </div>
 
       <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
-        <div className="flex items-center gap-2 px-5 py-4">
-          <span className="mr-2 text-[15px] font-bold text-vehicsim-ink">{items ? `${visible.length} khuyến nghị` : "…"}</span>
-          <FilterSelect<RecommendationStatus>
+        <div className="flex flex-wrap items-center gap-2 px-5 py-4">
+          <span className="mr-2 whitespace-nowrap text-[15px] font-bold text-vehicsim-ink">{items ? `${visible.length} khuyến nghị` : "…"}</span>
+          <div className="w-full sm:w-[220px]"><FilterSelect<RecommendationStatus>
             label="Trạng thái"
             value={status}
             options={(Object.keys(RECOMMENDATION_STATUS) as RecommendationStatus[]).map((s) => ({ value: s, label: RECOMMENDATION_STATUS[s].label }))}
@@ -57,7 +61,7 @@ export default function RecommendationsPage() {
               setStatus(value);
               setPage(1);
             }}
-          />
+          /></div>
         </div>
         {items && visible.length === 0 && (
           <EmptyState title={items.length ? "Không có khuyến nghị nào khớp bộ lọc" : "Chưa có khuyến nghị"}>
@@ -145,6 +149,8 @@ export default function RecommendationsPage() {
         )}
       </section>
 
+      {historyError && <div className="flex flex-wrap items-center gap-3"><ErrorNote message={historyError} /><PillButton onClick={() => { setHistoryError(null); load(); }}>Thử tải lại lịch sử</PillButton></div>}
+      {!history && !historyError && <p role="status" className="text-sm text-vehicsim-muted">Đang tải lịch sử quyết định…</p>}
       {history && (
         <div className="flex w-full flex-col gap-4 xl:flex-row xl:items-start">
           <section className="flex min-w-0 flex-1 flex-col gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
@@ -174,6 +180,7 @@ export default function RecommendationsPage() {
           </section>
           <section className="flex w-full shrink-0 flex-col xl:w-[360px] gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
             <h2 className="text-[15px] font-bold text-vehicsim-ink">Chuỗi bản cơ sở</h2>
+            {history.baselines.length === 0 && <p className="text-[13px] text-vehicsim-muted">Chưa có bản cơ sở để hiển thị.</p>}
             {history.baselines.map((b) => (
               <div key={b.id} className="flex flex-col gap-1 border-b border-solid border-vehicsim-line pb-3 last:border-b-0 last:pb-0">
                 <BaselineEntry baseline={b} />

@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { VehicSimPage } from "@/components/VehicSimPage";
-import { Card, CardTitle, EmptyState, ErrorNote, FilterSelect, Pagination, RecommendationBadge, StatCard, TableScroll, fmt } from "@/components/VehicSimUi";
+import { Card, CardTitle, EmptyState, ErrorNote, FilterSelect, Pagination, PillButton, RecommendationBadge, StatCard, TableScroll, fmt } from "@/components/VehicSimUi";
 import { BaselineEntry } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { DecisionHistory, ReviewDecision } from "@/types/vehicsim";
@@ -23,11 +23,12 @@ export default function DecisionHistoryPage() {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     vehicsimApi.decisionHistory()
-      .then(setHistory)
+      .then((data) => { setHistory(data); setError(null); })
       .catch((err) => setError(err instanceof Error ? err.message : "Không tải được lịch sử quyết định"));
   }, []);
+  useEffect(load, [load]);
 
   const all = useMemo(() => history?.decisions ?? [], [history]);
   const visible = useMemo(() => {
@@ -51,6 +52,8 @@ export default function DecisionHistoryPage() {
       crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Lịch sử quyết định" }]}
     >
       <ErrorNote message={error} />
+      {error && <PillButton onClick={() => { setError(null); load(); }}>Thử tải lại</PillButton>}
+      {!history && !error && <p role="status" className="text-sm text-vehicsim-muted">Đang tải lịch sử quyết định…</p>}
       <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard label="Tổng quyết định" value={history ? all.length : "…"} note="đã ghi" />
         <StatCard
@@ -64,14 +67,13 @@ export default function DecisionHistoryPage() {
         <StatCard label="Yêu cầu thêm kiểm thử" value={history ? count("REQUEST_MORE_TESTS") : "…"} tone="info" note="trả lại kỹ sư" />
       </div>
 
-      <Card className="overflow-x-auto">
-        <div className="min-w-[1050px]">
-        <div className="flex items-center gap-2 px-5 py-4">
-          <span className="mr-2 text-[15px] font-bold text-vehicsim-ink">{history ? `${visible.length} quyết định` : "…"}</span>
-          <FilterSelect<Decided> label="Quyết định" value={decision} options={DECISIONS} onChange={(value) => {
+      <Card className="min-w-0 overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 px-5 py-4">
+          <span className="mr-2 whitespace-nowrap text-[15px] font-bold text-vehicsim-ink">{history ? `${visible.length} quyết định` : "…"}</span>
+          <div className="w-full sm:w-[220px]"><FilterSelect<Decided> label="Quyết định" value={decision} options={DECISIONS} onChange={(value) => {
             setDecision(value);
             setPage(1);
-          }} />
+          }} /></div>
           <input
             aria-label="Tìm theo mã, phiên bản, người duyệt hoặc lý do"
             value={q}
@@ -80,9 +82,16 @@ export default function DecisionHistoryPage() {
               setPage(1);
             }}
             placeholder="Tìm mã, phiên bản, người duyệt, lý do…"
-            className="ml-auto w-[280px] rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-[7px] text-[12px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+            className="min-h-10 w-full rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-[7px] text-[12px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong sm:ml-auto sm:w-[280px]"
           />
         </div>
+        {history && visible.length === 0 && (
+          <EmptyState title={all.length ? "Không có quyết định nào khớp bộ lọc" : "Chưa có quyết định nào"}>
+            Quyết định được ghi khi Người duyệt chấp nhận, từ chối hoặc yêu cầu kiểm thử thêm một{" "}
+            <Link href="/validation/recommendations" className="font-semibold underline">khuyến nghị</Link>.
+          </EmptyState>
+        )}
+        {shown.length > 0 && (
         <TableScroll label="Bảng lịch sử quyết định" minWidth={960}>
           <div className="flex h-11 items-center border-y border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
             <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
@@ -94,15 +103,6 @@ export default function DecisionHistoryPage() {
             <span className="w-[80px] shrink-0">Ngày</span>
             <span className="w-[85px] shrink-0 text-right">Thao tác</span>
           </div>
-          {history && visible.length === 0 && (
-            <EmptyState title={all.length ? "Không có quyết định nào khớp bộ lọc" : "Chưa có quyết định nào"}>
-              Quyết định được ghi khi Người duyệt chấp nhận hoặc từ chối một{" "}
-              <Link href="/validation/recommendations" className="font-semibold underline">
-                khuyến nghị
-              </Link>
-              .
-            </EmptyState>
-          )}
           {shown.map((d, idx) => (
             <Link
               key={d.id}
@@ -133,7 +133,7 @@ export default function DecisionHistoryPage() {
             </Link>
           ))}
         </TableScroll>
-        </div>
+        )}
         {visible.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
             <span className="text-[12px] text-vehicsim-muted">
@@ -146,9 +146,11 @@ export default function DecisionHistoryPage() {
 
       <Card className="flex flex-col gap-3 p-5">
         <CardTitle>Chuỗi bản cơ sở</CardTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {!history ? (
-            <p className="text-[13px] text-vehicsim-muted">…</p>
+            <p className="text-[13px] text-vehicsim-muted">{error ? "Không tải được chuỗi bản cơ sở." : "Đang tải…"}</p>
+          ) : history.baselines.length === 0 ? (
+            <p className="text-[13px] text-vehicsim-muted">Chưa có bản cơ sở để hiển thị.</p>
           ) : (
             history.baselines.map((b) => (
               <div key={b.id} className="flex flex-col gap-1 rounded-[14px] bg-vehicsim-soft px-4 py-3">

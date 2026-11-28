@@ -40,6 +40,7 @@ export default function ReviewPage() {
     return (
       <VehicSimPage step={6} crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Khuyến nghị", href: "/validation/recommendations" }, { label: "Duyệt" }]} title="Duyệt">
         <ErrorNote message={error} />
+        {!error && <p role="status" className="text-sm text-vehicsim-muted">Đang tải khuyến nghị…</p>}
       </VehicSimPage>
     );
   }
@@ -49,17 +50,20 @@ export default function ReviewPage() {
   const final = r.review.decision === "ACCEPT" || r.review.decision === "REJECT";
   const running = r.status === "RUNNING" || r.status === "PENDING";
   const acceptBlock =
-    r.status !== "PASSED"
-      ? "Kiểm thử hồi quy không đạt — ứng viên làm xấu đi kịch bản không bao giờ được chấp nhận"
+    running
+      ? "Kiểm thử hồi quy chưa hoàn tất"
+      : r.status !== "PASSED"
+      ? "Kiểm thử hồi quy chưa đạt — không thể chấp nhận ứng viên"
       : r.baseline.status !== "BASELINE"
         ? "Bản cơ sở đã đổi kể từ lúc chạy kiểm thử này — hãy chạy lại kiểm thử hồi quy"
         : r.candidate.status !== "CANDIDATE"
           ? "Ứng viên này đã được quyết định ở một kiểm thử khác"
           : null;
   const rejectBlock = r.candidate.status !== "CANDIDATE" ? "Ứng viên này đã được quyết định ở một kiểm thử khác" : null;
-  const firstFixed = r.summary.pairs?.find((p) => p.change === "fixed");
-  const firstRegressed = r.summary.pairs?.find((p) => p.change === "regressed");
-  const firstPair = r.summary.pairs?.find((p) => Number.isSafeInteger(p.candidate_run_id) && p.candidate_run_id > 0);
+  const hasReplay = (p: NonNullable<typeof r.summary.pairs>[number]) => Number.isSafeInteger(p.candidate_run_id) && p.candidate_run_id > 0;
+  const firstFixed = r.summary.pairs?.find((p) => p.change === "fixed" && hasReplay(p));
+  const firstRegressed = r.summary.pairs?.find((p) => p.change === "regressed" && hasReplay(p));
+  const firstReplay = firstFixed ?? firstRegressed ?? r.summary.pairs?.find(hasReplay);
 
   const checklist = [
     <>
@@ -67,24 +71,40 @@ export default function ReviewPage() {
       <Link href={`/validation/regression/${r.id}`} className="font-semibold underline">
         {r.code}
       </Link>{" "}
-      ({counts?.regressed ?? 0} ca xấu đi, {counts?.fixed ?? 0} ca được sửa)
+      ({counts?.regressed ?? "—"} ca xấu đi, {counts?.fixed ?? "—"} ca được sửa)
     </>,
     <>Tôi đã xem các đánh đổi và họ kịch bản bị ảnh hưởng</>,
-    firstFixed || firstRegressed || firstPair ? <>
-      Tôi đã phát lại ít nhất một{" "}
-      {firstFixed && <Link href={`/analysis/failures/${firstFixed.candidate_run_id}/playback`} className="font-semibold underline">kịch bản được sửa</Link>}
-      {firstFixed && firstRegressed && " và một "}
-      {firstRegressed && <Link href={`/analysis/failures/${firstRegressed.candidate_run_id}/playback`} className="font-semibold underline">kịch bản bị xấu đi</Link>}
-      {!firstFixed && !firstRegressed && firstPair && <Link href={`/analysis/failures/${firstPair.candidate_run_id}/playback`} className="font-semibold underline">kịch bản được kiểm thử</Link>}
-    </> : <>Tôi đã xem các lượt chạy và kết quả kiểm thử hiện có</>,
-    <>Tôi đã xem trạng thái bằng chứng độ bền vững, Pareto và độ nhạy của ứng viên này; các bằng chứng chưa chạy không được xem là đã đạt</>,
+    <>
+      {firstReplay ? <>Tôi đã phát lại ít nhất một{" "}
+        <Link href={`/analysis/failures/${firstReplay.candidate_run_id}/playback`} className="font-semibold underline">
+          {firstFixed ? "kịch bản được sửa" : firstRegressed ? "kịch bản bị xấu đi" : "kịch bản trong kiểm thử"}
+        </Link>
+      </> : "Tôi đã xem danh sách các ca trong kiểm thử (không có lượt phát lại)"}
+      {firstFixed && firstRegressed && (
+        <>
+          {" "}
+          và một{" "}
+          <Link href={`/analysis/failures/${firstRegressed.candidate_run_id}/playback`} className="font-semibold underline">
+            kịch bản bị xấu đi
+          </Link>
+        </>
+      )}
+    </>,
+    <>Tôi đã xem trạng thái bằng chứng độ bền vững, Pareto và độ nhạy trong <Link href={`/validation/recommendations/${r.id}`} className="font-semibold underline">khuyến nghị</Link>; các bằng chứng chưa chạy không được xem là đã đạt</>,
     ...(r.simulator_caveat?.carla && !r.simulator_caveat.calibrated
       ? [<>Tôi hiểu rằng số CARLA chưa hiệu chuẩn phanh, chỉ để quan sát và đối chiếu, không phải chứng nhận an toàn</>]
       : []),
   ];
-  // Không có quyền quyết định hoặc đã có quyết định cuối: khoá cả form, không chỉ nút gửi.
+  const checkLabels = [
+    "Tôi đã xem kết quả kiểm thử hồi quy",
+    "Tôi đã xem các đánh đổi và họ kịch bản bị ảnh hưởng",
+    firstFixed && firstRegressed ? "Tôi đã phát lại kịch bản được sửa và kịch bản bị xấu đi" : firstFixed ? "Tôi đã phát lại kịch bản được sửa" : firstRegressed ? "Tôi đã phát lại kịch bản bị xấu đi" : firstReplay ? "Tôi đã phát lại kịch bản trong kiểm thử" : "Tôi đã xem danh sách các ca trong kiểm thử, không có lượt phát lại",
+    "Tôi đã xem trạng thái bằng chứng độ bền vững, Pareto và độ nhạy trong khuyến nghị",
+    "Tôi hiểu rằng số CARLA chưa hiệu chuẩn phanh, chỉ để quan sát và đối chiếu, không phải chứng nhận an toàn",
+  ];
+  // Chưa thể quyết định: khoá cả form, không chỉ nút gửi.
   const superseded = r.recommendation_status === "SUPERSEDED";
-  const locked = final || superseded || !canDecide;
+  const locked = final || superseded || running || !canDecide;
   const ready =
     canDecide && !final && !superseded && !running && !!decision && checks.slice(0, checklist.length).every(Boolean) && reason.trim().length > 0 && confirmed && !submitting &&
     !(decision === "ACCEPT" && acceptBlock) && !(decision === "REJECT" && rejectBlock);
@@ -161,6 +181,7 @@ export default function ReviewPage() {
       {final && <ErrorNote message={`Khuyến nghị này đã có quyết định cuối (${RECOMMENDATION_STATUS[r.recommendation_status].label}).`} />}
       {superseded && <ErrorNote message="Khuyến nghị hết hiệu lực: ứng viên này đã được quyết định ở một kiểm thử hồi quy khác." />}
       {r.recommendation_status === "BASELINE_CHANGED" && <ErrorNote message="Bản cơ sở đã đổi: không thể chấp nhận ứng viên bằng kiểm thử này. Bạn vẫn có thể từ chối hoặc yêu cầu kiểm thử thêm." />}
+      {running && <ErrorNote message="Kiểm thử hồi quy chưa hoàn tất; hãy chờ kết quả trước khi duyệt." />}
       {!canDecide && <ErrorNote message={user?.roleCode === "REVIEWER"
         ? ctx?.reviewer_can_decide === false ? "Project hoặc workspace đã lưu trữ, chỉ được xem lịch sử." : "Đang kiểm tra quyền của project."
         : "Chỉ Người duyệt (REVIEWER) được ra quyết định; người làm không tự duyệt việc của mình."} />}
@@ -172,14 +193,14 @@ export default function ReviewPage() {
           <div className="flex flex-col gap-3">
             {checklist.map((item, i) => (
               <label key={i} className="flex items-center gap-3 text-[14px] text-vehicsim-ink">
-                <Checkbox checked={checks[i]} label={`Mục kiểm tra ${i + 1}`} disabled={locked} onChange={(v) => setChecks((prev) => prev.map((c, j) => (j === i ? v : c)))} />
+                <Checkbox checked={checks[i]} label={checkLabels[i]} disabled={locked} onChange={(v) => setChecks((prev) => prev.map((c, j) => (j === i ? v : c)))} />
                 <span>{item}</span>
               </label>
             ))}
           </div>
 
           <h2 className="pt-2 text-[17px] font-bold text-vehicsim-ink">Quyết định</h2>
-          <div className="flex gap-3">
+          <div className="flex flex-col gap-3 lg:flex-row">
             {options.map((o) => {
               const active = decision === o.key;
               return (
@@ -187,6 +208,7 @@ export default function ReviewPage() {
                   key={o.key}
                   type="button"
                   disabled={!!o.block || locked}
+                  aria-pressed={active}
                   title={o.block ?? undefined}
                   onClick={() => setDecision(o.key)}
                   className={cx(
@@ -292,7 +314,7 @@ export default function ReviewPage() {
               </span>
             </div>
             <label className="flex items-center gap-3">
-              <Toggle on={confirmed} onChange={setConfirmed} label="Xác nhận" disabled={locked} />
+              <Toggle on={confirmed} onChange={setConfirmed} label="Tôi xác nhận quyết định này dựa trên bằng chứng mô phỏng ở trên" disabled={locked} />
               <span className="text-[12px] leading-[1.4] text-vehicsim-muted">Tôi xác nhận quyết định này dựa trên bằng chứng mô phỏng ở trên.</span>
             </label>
           </section>

@@ -111,9 +111,10 @@ export default function AebMoboTrialsPage() {
             />
           </div>
 
-          <div className="flex items-center rounded-lg border border-solid border-slate-200 dark:border-slate-700 p-1 bg-slate-100 dark:bg-slate-800">
+          <div className="flex flex-wrap items-center rounded-lg border border-solid border-slate-200 dark:border-slate-700 p-1 bg-slate-100 dark:bg-slate-800">
             <button
               type="button"
+              aria-pressed={filterMode === "ALL"}
               onClick={() => { setFilterMode("ALL"); setPage(1); }}
               className={cx(
                 "rounded-md px-3 py-1.5 text-[12px] font-bold transition-all",
@@ -122,10 +123,11 @@ export default function AebMoboTrialsPage() {
                   : "text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700"
               )}
             >
-              Tất cả ({trials?.length ?? 0})
+              Tất cả{trials ? ` (${trials.length})` : ""}
             </button>
             <button
               type="button"
+              aria-pressed={filterMode === "PARETO"}
               onClick={() => { setFilterMode("PARETO"); setPage(1); }}
               className={cx(
                 "rounded-md px-3 py-1.5 text-[12px] font-bold transition-all",
@@ -134,10 +136,11 @@ export default function AebMoboTrialsPage() {
                   : "text-slate-600 hover:text-emerald-800 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-emerald-300 dark:hover:bg-emerald-950/40"
               )}
             >
-              Biên Pareto ({trials?.filter((t) => t.is_pareto_optimal && isFeasibleTrial(t)).length ?? 0})
+              Biên Pareto{trials ? ` (${trials.filter((t) => t.is_pareto_optimal && isFeasibleTrial(t)).length})` : ""}
             </button>
             <button
               type="button"
+              aria-pressed={filterMode === "FEASIBLE"}
               onClick={() => { setFilterMode("FEASIBLE"); setPage(1); }}
               className={cx(
                 "rounded-md px-3 py-1.5 text-[12px] font-bold transition-all",
@@ -146,7 +149,7 @@ export default function AebMoboTrialsPage() {
                   : "text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700"
               )}
             >
-              Hợp lệ ({trials?.filter(isFeasibleTrial).length ?? 0})
+              Hợp lệ{trials ? ` (${trials.filter(isFeasibleTrial).length})` : ""}
             </button>
           </div>
         </div>
@@ -164,7 +167,7 @@ export default function AebMoboTrialsPage() {
           <div className="flex items-center gap-2">
             <ListFilter className="size-5 text-vehicsim-decision" />
             <h3 className="text-[16px] font-bold text-vehicsim-ink">
-              Dữ liệu thử nghiệm ({filteredTrials.length} lượt thử)
+              Dữ liệu thử nghiệm{trials ? ` (${filteredTrials.length} lượt thử)` : ""}
             </h3>
           </div>
         </div>

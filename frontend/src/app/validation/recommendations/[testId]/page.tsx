@@ -11,7 +11,6 @@ import { CandidateSourceTag, CarlaCaveat, PairObjectivesTable } from "@/componen
 import { vehicsimApi } from "@/services/vehicsim";
 import type { ParamDiff, RecommendationDetail } from "@/types/vehicsim";
 
-const CONFIDENCE_PCT = { High: 88, Medium: 58, Low: 26 } as const;
 const CONFIDENCE_LABEL = { High: "Cao", Medium: "Trung bình", Low: "Thấp" } as const;
 
 export default function RecommendationPage() {
@@ -63,6 +62,7 @@ export default function RecommendationPage() {
       }
     >
       <ErrorNote message={error} />
+      {!r && !error && <p role="status" className="text-sm text-vehicsim-muted">Đang tải chi tiết khuyến nghị…</p>}
       {r && running && (
         <ErrorNote message={`Kiểm thử hồi quy ${r.code} vẫn đang chạy — khuyến nghị sẽ có khi mọi cặp lượt chạy hoàn tất.`} />
       )}
@@ -146,12 +146,6 @@ export default function RecommendationPage() {
                   {CONFIDENCE_LABEL[r.confidence]}
                 </span>
               </div>
-              <div className="h-[6px] w-full rounded-[3px] bg-vehicsim-line">
-                <div
-                  className={cx("h-[6px] rounded-[3px]", r.confidence === "High" ? "bg-vehicsim-ok" : r.confidence === "Medium" ? "bg-vehicsim-amber" : "bg-vehicsim-danger")}
-                  style={{ width: `${CONFIDENCE_PCT[r.confidence]}%` }}
-                />
-              </div>
               {r.evidence.map((e) => {
                 const body = (
                   <>
@@ -177,7 +171,7 @@ export default function RecommendationPage() {
                     <span className="text-[14px] font-bold text-vehicsim-decision">→</span>
                   </Link>
                 ) : (
-                  <div key={e.key} className="flex items-center gap-3 rounded-[14px] bg-vehicsim-soft px-3 py-3">
+                  <div key={e.key} className="flex items-center gap-3 rounded-[14px] bg-vehicsim-soft px-3 py-3" title={e.status === "NOT_RUN" ? "Chưa chạy" : undefined}>
                     {body}
                   </div>
                 );

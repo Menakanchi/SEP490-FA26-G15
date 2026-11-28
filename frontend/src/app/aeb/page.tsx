@@ -45,6 +45,8 @@ export default function AebHubPage() {
           </h2>
         </div>
 
+        {!versions && !error && <p role="status" className="text-[13px] text-vehicsim-muted">Đang tải phiên bản AEB…</p>}
+        {versions && !baseline && <p className="text-[13px] text-vehicsim-muted">Chưa có bản cơ sở trong project hiện tại.</p>}
         {baseline && (
           <div className="rounded-xl border border-solid border-slate-300 dark:border-slate-700 bg-vehicsim-surface p-4 shadow-xs">
             <div className="grid grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-solid divide-slate-300 dark:divide-slate-700 sm:grid-cols-4">
@@ -117,7 +119,7 @@ export default function AebHubPage() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {/* Card 1: MOBO */}
           <div className="flex items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-3 hover:border-vehicsim-primary/50 transition">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-[14px] font-bold text-vehicsim-ink">
                 Tối ưu tự động (MOBO)
               </h3>
@@ -157,10 +159,10 @@ export default function AebHubPage() {
         </h2>
 
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface px-5 py-4 shadow-xs">
-          <p className="text-[13.5px] text-vehicsim-ink font-medium">
-            Hiện có <strong className="font-bold text-vehicsim-decision">{candidates.length} ứng viên</strong> đang chờ kiểm định hồi quy (trên tổng số {versions?.length ?? 0} phiên bản đã lưu).
-          </p>
-          <div className="flex items-center gap-2.5">
+          {versions && <p className="text-[13.5px] text-vehicsim-ink font-medium">
+            Hiện có <strong className="font-bold text-vehicsim-decision">{candidates.length} ứng viên</strong> trong tổng số {versions.length} phiên bản đã lưu.
+          </p>}
+          <div className="flex flex-wrap items-center gap-2.5">
             <Link
               href="/aeb/compare"
               className="inline-flex h-9 items-center justify-center rounded-lg border border-solid border-vehicsim-line bg-vehicsim-surface px-3.5 text-[12.5px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition shadow-xs whitespace-nowrap"
@@ -171,7 +173,7 @@ export default function AebHubPage() {
               href="/aeb/versions"
               className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-vehicsim-primary px-3.5 text-[12.5px] font-bold text-white hover:bg-vehicsim-primary-hover transition shadow-xs whitespace-nowrap"
             >
-              <span>Xem danh sách phiên bản ({versions?.length ?? 0})</span>
+              <span>Xem danh sách phiên bản{versions ? ` (${versions.length})` : ""}</span>
               <ArrowRight className="size-3.5" />
             </Link>
           </div>

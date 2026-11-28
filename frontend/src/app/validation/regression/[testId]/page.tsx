@@ -284,6 +284,7 @@ export default function RegressionResultsPage() {
                       <button
                         key={key}
                         type="button"
+                        aria-pressed={tab === key}
                         onClick={() => {
                           setTab(key);
                           setDiffPage(1);
@@ -340,7 +341,7 @@ function Banner({ d, failedCriteria, conclusion }: { d: RegressionDetail; failed
   const counts = d.summary.counts;
   if (d.status === "FAILED") {
     return (
-      <div className="flex items-center gap-4 rounded-[20px] border border-solid border-vehicsim-danger/30 bg-vehicsim-fail-card px-5 py-4">
+      <div className="flex flex-col items-start gap-4 rounded-[20px] border border-solid border-vehicsim-danger/30 bg-vehicsim-fail-card px-5 py-4 sm:flex-row sm:items-center">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-vehicsim-danger text-[18px] font-bold text-white">!</span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <p className="text-[17px] font-bold text-vehicsim-ink">{conclusion ? "Chưa dùng làm baseline được" : "Không đủ điều kiện để chấp nhận"}</p>
@@ -362,7 +363,7 @@ function Banner({ d, failedCriteria, conclusion }: { d: RegressionDetail; failed
     const decided = d.review_decision !== "PENDING";
     const review = !decided && canDecide;
     return (
-      <div className="flex items-center gap-4 rounded-[20px] border border-solid border-vehicsim-ok/30 bg-vehicsim-ok-bg px-5 py-4">
+      <div className="flex flex-col items-start gap-4 rounded-[20px] border border-solid border-vehicsim-ok/30 bg-vehicsim-ok-bg px-5 py-4 sm:flex-row sm:items-center">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-vehicsim-ok text-[16px] font-bold text-white">✓</span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <p className="text-[17px] font-bold text-vehicsim-ink">{conclusion ? "Ứng viên đạt mọi tiêu chí" : "Đủ điều kiện để khuyến nghị"}</p>
@@ -410,12 +411,12 @@ function VersionCard({ title, tag, params, side, dark }: { title: string; tag: s
         <h2 className="text-[17px] font-bold text-vehicsim-ink">{title}</h2>
         <Tag tone={dark ? "dark" : "neutral"}>{tag}</Tag>
       </div>
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
         {params.map((p) => {
           const highlight = side === "candidate" && p.changed;
           return (
             <div key={p.code} className={cx("flex min-w-0 flex-1 flex-col gap-1 rounded-[10px] px-3 py-2", highlight ? "bg-vehicsim-decision-bg" : "bg-vehicsim-soft")}>
-              <span className={cx("truncate text-[11px] font-medium", highlight ? "text-vehicsim-decision" : "text-vehicsim-faint")}>{SHORT_PARAM[p.code] ?? p.name}</span>
+              <span className={cx("text-[11px] font-medium", highlight ? "text-vehicsim-decision" : "text-vehicsim-faint")}>{SHORT_PARAM[p.code] ?? p.name}</span>
               <span className={cx("text-[14px] font-bold", highlight ? "text-vehicsim-decision" : "text-vehicsim-ink")}>{paramValue(p[side], p.unit)}</span>
             </div>
           );
@@ -429,7 +430,7 @@ function Kpi({ label, value, note, tone = "text-vehicsim-ink", small }: { label:
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
       <span className="text-[13px] font-medium text-vehicsim-muted">{label}</span>
-      <span className={cx("whitespace-nowrap font-extrabold tracking-[-0.6px]", small ? "text-[22px] leading-[40px]" : "text-[34px]", tone)}>{value}</span>
+      <span className={cx("break-words font-extrabold tracking-[-0.6px]", small ? "text-[22px] leading-[1.3]" : "text-[34px]", tone)}>{value}</span>
       <span className="text-[12px] text-vehicsim-faint">{note}</span>
     </div>
   );

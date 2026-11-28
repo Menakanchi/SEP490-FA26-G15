@@ -44,13 +44,16 @@ function NewRegressionForm() {
   const [custom, setCustom] = useState(false);
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [criteria, setCriteria] = useState<CriterionState>(initialCriteria);
-  const [preview, setPreview] = useState<RegressionPreview | null>(null);
+  const [previewResult, setPreviewResult] = useState<{ scenarioId: number; data: RegressionPreview } | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewAttempt, setPreviewAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const baseline = ctx?.system.baseline ?? null;
   const candidates = useMemo(() => (ctx?.versions ?? []).filter((v) => v.status === "CANDIDATE"), [ctx]);
   const candidate = candidates.find((v) => v.id === candidateId) ?? null;
+  const preview = previewResult?.scenarioId === scenarioId ? previewResult.data : null;
   const familyName = ctx?.families.find((f) => f.id === scenarioId)?.name ?? "—";
   const createCandidateHref = isExperiencer && ctx ? `/projects/${ctx.project.id}/improve` : "/aeb";
   const noCandidate = !!ctx && candidates.length === 0;
@@ -71,10 +74,12 @@ function NewRegressionForm() {
 
   useEffect(() => {
     if (scenarioId === null) return;
+    let active = true;
     vehicsimApi.regressionPreview(scenarioId, true)
-      .then(setPreview)
-      .catch((err) => setError(err instanceof Error ? err.message : "Không tải được số liệu bộ kịch bản"));
-  }, [scenarioId]);
+      .then((data) => { if (active) setPreviewResult({ scenarioId, data }); })
+      .catch((err) => { if (active) setPreviewError(err instanceof Error ? err.message : "Không tải được số liệu bộ kịch bản"); });
+    return () => { active = false; };
+  }, [scenarioId, previewAttempt]);
 
   const pickedVariants = useMemo(() => (preview?.variants ?? []).filter((v) => picked.has(v.id)), [preview, picked]);
   const pickedSafe = pickedVariants.filter((v) => v.safe).length;
@@ -143,13 +148,13 @@ function NewRegressionForm() {
       <div className="flex w-full flex-col gap-4 xl:flex-row xl:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <FormCard title="Phiên bản">
-            <div className="flex items-end gap-3">
+            <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end">
               <Field label="Bản cơ sở (cũ)">
                 <div className="flex h-[42px] items-center rounded-[12px] border border-solid border-vehicsim-line-strong bg-vehicsim-soft px-[14px] text-[14px] font-medium text-vehicsim-ink">
                   {baseline ? `AEB ${baseline.label} · bản cơ sở` : "Chưa có bản cơ sở"}
                 </div>
               </Field>
-              <span className="mb-[3px] flex size-9 shrink-0 items-center justify-center rounded-full bg-vehicsim-soft text-[14px] font-bold text-vehicsim-ink">→</span>
+              <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-vehicsim-soft text-[14px] font-bold text-vehicsim-ink sm:mb-[3px]">→</span>
               <Field label="Ứng viên (mới)">
                 <VehicSimSelect
                   aria-label="Chọn ứng viên (mới)"
@@ -189,14 +194,16 @@ function NewRegressionForm() {
 
           <FormCard
             title="Bộ kịch bản"
-            aside={<span className="rounded-full bg-vehicsim-soft px-[10px] py-[5px] text-[12px] font-semibold text-vehicsim-ink">{scenarios} kịch bản</span>}
+            aside={<span className="rounded-full bg-vehicsim-soft px-[10px] py-[5px] text-[12px] font-semibold text-vehicsim-ink">{preview ? `${scenarios} kịch bản` : "Chưa có số liệu"}</span>}
           >
             <Field label="Họ kịch bản">
               <VehicSimSelect
                 aria-label="Chọn họ kịch bản"
                 value={scenarioId}
                 onChange={(val) => {
-                  setPreview(null);
+                  if (Number(val) === scenarioId) return;
+                  setPreviewResult(null);
+                  setPreviewError(null);
                   setPicked(new Set());
                   setScenarioId(val ? Number(val) : null);
                 }}
@@ -208,6 +215,13 @@ function NewRegressionForm() {
                 buttonClassName="h-[42px]"
               />
             </Field>
+            {scenarioId !== null && !preview && !previewError && <p role="status" className="text-[13px] text-vehicsim-muted">Đang tải số liệu bộ kịch bản…</p>}
+            {previewError && (
+              <div role="alert" className="flex flex-wrap items-center gap-2 text-[13px] text-vehicsim-danger">
+                <span>{previewError}</span>
+                <PillButton onClick={() => { setPreviewError(null); setPreviewAttempt((attempt) => attempt + 1); }}>Thử tải lại</PillButton>
+              </div>
+            )}
             <SetOption
               checked={oldCritical && !custom}
               disabled={custom}
@@ -266,7 +280,7 @@ function NewRegressionForm() {
               {CRITERIA.map((c) => {
                 const state = criteria[c.key];
                 return (
-                  <div key={c.key} className="flex min-h-[52px] items-center gap-3 border-b border-solid border-vehicsim-line py-2 last:border-b-0">
+                  <div key={c.key} className="flex min-h-[52px] flex-wrap items-center gap-3 border-b border-solid border-vehicsim-line py-2 last:border-b-0">
                     <Toggle
                       on={state.enabled}
                       disabled={c.required}
@@ -304,21 +318,21 @@ function NewRegressionForm() {
         <aside className="flex w-full shrink-0 flex-col xl:w-[330px] gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
           <span className="text-[11px] font-semibold uppercase tracking-[0.6px] text-vehicsim-faint">Tóm tắt lượt chạy</span>
           <SummaryRow label="Phiên bản" value={baseline && candidate ? `${baseline.label} → ${candidate.label}` : "—"} />
-          <SummaryRow label="Kịch bản" value={String(scenarios)} />
+          <SummaryRow label="Kịch bản" value={preview ? String(scenarios) : "—"} />
           <SummaryRow
             label="Số lượt mô phỏng"
             value={
-              extraBaseline > 0 ? `${simulations} (${scenarios} + ${extraBaseline} cơ sở)` : `${simulations} (${scenarios} ứng viên)`
+              !preview ? "—" : extraBaseline > 0 ? `${simulations} (${scenarios} + ${extraBaseline} cơ sở)` : `${simulations} (${scenarios} ứng viên)`
             }
           />
           <SummaryRow label="Lượt chạy cơ sở dùng lại" value={preview ? String(Math.min(scenarios, preview.baseline_runs_existing)) : "—"} />
           <SummaryRow label="Bộ mô phỏng" value={simulatorLabel(preview?.simulator)} />
-          {custom && <SummaryRow label="Ca trước đây an toàn" value={String(pickedSafe)} />}
+          {custom && <SummaryRow label="Ca trước đây an toàn" value={preview ? String(pickedSafe) : "—"} />}
           <div className="flex flex-col gap-2 pt-1">
             <span className="text-[13px] font-medium text-vehicsim-muted">Theo họ kịch bản</span>
             <div className="flex items-center justify-between text-[13px] font-medium text-vehicsim-ink">
               <span>{familyName}</span>
-              <span className="font-bold">{scenarios}</span>
+              <span className="font-bold">{preview ? scenarios : "—"}</span>
             </div>
             <div className="h-[5px] w-full rounded-[3px] bg-vehicsim-line">
               <div className="h-[5px] rounded-[3px] bg-vehicsim-primary" style={{ width: scenarios ? "100%" : "0%" }} />

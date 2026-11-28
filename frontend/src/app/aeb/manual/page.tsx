@@ -40,7 +40,7 @@ export default function AebManualPage() {
       <ErrorNote message={error} />
 
       {created && (
-        <div className="flex items-center justify-between gap-4 rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok shadow-sm">
           <span>Đã tạo ứng viên AEB {created.label}. Bước tiếp theo: chạy kiểm thử hồi quy so với bản cơ sở.</span>
           <PillButton variant="dark" className="px-4 py-2 text-[12px]" href={`/validation/regression/new?candidate=${created.id}`}>
             Chạy kiểm thử hồi quy
@@ -52,7 +52,20 @@ export default function AebManualPage() {
         <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 text-[13px] text-vehicsim-muted">
           Tài khoản của bạn chỉ có quyền xem, không thể chỉnh tay tham số.
         </div>
-      ) : versions && ctx && canWrite ? (
+      ) : error && !versions ? null : !versions || !ctx ? (
+        <div role="status" className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 text-[13px] text-vehicsim-muted">
+          Đang tải phiên bản và tham số AEB…
+        </div>
+      ) : !canWrite ? (
+        <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 text-[13px] text-vehicsim-muted">
+          Tài khoản này chỉ có quyền xem, không thể tạo ứng viên AEB.
+        </div>
+      ) : !versions.some((version) => version.status !== "REJECTED") ? (
+        <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 text-[13px] text-vehicsim-muted">
+          Chưa có phiên bản AEB hợp lệ để làm bản gốc. Hãy kiểm tra danh sách phiên bản trước khi tạo ứng viên.
+          <div className="mt-3"><PillButton href="/aeb/versions">Xem phiên bản AEB</PillButton></div>
+        </div>
+      ) : (
         <CandidateForm
           versions={versions}
           parameters={ctx.parameters}
@@ -62,11 +75,7 @@ export default function AebManualPage() {
             await refresh();
           }}
         />
-      ) : !error ? (
-        <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 text-[13px] text-vehicsim-muted">
-          Đang tải dữ liệu tham số…
-        </div>
-      ) : null}
+      )}
     </VehicSimPage>
   );
 }

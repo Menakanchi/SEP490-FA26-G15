@@ -110,6 +110,7 @@ export default function WorkspaceDetailPage() {
   const [candidates, setCandidates] = useState<WorkspaceMemberCandidate[] | null>(null);
   const [picked, setPicked] = useState<Record<number, WorkspaceMemberRole>>({});
   const [searching, setSearching] = useState(false);
+  const searchRequest = useRef(0);
 
   const load = useCallback(async () => {
     try {
@@ -138,19 +139,23 @@ export default function WorkspaceDetailPage() {
 
   const search = async (e?: React.FormEvent, q = query) => {
     e?.preventDefault();
+    const request = ++searchRequest.current;
+    setCandidates(null);
+    setPicked({});
     // Server chỉ trả người có email trùng khớp hoàn toàn; ô trống thì không gọi.
     if (!q.trim()) {
-      setCandidates(null);
+      setSearching(false);
       return;
     }
     setSearching(true);
     setError(null);
     try {
-      setCandidates(await vehicsimApi.workspaceMemberCandidates(id, q.trim()));
+      const found = await vehicsimApi.workspaceMemberCandidates(id, q.trim());
+      if (request === searchRequest.current) setCandidates(found);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không tìm được người dùng");
+      if (request === searchRequest.current) setError(err instanceof Error ? err.message : "Không tìm được người dùng");
     } finally {
-      setSearching(false);
+      if (request === searchRequest.current) setSearching(false);
     }
   };
 
@@ -176,6 +181,8 @@ export default function WorkspaceDetailPage() {
 
   /** Mở khung thêm ngay trên bảng thành viên; không liệt kê ai, Manager phải nhập đúng email người cần thêm. */
   const toggleAdding = () => {
+    searchRequest.current++;
+    setSearching(false);
     if (adding) {
       setAdding(false);
       return;
@@ -420,6 +427,7 @@ export default function WorkspaceDetailPage() {
       ) : (
         <>
           <ErrorNote message={error} />
+          {!detail && !error && <p role="status" className="text-sm text-vehicsim-muted">Đang tải workspace…</p>}
           {notice && (
             <div role="status" className="rounded-[16px] border border-solid border-vehicsim-ok/30 bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok">
               {notice}
@@ -509,7 +517,13 @@ export default function WorkspaceDetailPage() {
                 <form onSubmit={search} className="flex items-center gap-2">
                   <input
                     value={query}
-                    onChange={(e) => setQuery(e.target.value)}
+                    onChange={(e) => {
+                      searchRequest.current++;
+                      setSearching(false);
+                      setCandidates(null);
+                      setPicked({});
+                      setQuery(e.target.value);
+                    }}
                     maxLength={254}
                     autoFocus
                     autoComplete="off"
@@ -522,7 +536,8 @@ export default function WorkspaceDetailPage() {
                     {searching ? "Đang tìm…" : "Tìm"}
                   </PillButton>
                 </form>
-                {candidates === null && (
+                {searching && <p role="status" className="text-[13px] text-vehicsim-muted">Đang tìm tài khoản…</p>}
+                {!searching && candidates === null && (
                   <p className="text-[13px] text-vehicsim-faint">Nhập email rồi bấm “Tìm”.</p>
                 )}
                 {candidates && candidates.length === 0 && (
@@ -533,17 +548,17 @@ export default function WorkspaceDetailPage() {
                 {candidates && candidates.length > 0 && (
                   <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-surface">
                     {candidates.map((c) => (
-                      <div key={c.user_id} className="flex h-[52px] items-center border-b border-solid border-vehicsim-line px-4 last:border-b-0">
-                        <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
-                          <span className="truncate text-[13px] font-bold text-vehicsim-ink">{c.full_name}</span>
-                          <span className="truncate text-[12px] text-vehicsim-faint">{c.email}</span>
+                      <div key={c.user_id} className="flex flex-wrap items-center gap-3 border-b border-solid border-vehicsim-line px-4 py-3 last:border-b-0">
+                        <span className="flex min-w-0 basis-full flex-col gap-[2px] sm:basis-auto sm:flex-1">
+                          <span className="break-words text-[13px] font-bold text-vehicsim-ink">{c.full_name}</span>
+                          <span className="break-all text-[12px] text-vehicsim-faint">{c.email}</span>
                         </span>
                         <Tag tone="neutral">Experiencer</Tag>
                         <select
                           value={picked[c.user_id] ?? ""}
                           onChange={(e) => setPicked((p) => ({ ...p, [c.user_id]: e.target.value as WorkspaceMemberRole }))}
                           aria-label={`Vai trò cấp cho ${c.full_name}`}
-                          className="mx-3 w-[150px] rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-2 text-[13px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                          className="min-w-0 flex-1 rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-2 text-[13px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong sm:w-[150px] sm:flex-none"
                         >
                           <option value="" disabled>
                             Chọn vai trò…
@@ -683,6 +698,7 @@ export default function WorkspaceDetailPage() {
                     value={projectDescription}
                     onChange={(e) => setProjectDescription(e.target.value)}
                     maxLength={2000}
+                    aria-label="Nội dung trao đổi kỹ thuật"
                     rows={3}
                     placeholder="Câu hỏi project này cần trả lời…"
                     className="rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-2 text-[13px] font-normal text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
@@ -841,7 +857,7 @@ export default function WorkspaceDetailPage() {
                     onChange={(e) => setChatText(e.target.value)}
                     maxLength={2000}
                     placeholder="Nhập nội dung trao đổi kỹ thuật (kịch bản, kết quả CARLA, tối ưu AEB...)..."
-                    className="flex-1 rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                    className="min-w-0 flex-1 rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
                   />
                   <PillButton type="submit" variant="dark" disabled={sendingChat || !chatText.trim()}>
                     {sendingChat ? "Đang gửi…" : "Gửi"}

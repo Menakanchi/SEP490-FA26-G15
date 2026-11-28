@@ -40,10 +40,12 @@ export default function WorkspaceReportsPage() {
   const [repAttachment, setRepAttachment] = useState("");
   const [tasks, setTasks] = useState<WorkspaceTask[]>([]);
   const [submittingLoading, setSubmittingLoading] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const [detail, setDetail] = useState<WorkspaceDetail | null>(null);
   const [reports, setReports] = useState<WorkspaceReport[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
   const [status, setStatus] = useState<ReportStatus | "">("SUBMITTED");
@@ -52,6 +54,7 @@ export default function WorkspaceReportsPage() {
   const [notes, setNotes] = useState<Record<number, string>>({});
 
   const load = useCallback(async () => {
+    setLoadError(null);
     try {
       const [rList, tList] = await Promise.all([
         vehicsimApi.workspaceReports(id),
@@ -60,7 +63,7 @@ export default function WorkspaceReportsPage() {
       setReports(rList);
       setTasks(tList);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không tải được báo cáo");
+      setLoadError(err instanceof Error ? err.message : "Không tải được báo cáo");
     }
   }, [id]);
 
@@ -88,7 +91,7 @@ export default function WorkspaceReportsPage() {
     e.preventDefault();
     if (!repTitle.trim() || !repContent.trim() || !repProjectId || submittingLoading) return;
     setSubmittingLoading(true);
-    setError(null);
+    setSubmitError(null);
     try {
       await vehicsimApi.submitMyReport({
         project_id: repProjectId,
@@ -106,7 +109,7 @@ export default function WorkspaceReportsPage() {
       setRepAttachment("");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không nộp được báo cáo");
+      setSubmitError(err instanceof Error ? err.message : "Không nộp được báo cáo");
     } finally {
       setSubmittingLoading(false);
     }
@@ -148,17 +151,25 @@ export default function WorkspaceReportsPage() {
       badges={ws && !active && <Tag tone="neutral">Workspace đã lưu trữ — chỉ xem</Tag>}
       actions={
         allowed && active && !isManagerOrAdmin ? (
-          <PillButton variant="dark" onClick={() => setSubmitting(true)}>
+          <PillButton variant="dark" onClick={() => { setSubmitError(null); setSubmitting(true); }}>
             + Nộp báo cáo
           </PillButton>
         ) : undefined
       }
     >
       {!allowed ? (
-        <EmptyState title="Màn này dành cho Quản lý, Kỹ sư và Người duyệt của workspace. Quản trị viên sử dụng mục Quản trị → Workspace." />
+        <EmptyState title="Chỉ Quản lý, Kỹ sư và Người duyệt trong workspace được vào màn này. Quản trị viên sử dụng mục Quản trị → Workspace." />
       ) : (
         <>
           <ErrorNote message={error} />
+          <ErrorNote message={loadError} />
+          {loadError && (
+            <div className="flex flex-wrap items-center gap-3">
+              <PillButton onClick={() => void load()}>Thử tải lại báo cáo</PillButton>
+              {reports && <p className="text-[13px] text-vehicsim-muted">Danh sách bên dưới có thể chưa được cập nhật.</p>}
+            </div>
+          )}
+          {!reports && !loadError && <p role="status" className="text-sm text-vehicsim-muted">Đang tải báo cáo…</p>}
           {notice && (
             <div role="status" className="rounded-[16px] border border-solid border-vehicsim-ok/30 bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok">
               {notice}
@@ -178,24 +189,25 @@ export default function WorkspaceReportsPage() {
 
           <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
             <div className="flex flex-wrap items-center gap-2 border-b border-solid border-vehicsim-line px-5 py-4">
-              <span className="mr-2 text-[15px] font-bold text-vehicsim-ink">{reports ? `${visible.length} báo cáo` : "…"}</span>
-              <FilterSelect<ReportStatus>
+              <span className="mr-2 whitespace-nowrap text-[15px] font-bold text-vehicsim-ink">{reports ? `${visible.length} báo cáo` : "…"}</span>
+              <div className="w-full sm:w-[220px]"><FilterSelect<ReportStatus>
                 label="Trạng thái"
                 value={status}
                 options={STATUSES.map((s) => ({ value: s, label: STATUS[s].label }))}
                 onChange={setStatus}
-              />
-              <FilterSelect<string>
+              /></div>
+              <div className="w-full sm:w-[220px]"><FilterSelect<string>
                 label="Project"
                 value={project}
                 options={(detail?.projects ?? []).map((p) => ({ value: String(p.id), label: p.name }))}
                 onChange={setProject}
-              />
+              /></div>
               {!isManagerOrAdmin && <button
                 type="button"
+                aria-pressed={onlyMine}
                 onClick={() => setOnlyMine((v) => !v)}
                 className={cx(
-                  "rounded-full px-3 py-[5px] text-[12px] font-semibold border border-solid transition-colors",
+                  "min-h-10 rounded-full px-3 py-[5px] text-[12px] font-semibold border border-solid transition-colors",
                   onlyMine
                     ? "bg-vehicsim-primary text-white border-vehicsim-primary"
                     : "bg-vehicsim-surface text-vehicsim-ink border-vehicsim-line hover:bg-vehicsim-soft"
@@ -215,10 +227,10 @@ export default function WorkspaceReportsPage() {
               const pending = r.status === "SUBMITTED";
               return (
                 <article key={r.id} className={cx("border-b border-solid border-vehicsim-line px-5 py-4 last:border-b-0", expanded && "bg-vehicsim-row")}>
-                  <button type="button" onClick={() => setOpen(expanded ? null : r.id)} className="flex w-full items-start gap-4 text-left">
+                  <button type="button" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : r.id)} className="flex w-full items-start gap-4 text-left">
                     <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
-                      <span className="flex items-center gap-2 text-[14px] font-bold text-vehicsim-ink">
-                        {r.title}
+                      <span className="flex min-w-0 flex-wrap items-center gap-2 text-[14px] font-bold text-vehicsim-ink">
+                        <span className="min-w-0 break-words">{r.title}</span>
                         <Tag tone={STATUS[r.status].tone}>{STATUS[r.status].label}</Tag>
                       </span>
                       <span className="truncate text-[12px] text-vehicsim-faint">
@@ -231,14 +243,14 @@ export default function WorkspaceReportsPage() {
 
                   {expanded && (
                     <div className="mt-3 flex flex-col gap-3">
-                      <p className="whitespace-pre-wrap rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-surface p-4 text-[13px] leading-[1.6] text-vehicsim-ink">
+                      <p className="whitespace-pre-wrap break-words rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-surface p-4 text-[13px] leading-[1.6] text-vehicsim-ink">
                         {r.content}
                       </p>
                       {r.attachment_url && (
                         <p className="text-[12px] text-vehicsim-muted">
                           Đính kèm:{" "}
                           {link ? (
-                            <a href={link} target="_blank" rel="noopener noreferrer" className="font-semibold text-vehicsim-decision underline">
+                            <a href={link} target="_blank" rel="noopener noreferrer" className="break-all font-semibold text-vehicsim-decision underline">
                               {link}
                             </a>
                           ) : (
@@ -247,7 +259,7 @@ export default function WorkspaceReportsPage() {
                         </p>
                       )}
                       {!pending && (
-                        <p className="text-[12px] text-vehicsim-muted">
+                        <p className="break-words text-[12px] text-vehicsim-muted">
                           {STATUS[r.status].label} bởi {r.reviewed_by?.full_name ?? "—"} ngày {fmt.date(r.reviewed_at)}
                           {r.review_note ? ` — “${r.review_note}”` : ""}
                         </p>
@@ -288,6 +300,7 @@ export default function WorkspaceReportsPage() {
           {submitting && (
             <Modal title="Nộp báo cáo công việc" onClose={() => setSubmitting(false)} busy={submittingLoading}>
                 <form onSubmit={handleSubmitReport} className="flex flex-col gap-4">
+                  {submitError && <p role="alert" className="break-words text-[13px] text-vehicsim-danger">{submitError}</p>}
                   
                   <label className="flex flex-col gap-1">
                     <span className="text-[12px] font-semibold text-vehicsim-muted">Tiêu đề báo cáo *</span>
@@ -301,7 +314,7 @@ export default function WorkspaceReportsPage() {
                     />
                   </label>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <label className="flex flex-col gap-1">
                       <span className="text-[12px] font-semibold text-vehicsim-muted">Task liên quan (tuỳ chọn)</span>
                       <select

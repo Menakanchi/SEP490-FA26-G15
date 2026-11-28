@@ -78,19 +78,21 @@ export default function RegressionListPage() {
       }
     >
       <ErrorNote message={error} />
+      {error && <div className="flex flex-wrap items-center gap-3"><PillButton onClick={() => { setError(null); load(); }}>Thử tải lại</PillButton>{data && <span className="text-sm text-vehicsim-muted">Dữ liệu bên dưới từ lần tải gần nhất.</span>}</div>}
+      {!data && !error && <p role="status" className="text-sm text-vehicsim-muted">Đang tải danh sách kiểm thử hồi quy…</p>}
 
       <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard
           label="Tổng số"
           value={data?.kpis.total ?? "…"}
-          note={<span className="font-medium">{data?.kpis.since ? `từ ${fmt.date(data.kpis.since)}` : "chưa có kiểm thử"}</span>}
+          note={data ? <span className="font-medium">{data.kpis.since ? `từ ${fmt.date(data.kpis.since)}` : "chưa có kiểm thử"}</span> : undefined}
         />
         <StatCard
           label="Đạt"
           value={data?.kpis.passed ?? "…"}
           valueClass="text-vehicsim-ok"
           tone="ok"
-          note={`${passedRegressions} ca xấu đi`}
+          note={data ? `${passedRegressions} ca xấu đi` : undefined}
         />
         <StatCard label="Không đạt" value={data?.kpis.failed ?? "…"} valueClass="text-vehicsim-danger" tone="danger" note={isExperiencer ? "không dùng làm baseline được" : "ứng viên bị chặn"} />
         <StatCard
@@ -98,22 +100,22 @@ export default function RegressionListPage() {
           value={data?.kpis.running ?? "…"}
           valueClass="text-vehicsim-decision"
           tone="info"
-          note={rp ? `${rp.code} · ${rp.done} / ${rp.total}` : "không có"}
+          note={data ? (rp ? `${rp.code} · ${rp.done} / ${rp.total}` : "không có") : undefined}
         />
       </div>
 
       <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
-        <div className="flex items-center gap-2 px-5 py-4">
+        <div className="flex flex-wrap items-center gap-2 px-5 py-4">
           <span className="mr-2 shrink-0 whitespace-nowrap text-[15px] font-bold text-vehicsim-ink">{data ? `${items.length} kiểm thử` : "…"}</span>
-          <FilterSelect<RegressionStatus>
+          <div className="w-full sm:w-[220px]"><FilterSelect<RegressionStatus>
             label="Trạng thái"
             value={status}
             options={(Object.keys(REGRESSION_STATUS) as RegressionStatus[]).map((s) => ({ value: s, label: REGRESSION_STATUS[s].label }))}
             onChange={filtered(setStatus)}
-          />
-          <FilterSelect<string> label={isExperiencer ? "Baseline" : "Bản cơ sở"} value={baseline} options={uniq((data?.items ?? []).map((i) => i.baseline))} onChange={filtered(setBaseline)} />
+          /></div>
+          <div className="w-full sm:w-[220px]"><FilterSelect<string> label={isExperiencer ? "Baseline" : "Bản cơ sở"} value={baseline} options={uniq((data?.items ?? []).map((i) => i.baseline))} onChange={filtered(setBaseline)} /></div>
           {!isExperiencer && (
-            <FilterSelect<string> label="Người tạo" value={author} options={uniq((data?.items ?? []).map((i) => i.created_by))} onChange={filtered(setAuthor)} />
+            <div className="w-full sm:w-[220px]"><FilterSelect<string> label="Người tạo" value={author} options={uniq((data?.items ?? []).map((i) => i.created_by))} onChange={filtered(setAuthor)} /></div>
           )}
         </div>
 
@@ -214,7 +216,7 @@ export default function RegressionListPage() {
 
           </TableScroll>
         )}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+        {data && <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <p className="text-[12px] text-vehicsim-muted">
             <span className="tabular-nums">
               {items.length ? `${offset + 1}–${offset + shown.length}` : "0"} trong {items.length} kiểm thử
@@ -222,7 +224,7 @@ export default function RegressionListPage() {
             </span>
           </p>
           {pages > 1 && <Pagination page={current} pages={pages} onPage={setPage} />}
-        </div>
+        </div>}
       </section>
     </VehicSimPage>
   );

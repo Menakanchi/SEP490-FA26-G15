@@ -35,7 +35,7 @@ export default function AebCandidatesPage() {
       step={4}
       crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Ứng viên chờ duyệt" }]}
       actions={
-        canWrite && <div className="flex items-center gap-2">
+        canWrite && <div className="flex flex-wrap items-center gap-2">
           <PillButton href="/aeb/mobo/new" variant="light">
             + Tối ưu MOBO mới
           </PillButton>
@@ -49,18 +49,18 @@ export default function AebCandidatesPage() {
 
       <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line px-5 py-4">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <h2 className="text-[16px] font-bold text-vehicsim-ink">
-              Tất cả ứng viên ({candidates.length})
+              Tất cả ứng viên{versions ? ` (${candidates.length})` : ""}
             </h2>
-            <Tag tone="info">Chờ kiểm chứng hồi quy</Tag>
+            <Tag tone="info">Ứng viên</Tag>
           </div>
           <Link href="/aeb/versions" className="text-[12px] font-bold text-vehicsim-decision hover:underline">
             Xem toàn bộ phiên bản trong kho tri thức →
           </Link>
         </div>
 
-        {candidates.length === 0 ? (
+        {!versions ? (!error && <p role="status" className="p-5 text-[13px] text-vehicsim-muted">Đang tải danh sách ứng viên…</p>) : candidates.length === 0 ? (
           <div className="p-10">
             <EmptyState title="Chưa có ứng viên AEB nào đang chờ">
               Hãy khởi chạy tối ưu hoá MOBO hoặc tự hiệu chỉnh thủ công để tạo ứng viên AEB mới.
@@ -121,13 +121,13 @@ export default function AebCandidatesPage() {
                     </td>
                     <td className="px-5 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <PillButton
+                        {baseline && <PillButton
                           variant="light"
                           href={`/aeb/compare?a=${baseline?.id}&b=${cand.id}`}
                           className="text-[12px] py-1.5"
                         >
                           So với Baseline
-                        </PillButton>
+                        </PillButton>}
                         {canWrite && (
                           <PillButton
                             variant="dark"

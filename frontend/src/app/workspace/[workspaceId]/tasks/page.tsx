@@ -282,10 +282,11 @@ export default function WorkspaceTasksPage() {
       }
     >
       {!allowed ? (
-        <EmptyState title="Màn này dành cho Quản lý, Kỹ sư và Người duyệt của workspace. Quản trị viên sử dụng mục Quản trị → Workspace." />
+        <EmptyState title="Chỉ Quản lý, Kỹ sư và Người duyệt trong workspace được vào màn này. Quản trị viên sử dụng mục Quản trị → Workspace." />
       ) : (
         <>
           <ErrorNote message={error} />
+          {!tasks && !error && <p role="status" className="text-sm text-vehicsim-muted">Đang tải danh sách task…</p>}
           {notice && (
             <div role="status" className="rounded-[16px] border border-solid border-vehicsim-ok/30 bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok">
               {notice}
@@ -419,24 +420,25 @@ export default function WorkspaceTasksPage() {
 
           <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
             <div className="flex flex-wrap items-center gap-2 px-5 py-4">
-              <span className="mr-2 text-[15px] font-bold text-vehicsim-ink">{tasks ? `${visible.length} task` : "…"}</span>
-              <FilterSelect<TaskStatus>
+              <span className="mr-2 whitespace-nowrap text-[15px] font-bold text-vehicsim-ink">{tasks ? `${visible.length} task` : "…"}</span>
+              <div className="w-full sm:w-[220px]"><FilterSelect<TaskStatus>
                 label="Trạng thái"
                 value={status}
                 options={STATUSES.map((s) => ({ value: s, label: STATUS[s].label }))}
                 onChange={(s) => { setStatus(s); setPage(1); }}
-              />
-              <FilterSelect<string>
+              /></div>
+              <div className="w-full sm:w-[220px]"><FilterSelect<string>
                 label="Người nhận"
                 value={assignee}
                 options={[{ value: "0", label: "Chưa giao" }, ...members.map((m) => ({ value: String(m.user_id), label: m.full_name }))]}
                 onChange={(a) => { setAssignee(a); setPage(1); }}
-              />
+              /></div>
               {!isManagerOrAdmin && <button
                 type="button"
+                aria-pressed={onlyMine}
                 onClick={() => { setOnlyMine((v) => !v); setPage(1); }}
                 className={cx(
-                  "rounded-full px-3 py-[5px] text-[12px] font-semibold border border-solid transition-colors",
+                  "min-h-10 rounded-full px-3 py-[5px] text-[12px] font-semibold border border-solid transition-colors",
                   onlyMine
                     ? "bg-vehicsim-primary text-white border-vehicsim-primary"
                     : "bg-vehicsim-surface text-vehicsim-ink border-vehicsim-line hover:bg-vehicsim-soft"

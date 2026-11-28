@@ -197,8 +197,9 @@ function MyWorkContent() {
       ) : (
         <>
           <ErrorNote message={error} />
+          {!work && !error && <p role="status" className="text-sm text-vehicsim-muted">Đang tải nhiệm vụ và báo cáo…</p>}
           {notice && (
-            <div className="flex items-center justify-between gap-3 rounded-[14px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok">
+            <div role="status" className="flex items-center justify-between gap-3 rounded-[14px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok">
               <span>{notice}</span>
               <button type="button" className="font-semibold" onClick={() => setNotice(null)}>
                 Ẩn
@@ -228,7 +229,7 @@ function MyWorkContent() {
           {formOpen && work && (
             <Card className="flex flex-col gap-4 p-5">
               <CardTitle>Nộp báo cáo công việc</CardTitle>
-              <form onSubmit={submitReport} className="grid grid-cols-2 gap-4">
+              <form onSubmit={submitReport} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Project *">
                   <select
                     className={inputCls}
@@ -258,7 +259,7 @@ function MyWorkContent() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Tiêu đề *" className="col-span-2">
+                <Field label="Tiêu đề *" className="sm:col-span-2">
                   <input
                     className={inputCls}
                     value={draft.title}
@@ -267,7 +268,7 @@ function MyWorkContent() {
                     onChange={(e) => setDraft({ ...draft, title: e.target.value })}
                   />
                 </Field>
-                <Field label="Nội dung *" className="col-span-2">
+                <Field label="Nội dung *" className="sm:col-span-2">
                   <textarea
                     className={cx(inputCls, "min-h-[120px]")}
                     value={draft.content}
@@ -276,7 +277,7 @@ function MyWorkContent() {
                     onChange={(e) => setDraft({ ...draft, content: e.target.value })}
                   />
                 </Field>
-                <Field label="Đường dẫn đính kèm (http/https, không bắt buộc)" className="col-span-2">
+                <Field label="Đường dẫn đính kèm (http/https, không bắt buộc)" className="sm:col-span-2">
                   <input
                     className={inputCls}
                     value={draft.attachment}
@@ -285,8 +286,8 @@ function MyWorkContent() {
                     onChange={(e) => setDraft({ ...draft, attachment: e.target.value })}
                   />
                 </Field>
-                <div className="col-span-2 flex items-center justify-end gap-3">
-                  {formError && <span className="mr-auto text-[13px] text-vehicsim-danger">{formError}</span>}
+                <div className="flex flex-wrap items-center justify-end gap-3 sm:col-span-2">
+                  {formError && <span role="alert" className="mr-auto text-[13px] text-vehicsim-danger">{formError}</span>}
                   <PillButton type="button" onClick={() => setFormOpen(false)}>
                     Huỷ
                   </PillButton>
@@ -307,10 +308,8 @@ function MyWorkContent() {
               <CardTitle>{work ? `${tasks.length} task được giao` : "Task được giao"}</CardTitle>
             </div>
             {work && tasks.length === 0 && (
-              <EmptyState title={work.projects.length ? "Chưa có task nào được giao cho bạn" : "Bạn chưa là thành viên workspace nào"}>
-                {work.projects.length
-                  ? "Quản lý workspace giao task trên bảng Task của workspace; task mới sẽ hiện ở đây và trong thông báo."
-                  : "Quản lý workspace thêm bạn vào workspace và cấp vai trò; sau đó task và project của workspace hiện ở đây."}
+              <EmptyState title="Chưa có task nào được giao cho bạn">
+                Quản lý workspace giao task trên bảng Task của workspace; task mới sẽ hiện ở đây và trong thông báo.
               </EmptyState>
             )}
             {shownTasks.length > 0 && (
