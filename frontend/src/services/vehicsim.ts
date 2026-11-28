@@ -107,6 +107,8 @@ export const vehicsimApi = {
     apiRequest<DescribeResult>("/vehicsim/scenarios/describe", { method: "POST", body: JSON.stringify({ text }) }),
 
   families: () => apiRequest<FamilyItem[]>("/vehicsim/families"),
+  /** Chỉ xóa họ chưa có dữ liệu nghiệp vụ liên quan; backend kiểm tra lại trong transaction. */
+  deleteFamily: (scenarioId: number) => apiRequest<void>(`/vehicsim/families/${scenarioId}`, { method: "DELETE" }),
   /** Danh mục category và category nào đã chạy được (ADR-050). */
   scenarioCategories: () => apiRequest<ScenarioCategoryInfo[]>("/vehicsim/scenario-categories"),
   createFamily: (body: FamilyRequest) =>
@@ -177,7 +179,7 @@ export const vehicsimApi = {
   deleteRun: (runId: number) => apiRequest<{ run_id: number; deleted: boolean }>(`/vehicsim/runs/${runId}`, { method: "DELETE" }),
   /** Xoá mọi kết quả baseline đã kết thúc của họ; giữ lại run đang chờ/chạy và run đang là mốc của regression. */
   deleteFamilyBaseline: (scenarioId: number, simulatorType?: "CARLA" | "KINEMATIC") =>
-    apiRequest<{ scenario_id: number; deleted: number; skipped_in_use: number; skipped_active: number; skipped_completed: number; skipped_not_owner: number }>(
+    apiRequest<{ scenario_id: number; deleted: number; skipped_in_use: number; skipped_active: number; skipped_completed: number; skipped_not_owner: number; skipped_optimization?: number; skipped_regression?: number }>(
       `/vehicsim/families/${scenarioId}/baseline-runs${simulatorType ? `?simulator_type=${simulatorType}` : ""}`,
       { method: "DELETE" }),
   carlaStatus: () => apiRequest<CarlaStatus>("/vehicsim/carla/status"),

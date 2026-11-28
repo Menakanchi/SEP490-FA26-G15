@@ -1,6 +1,7 @@
 package com.vsos.backend.controller.analysis;
 
 import com.vsos.backend.repository.analysis.FailureAnalysisStore.Kind;
+import com.vsos.backend.repository.analysis.FailureAnalysisExplorerRepository;
 import com.vsos.backend.security.VehicSimAccess;
 import com.vsos.backend.service.analysis.FailureAnalysisService;
 import com.vsos.backend.service.analysis.FailureAnalysisDatabaseAdapter;
@@ -26,11 +27,44 @@ public class FailureAnalysisController {
     private final FailureAnalysisService service;
     private final VehicSimAccess access;
     private final FailureAnalysisDatabaseAdapter database;
+    private FailureAnalysisExplorerRepository explorer;
 
     public FailureAnalysisController(FailureAnalysisService service, VehicSimAccess access, FailureAnalysisDatabaseAdapter database) {
         this.service = service;
         this.access = access;
         this.database = database;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setExplorer(FailureAnalysisExplorerRepository explorer) { this.explorer = explorer; }
+
+    @GetMapping("/explorer/scenarios")
+    public Map<String,Object> explorerScenarios(@AuthenticationPrincipal UserDetails user,
+            @RequestParam(required=false) String q, @RequestParam(defaultValue="20") int limit,
+            @RequestParam(defaultValue="0") int offset, @RequestParam(defaultValue="id_desc") String sort) {
+        return explorer.scenarios(project(user),q,limit,offset,sort);
+    }
+
+    @GetMapping("/explorer/scenarios/{id}/runs")
+    public Map<String,Object> explorerRuns(@AuthenticationPrincipal UserDetails user, @PathVariable long id,
+            @RequestParam(required=false) String q, @RequestParam(name="variant_id",required=false) Long variant,
+            @RequestParam(name="run_id",required=false) Long run, @RequestParam(name="aeb_mode",required=false) String mode,
+            @RequestParam(required=false) String classification, @RequestParam(name="failure_type",required=false) String type,
+            @RequestParam(name="root_cause",required=false) String cause, @RequestParam(name="physical_outcome",required=false) String physical,
+            @RequestParam(defaultValue="20") int limit, @RequestParam(defaultValue="0") int offset,
+            @RequestParam(defaultValue="id_desc") String sort, @RequestParam(required=false) String weather,
+            @RequestParam(name="ego_speed_min",required=false) Double egoMin, @RequestParam(name="ego_speed_max",required=false) Double egoMax,
+            @RequestParam(name="initial_distance_min",required=false) Double distanceMin,
+            @RequestParam(name="initial_distance_max",required=false) Double distanceMax) {
+        return explorer.runs(project(user),id,q,variant,run,mode,classification,type,cause,physical,limit,offset,sort,weather,egoMin,egoMax,distanceMin,distanceMax);
+    }
+
+    @GetMapping("/explorer/scenarios/{id}/variants")
+    public Map<String,Object> explorerVariants(@AuthenticationPrincipal UserDetails user, @PathVariable long id,
+            @RequestParam(required=false) String q, @RequestParam(name="without_runs",defaultValue="false") boolean withoutRuns,
+            @RequestParam(defaultValue="20") int limit, @RequestParam(defaultValue="0") int offset,
+            @RequestParam(defaultValue="id_desc") String sort) {
+        return explorer.variants(project(user),id,q,withoutRuns,limit,offset,sort);
     }
 
     // ---- nguồn đọc thẳng từ DB (run / file gộp theo biến thể)

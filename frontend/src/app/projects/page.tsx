@@ -10,6 +10,7 @@ import { ProjectCard } from "@/components/project/ProjectHome";
 import { Welcome } from "@/components/project/ProjectShell";
 import { useProjectActions } from "@/components/project/ProjectUi";
 import { vehicsimApi } from "@/services/vehicsim";
+import { useAuth } from "@/context/AuthContext";
 import type { ProjectList, ProjectStatus } from "@/types/vehicsim";
 
 const PAGE_SIZE = 9;
@@ -22,6 +23,8 @@ const TABS: { status: ProjectStatus; label: string; count: (list: ProjectList) =
 export default function ListProjectPage() {
   const router = useRouter();
   const { ctx, openProject, isExperiencer } = useVehicSimContext();
+  const { user } = useAuth();
+  const engineer = user?.roleCode === "ENGINEER";
   const [tab, setTab] = useState<ProjectStatus>("ACTIVE");
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
@@ -63,8 +66,9 @@ export default function ListProjectPage() {
   return (
     <VehicSimPage
       crumbs={[{ label: "Project của tôi" }]}
+      hideMissingProjectError
       actions={
-        isExperiencer && (
+        (isExperiencer || engineer) && (
           <PillButton variant="dark" href="/projects/new">
             + Tạo project
           </PillButton>
@@ -118,7 +122,13 @@ export default function ListProjectPage() {
       ) : (
         <>
           <div className="grid w-full grid-cols-1 gap-5 lg:grid-cols-2 2xl:grid-cols-3">
-            {list.items.map((p) => (
+            {list.items.map((p) => engineer && p.workspace_id != null ? (
+              <div key={p.id} className="flex flex-col gap-3 rounded-xl border border-vehicsim-line bg-vehicsim-surface p-5">
+                <strong>{p.name}</strong>
+                <span className="text-sm text-vehicsim-muted">{p.vehicle_name ?? "Chưa chọn xe"} · {p.status === "ACTIVE" ? "Đang hoạt động" : "Lưu trữ"}</span>
+                <div><PillButton onClick={() => go(p.id, "/")}>Mở project</PillButton></div>
+              </div>
+            ) : (
               <ProjectCard
                 key={p.id}
                 project={p}

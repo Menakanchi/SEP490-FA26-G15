@@ -10,7 +10,6 @@ import { LEAD_AXES } from "@/components/FamilyForm";
 import { LEAD_CATEGORIES, type DescribeKey, type DescribeResult, type DescribedIr, type FieldOrigin, type TimeOfDay, type Weather } from "@/types/vehicsim";
 
 const EXAMPLES = [
-  "Xe VF8 chạy 60 km/h ban đêm trời mưa, một người đi bộ lao ra từ lề phải khi xe còn cách 25 m",
   "Ban ngày trời quang, xe chạy 40 km/h, người đi bộ đi chậm sang đường khi xe cách khoảng 20 m",
   "Lúc chạng vạng, xe chạy 50 km/h, người đi bộ đứng ở mép đường rồi dừng lại, không sang đường",
   "Xe chạy 60 km/h, xe tải phía trước đang chạy 40 km/h thì phanh gấp 6 m/s2, cách 20 m, trời mưa",

@@ -54,6 +54,76 @@ export function diagnosticPresentation(report: RecordValue) {
   const differentClocks = metrics.some(m => m.label === "Va chạm thực tế") && metrics.some(m => m.label === "Lệnh phanh AEB" || m.label === "Phát hiện mục tiêu") && (!contactClock || !coreClock || contactClock !== coreClock);
   return { conclusion, outcomeText, behaviorText, candidates, hasUnknownCandidates, metrics, differentClocks };
 }
+
+/** Display canonical producer values as-is, including unavailable and conditional states. */
+export function objectivePresentation(report: RecordValue) {
+  const objectives = object(report.objectives);
+  return [
+    { key: "rms_jerk_mps3", label: "RMS Jerk", unit: "m/s³" },
+    { key: "impact_speed_mps", label: "Tốc độ va chạm tương đối", unit: "m/s" },
+    { key: "stopping_distance_m", label: "Quãng đường dừng", unit: "m" },
+  ].map(metric => {
+    const source = object(objectives[metric.key]), value = object(source.canonical_value);
+    let text = "Chưa xác định";
+    if (value.status === "INVALID") text = "Dữ liệu không hợp lệ";
+    else if (value.status === "CONFLICTING") text = "Dữ liệu mâu thuẫn";
+    else if (value.status === "NOT_APPLICABLE" || source.canonical_applicability === "NOT_APPLICABLE") text = "N/A — Không áp dụng";
+    else if (["OBSERVED", "DERIVED", "CONDITIONAL"].includes(String(value.status)) && source.canonical_applicability === "APPLICABLE" && value.unit === metric.unit && typeof value.value === "number" && Number.isFinite(value.value))
+      text = `${value.value.toLocaleString("vi-VN", { maximumFractionDigits: 3 })} ${metric.unit}${value.status === "CONDITIONAL" ? " · có điều kiện" : ""}`;
+    return { ...metric, text };
+  });
+}
+
+const missingLabels: Record<string, string> = {
+  REQUIREMENT_UNAPPROVED: "Yêu cầu đánh giá chức năng đã được phê duyệt",
+  APPROVED_REQUIREMENT: "Yêu cầu đánh giá chức năng đã được phê duyệt",
+  PERFORMANCE_REQUIREMENT_UNAPPROVED: "Yêu cầu hiệu năng đã được phê duyệt",
+  APPROVED_CLAIM_LOCAL_PREDICATES: "Các điều kiện đánh giá phù hợp với yêu cầu đã phê duyệt",
+  ALL_REQUIRED_PREDICATES: "Đầy đủ các điều kiện để xác nhận lỗi",
+  CALIBRATION_DOMAIN_UNKNOWN: "Xác nhận hiệu chuẩn cho điều kiện mô phỏng",
+  VALIDATED_RESPONSE: "Đáp ứng phanh vật lý đã được xác thực",
+  PHYSICAL_FEASIBILITY_UNCERTIFIED: "Chứng nhận khả năng tránh va chạm vật lý",
+  P05_CERTIFICATE_MISSING: "Chứng nhận khả năng tránh va chạm vật lý",
+  UNCERTAINTY_SET: "Phạm vi bất định đã được xác thực",
+  EXHAUSTIVE_ACTION_CERTIFICATE: "Chứng nhận tập hành động hợp lệ",
+  APPLIED_CONSUMED_COMMAND_MISSING: "Dấu vết lệnh thực sự được áp dụng",
+  ATTRIBUTED_APPLIED_CONSUMED_COMMAND_TRACE: "Dấu vết lệnh thực sự được áp dụng và nguồn lệnh",
+  CONTROL_WRITER_UNKNOWN: "Nguồn lệnh điều khiển thực sự",
+  PHYSICS_CONSUMPTION_UNKNOWN: "Bằng chứng lệnh đã được áp dụng vào mô phỏng",
+  OBSERVABILITY_UNPROVEN: "Bằng chứng mục tiêu có thể được phát hiện tại thời điểm liên quan",
+  PRIMARY_EX_ANTE_DELIVERY_AND_REASON_TRACE: "Dấu vết phát hiện và lý do quyết định tại thời điểm can thiệp",
+  PRIMARY_PREDICTION_INPUTS_MISSING: "Dữ liệu đầu vào dự đoán tại thời điểm ra quyết định",
+  CAUTION_POLICY_UNAPPROVED: "Quy tắc đánh giá phanh nhầm đã được phê duyệt",
+  ALL_ACTOR_REASON_COVERAGE_MISSING: "Dữ liệu đầy đủ về các mục tiêu và lý do phanh",
+  CROSS_CLOCK_ACTOR_ALIGNMENT: "Đồng bộ đồng hồ và định danh đối tượng",
+  APPROVED_CAUSAL_ADJUDICATION: "Đánh giá nguyên nhân đã được phê duyệt",
+  CONTACT_COVERAGE_OR_APPROVED_ENCOUNTER_POLICY_MISSING: "Phạm vi ghi nhận tiếp xúc hoặc quy tắc đánh giá tình huống",
+  FULL_BBOX_TRANSFORM: "Biến đổi hình học đầy đủ của phương tiện và mục tiêu",
+  VALIDATED_GEOMETRY_UNCERTAINTY: "Độ bất định hình học đã được xác thực",
+  CORE_BINARY_MISMATCH_OR_MISSING: "Thông tin phiên bản lõi phù hợp giữa hai lượt đối chứng",
+};
+
+/** Restrict UI to documented reason categories; leave unknown codes in the saved report. */
+export function missingEvidencePresentation(report: RecordValue): string[] {
+  const reasons: unknown[] = Array.isArray(report.inconclusive_reasons) ? [...report.inconclusive_reasons] : [];
+  for (const candidate of [...(Array.isArray(report.failure_candidates) ? report.failure_candidates : []), ...(Array.isArray(report.root_cause_hypotheses) ? report.root_cause_hypotheses : []), ...(Array.isArray(report.evidence_sufficiency) ? report.evidence_sufficiency : [])]) {
+    const item = object(candidate);
+    for (const key of ["missing_evidence", "missing"]) if (Array.isArray(item[key])) reasons.push(...item[key]);
+  }
+  return [...new Set(reasons.filter((code): code is string => typeof code === "string").map(code => missingLabels[code]).filter(Boolean))];
+}
+
+/** The displayed hypotheses keep their backend status; candidates never establish a cause. */
+export function hypothesisPresentation(report: RecordValue) {
+  const labels: Record<string, string> = {
+    NO_BRAKING_MECHANISM_INVESTIGATION: "Chuỗi phát hiện và can thiệp chưa ghi nhận phanh",
+    INEFFECTIVE_BRAKING_MECHANISM_INVESTIGATION: "Thời điểm can thiệp và đáp ứng phanh",
+    FALSE_BRAKING_MECHANISM_INVESTIGATION: "Dự đoán nguy cơ và quyết định phanh",
+  };
+  const statuses: Record<string, string> = { SUSPECTED: "Cần điều tra", INCONCLUSIVE: "Chưa đủ căn cứ", SUPPORTED: "Có bằng chứng hỗ trợ", CONFIRMED: "Đã xác nhận" };
+  return (Array.isArray(report.root_cause_hypotheses) ? report.root_cause_hypotheses : []).map(object)
+    .map(h => ({ label: labels[String(h.type)] ?? "Giả thuyết nguyên nhân cần điều tra", status: statuses[String(h.status)] ?? "Chưa xác định", type: String(h.type) }));
+}
 export const uuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 const invalid = (what: string): never => { throw new FAError("MALFORMED_RESOURCE", `Dữ liệu ${what} không đúng hợp đồng; chưa thể hiển thị kết luận.`); };
 const integer = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;

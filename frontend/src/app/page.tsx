@@ -54,9 +54,9 @@ function MvpLoopPage() {
       .catch((err) => setError(err instanceof Error ? err.message : "Không tải được trạng thái vòng MVP"));
   }, []);
 
-  const candidates = ctx?.versions.filter((v) => v.parent_version_id !== null).length ?? 0;
+  const candidates = ctx?.versions.filter((v) => v.status === "CANDIDATE").length ?? 0;
   const loaded = families && regressions && recs && ctx;
-  const views = loaded ? buildSteps(families, regressions, recs, candidates, ctx.system.baseline?.label) : null;
+  const views = loaded ? buildSteps(families, regressions, recs, candidates, ctx.system.baseline?.label, ctx.simulator) : null;
   const currentIdx = views ? views.findIndex((v) => !v.done) : -1;
   const next = views && currentIdx >= 0 ? views[currentIdx] : null;
   const firstName = (user?.full_name || user?.name || "").trim().split(/\s+/).pop();
@@ -212,11 +212,14 @@ function buildSteps(
   recs: RecommendationItem[],
   candidateCount: number,
   baselineLabel: string | undefined,
+  simulator: string,
 ): StepView[] {
   const variants = families.reduce((n, f) => n + f.variants, 0);
   const failing = families.reduce((n, f) => n + f.failures, 0);
-  const queued = families.reduce((n, f) => n + (f.runs.PENDING ?? f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0), 0);
-  const baselineDone = families.some((f) => f.variants > 0 && (f.runs.COMPLETED ?? 0) >= f.variants);
+  // The family-wide run counts include older baselines, optimization and regression.
+  // Progress is scoped to the current baseline, vehicle, variant set and simulator.
+  const queued = families.reduce((n, f) => n + (f.baseline_progress?.[simulator]?.active_runs ?? 0), 0);
+  const baselineDone = families.some((f) => f.variants > 0 && (f.baseline_progress?.[simulator]?.completed_variants ?? 0) >= f.variants);
   const tests = regressions.items.length;
   const decided = regressions.items.filter((t) => t.review_decision !== "PENDING").length;
   const pending = recs.filter((r) => r.status === "PENDING");

@@ -18,11 +18,12 @@ interface VehicSimPageProps {
   /** Bước của vòng MVP mà màn này thuộc về (xem components/vehicsimFlow.ts). */
   step?: number | number[];
   showContext?: boolean;
+  hideMissingProjectError?: boolean;
   children: React.ReactNode;
 }
 
-export function VehicSimPage({ crumbs, title, badges, actions, showContext = true, children }: VehicSimPageProps) {
-  const { ctx, error, canResetProject, selectProject } = useVehicSimContext();
+export function VehicSimPage({ crumbs, title, badges, actions, showContext = true, hideMissingProjectError = false, children }: VehicSimPageProps) {
+  const { ctx, error, canResetProject, noProjectInScope, selectProject } = useVehicSimContext();
   const { user } = useAuth();
   const pathname = usePathname();
   const viewedProjectId = pathname.match(/^\/projects\/(\d+)(?:\/|$)/)?.[1];
@@ -60,7 +61,7 @@ export function VehicSimPage({ crumbs, title, badges, actions, showContext = tru
 
       <h1 className="sr-only">{title ?? crumbs.at(-1)?.label ?? "VehicSim"}</h1>
 
-      {error && (
+      {error && !(hideMissingProjectError && noProjectInScope) && (
         <div role="alert" className="rounded-[16px] border border-solid border-vehicsim-danger/30 bg-vehicsim-danger-bg px-4 py-3 text-[13px] text-vehicsim-danger">
           {error}
           {canResetProject && <button type="button" onClick={() => selectProject(null)} className="ml-3 font-semibold underline">Chọn lại project</button>}

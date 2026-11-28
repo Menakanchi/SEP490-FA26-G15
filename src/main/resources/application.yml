@@ -59,7 +59,7 @@ app:
     access-token-ttl-minutes: ${ACCESS_TOKEN_TTL_MINUTES:60}
     otp-ttl-seconds: ${OTP_TTL_SECONDS:600}
     otp-max-attempts: ${OTP_MAX_ATTEMPTS:5}
-    otp-resend-cooldown-seconds: ${OTP_RESEND_COOLDOWN_SECONDS:60}
+    otp-resend-cooldown-seconds: ${OTP_RESEND_COOLDOWN_SECONDS:30}
     otp-requests-per-ip: ${OTP_REQUESTS_PER_IP:5}
     login-attempts-per-ip: ${LOGIN_ATTEMPTS_PER_IP:10}
     login-attempts-per-account: ${LOGIN_ATTEMPTS_PER_ACCOUNT:20}   # chỉ đếm lần đăng nhập SAI vào một email

@@ -112,6 +112,7 @@ export interface ProjectItem {
   has_running_work: boolean;
   created_date: string;
   updated_at: string;
+  workspace_id?: number | null;
   journey: ProjectJourney;
 }
 
@@ -478,6 +479,8 @@ export interface Frame {
 
 export interface RunHeader {
   evaluation_valid?: boolean;
+  /** Run mode recorded by the backend; older responses may not include it. */
+  aeb_mode?: "ON" | "OFF" | null;
   run_id: number;
   purpose: string;
   status: string;

@@ -9,14 +9,17 @@ public final class RunEvidence {
 
     public static AnalysisMetrics.Sample sample(Row row) {
         var raw = row.json("telemetry_json");
+        var metrics = Json.asMap(raw.get("metrics"));
         Object onset = row.asMap().containsKey("brake_onset") ? row.get("brake_onset")
-                : Json.asMap(raw.get("metrics")).get("brake_onset_t");
-        Boolean braked = onset != null && !"null".equals(String.valueOf(onset)) ? Boolean.TRUE
-                : row.dbl("rms_jerk_mps3") != null || row.dbl("stopping_distance_m") != null ? Boolean.TRUE
-                : Boolean.FALSE.equals(row.boolOrNull("aeb_activated")) ? Boolean.FALSE : null;
+                : metrics.get("brake_onset_t");
         boolean trace = row.asMap().containsKey("trace_frames")
                 ? row.getInt("trace_frames") != null && row.getInt("trace_frames") > 0
                 : !Json.asList(raw.get("frames")).isEmpty();
+        // JSON null is recorded evidence; a missing key or absent trace is not.
+        boolean onsetPresent = row.asMap().containsKey("brake_onset_type")
+                ? row.get("brake_onset_type") != null : metrics.containsKey("brake_onset_t");
+        Boolean braked = AnalysisMetrics.recordedBraking(onset, onsetPresent, row.dbl("rms_jerk_mps3"),
+                row.dbl("stopping_distance_m"), row.boolOrNull("aeb_activated"), row.boolOrNull("collision_occurred"), trace);
         String status = "COMPLETED".equals(row.str("status")) && !trace ? "INCOMPLETE" : row.str("status");
         return new AnalysisMetrics.Sample(status,row.str("end_reason"),row.boolOrNull("collision_occurred"),
                 row.boolOrNull("is_false_positive"),row.boolOrNull("is_false_negative"),row.str("verdict"),braked,

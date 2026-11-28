@@ -31,7 +31,7 @@ import java.util.Map;
 @Tag(name = "Auth", description = "Đăng ký, đăng nhập, quên mật khẩu và hồ sơ người dùng hiện tại")
 public class AuthController {
 
-    /** Cùng một câu cho mọi nhánh của bước xin mã — không để lộ email nào đã đăng ký. */
+    /** Câu trả về khi đã nhận yêu cầu xin mã (đăng ký: email mới; quên mật khẩu: mọi nhánh, không lộ email). */
     private static final String OTP_SENT_MESSAGE = "Nếu email hợp lệ, mã xác minh 6 số đã được gửi. Mã có hiệu lực trong ít phút.";
 
     private final AuthService authService;
@@ -56,7 +56,7 @@ public class AuthController {
         return ResponseEntity.ok(authService.register(request, clientIp(http)));
     }
 
-    @Operation(summary = "Đăng ký bước 1: xin mã OTP", description = "Gửi mã 6 số qua email nếu email chưa có tài khoản. Luôn trả cùng một câu.")
+    @Operation(summary = "Đăng ký bước 1: xin mã OTP", description = "Gửi mã 6 số qua email nếu email chưa có tài khoản; email đã có tài khoản trả 409 (ADR-070).")
     @PostMapping("/register/request")
     public ResponseEntity<Map<String, String>> registerRequest(@Valid @RequestBody EmailRequest body, HttpServletRequest http) {
         authService.requestRegistration(body.email(), clientIp(http));

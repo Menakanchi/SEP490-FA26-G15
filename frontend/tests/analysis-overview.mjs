@@ -51,6 +51,7 @@ try {
       system: { id: 1, name: "AEB", baseline: { id: 7, label: "v7" } }, versions: [{ id: 7, label: "v7", status: "BASELINE" }],
       families: [{ id: 42, code: "CCRM", name: initial.items[0].family }], parameters: [], reviewer_projects: [], reviewer_can_decide: false });
     if (p === "/vehicsim/analysis/v3/sources") return reply({items:[],limit:20,offset:0}); // FE-R4: empty FA storage is independent of legacy runs.
+    if (p === "/vehicsim/analysis/v3/explorer/scenarios") return reply({project_id:project.id,items:[],total:0,limit:20,offset:0});
     if (/^\/vehicsim\/analysis\/v3\/database\/(runs|collections)$/.test(p)) return reply({schema_version:"vehicsim.fa-db-input/v1",selection_kind:p.endsWith("collections")?"COLLECTION":"RUN",project_id:Number(route.request().headers()["x-vehicsim-project"]),items:[],limit:20,offset:0}); // Independent database source fixture.
     if (p === "/vehicsim/notifications") return reply({ items: [], unread_count: 0 });
     if (p === "/vehicsim/regression") return reply({ items: [], kpis: { total: 0, passed: 0, failed: 0, running: 0 } });

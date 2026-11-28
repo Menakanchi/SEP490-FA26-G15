@@ -7,6 +7,7 @@ import { failureAnalysisV3 as api } from "@/services/failureAnalysisV3";
 import { FAError, object, matchReport, type Source, type Execution, type ReportMetadata, type HandoffMetadata, type DiagnosticReport } from "./failureAnalysisV3Data";
 import { FailureAnalysisV3Report } from "./FailureAnalysisV3Report";
 import { FailureAnalysisDatabasePicker } from "./FailureAnalysisDatabasePicker";
+import { FailureAnalysisScenarioExplorer } from "./FailureAnalysisScenarioExplorer";
 import styles from "./FailureAnalysisV3.module.css";
 
 const message = (error: unknown) => error instanceof Error ? error.message : "Chưa tải được dữ liệu.";
@@ -21,7 +22,7 @@ function Pager({ offset, length, onPage }: { offset: number; length: number; onP
   if (!offset && length < 20) return null;
   return <div className={styles.toolbar}><button className="analysis-button" disabled={!offset} onClick={() => onPage(Math.max(0, offset - 20))}>Trang trước</button><span>Trang {offset / 20 + 1}</span><button className="analysis-button" disabled={length < 20 || offset >= 10000} onClick={() => onPage(offset + 20)}>Trang sau</button></div>;
 }
-export function FailureAnalysisV3({ project, canWrite }: { project: number; canWrite: boolean }) {
+export function FailureAnalysisV3({ project, canWrite, families }: { project: number; canWrite: boolean; families: { id: number; name: string }[] }) {
   const router = useRouter(), params = useSearchParams();
   const executionId = params.get("fa_execution"), reportId = params.get("fa_report");
   const [busy, setBusy] = useState(false), [offset, setOffset] = useState(0), [selected, setSelected] = useState("");
@@ -44,8 +45,9 @@ export function FailureAnalysisV3({ project, canWrite }: { project: number; canW
   return <section className={`analysis-panel ${styles.workspace}`} aria-label="Phân tích dữ liệu">
     {executionId ? <><button className={`analysis-button ${styles.back}`} onClick={() => navigation(null)}>← Chọn kết quả khác</button><ExecutionView key={executionId} id={executionId} reportId={reportId} project={project} onReport={id => navigation(executionId, id)} /></>
       : reportId ? <ErrorState error={new FAError("EXECUTION_LINK_REQUIRED", "Không tìm thấy lần phân tích của kết quả này.")} /> : <>
-        <h2>Phân tích dữ liệu</h2><FailureAnalysisDatabasePicker project={project} canWrite={canWrite} disabled={busy} onPending={setBusy} onExecution={id => navigation(id)} />
-        <details className={styles.details}><summary>Kết quả phân tích trước đây</summary>
+        <FailureAnalysisScenarioExplorer project={project} canWrite={canWrite} families={families} onReport={(execution, report) => navigation(execution, report)} onExecution={id => navigation(id)} />
+        <details hidden className={styles.details}><summary>Phân tích theo nguồn kết quả</summary><FailureAnalysisDatabasePicker project={project} canWrite={canWrite} disabled={busy} onPending={setBusy} onExecution={id => navigation(id)} /></details>
+        <details hidden className={styles.details}><summary>Kết quả phân tích trước đây</summary>
           <ErrorState error={error} />
           <div className={styles.toolbar}><label>Chọn dữ liệu<select value={selected} onChange={e => { operation.current++; setSelected(e.target.value); }} disabled={busy}><option value="">Chọn dữ liệu</option>{sources?.map(s => <option key={s.id} value={s.id}>{sourceLabel(s)}</option>)}</select></label>
           <button className="analysis-button" disabled={!selected || busy || !canWrite} onClick={() => void analyze()}>{busy ? "Đang phân tích…" : "Phân tích lại"}</button></div>

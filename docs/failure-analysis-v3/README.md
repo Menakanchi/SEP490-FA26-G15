@@ -45,7 +45,8 @@ không báo thành công trước response hoặc tự retry mutation không rõ
 Dialog giữ dirty/review/busy, focus return, Tab/Escape, scroll lock và ref submit lock.
 URL tài liệu chỉ http/https; DECIMAL giữ dạng string khi cần precision.
 
-Đổi role/email/status có auth_version/session revocation ở backend; UI guard
+Đổi role/status có auth_version/session revocation ở backend; Admin không thể
+đổi email tài khoản đã tạo. UI guard
 không thay authorization. ENGINEER/REVIEWER theo workspace membership; EXPERIENCER
 theo project cá nhân; ADMIN/MANAGER còn giới hạn default project TD-30.
 Đọc [ADR-064](../adr/ADR-064-ky-su-tao-project-cua-workspace.md) và source security
@@ -130,9 +131,22 @@ Lỗi riêng hiện là `{code, detail, retryable}` ở cấp ngoài cùng, shar
 
 | Method/path cùng base V3 | Request | Kết quả |
 |---|---|---|
+| GET /explorer/scenarios | q, limit 1..100, offset 0..100000, sort=id_asc/id_desc | Họ kịch bản và thống kê theo run AEB ON có report khớp nguồn; tìm theo tên, code hoặc ID scenario/variant/run trong project |
+| GET /explorer/scenarios/{id}/runs | q, variant_id, run_id, aeb_mode, classification, failure_type, root_cause, physical_outcome, weather, ego_speed_min/max, initial_distance_min/max, limit, offset, sort | Run phân trang, các candidate/giả thuyết và ba objective canonical; điều kiện kịch bản đọc snapshot run_config_json |
+| GET /explorer/scenarios/{id}/variants | q, without_runs, limit, offset, sort | Biến thể trong họ, kể cả biến thể chưa có run |
 | GET /database/runs, /database/collections | limit1..20, offset0..10000 | Page completed CARLA runs hoặc variant cohorts |
 | GET /database/runs/{id}, /database/collections/{id} | Numeric run/variant ID | Preflight availability, source_sha256, issues/missing fields |
 | POST /database/runs/{id}/executions, /database/collections/{id}/executions | Không body; optional source_sha256 query |201 committed Execution; frontend luôn gửi preflight hash |
+
+Explorer liên kết report qua project/run/attempt và checksum producer, source,
+execution, report; với collection còn kiểm provenance thành viên. Mỗi run chỉ
+được tính một report. Phạm vi kiểm hiện là nguồn và danh tính, **chưa xác minh lại**
+hiệu lực context, baseline/catalog, calibration hoặc requirements; response nêu
+`context_freshness=UNVERIFIED`. Vì vậy số lỗi xác nhận và số không lỗi có đủ bằng
+chứng trả `null`, filter `CONFIRMED` chưa khả dụng. `SUSPECTED` là triệu chứng trong
+report, không xác nhận lỗi hay nguyên nhân. OFF không vào thống kê AEB. Report cũ
+không thể bind an toàn vẫn đọc được qua nguồn/lịch sử; không tính thay cho run.
+Truy vấn đọc JSON/checksum trong DB; chưa benchmark trên hàng nghìn report lớn.
 
 DB hash sai định dạng400, source đã đổi409, cross-project/absent404,
 unavailable standalone422, vượt budget413. Client không gửi đường dẫn server.

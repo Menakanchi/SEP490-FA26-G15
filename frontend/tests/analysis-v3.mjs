@@ -1,12 +1,59 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs/promises";
+import {createRequire} from "node:module";
+import {pathToFileURL} from "node:url";
+import React from "react";
+import {renderToStaticMarkup} from "react-dom/server";
+import ts from "typescript";
 import {loadProduction} from "./helpers/load-production.mjs";
 const d=await loadProduction("components/analysis/failureAnalysisV3Data.ts");
 const api=(await loadProduction("services/failureAnalysisV3.ts")).failureAnalysisV3;
 const shared=await loadProduction("services/api.ts");
 const read=async name=>JSON.parse(await fs.readFile(new URL(`./fixtures/fa-v3/http-${name}.json`,import.meta.url),"utf8"));
 const [s,e,p,r,h]=await Promise.all(["source","execution","reports","report","handoff-status"].map(read));
+test("canonical objectives and real diagnostic hypotheses remain visible with their own status",async()=>{
+ const base=new URL("../../docs/failure-analysis-v3/json-input-integration/evidence/accepted/",import.meta.url);
+ const load=async path=>JSON.parse(await fs.readFile(new URL(path,base),"utf8"));
+ const [a,b,c]=await Promise.all([
+  load("input-2-vehicsim-variant-1032-collection/diagnostics/2498.json"),
+  load("input-3-vehicsim-variant-1033-collection/diagnostics/2499.json"),
+  load("input-4-vehicsim-variant-1034-collection/diagnostics/2500.json"),
+ ]);
+ const first=d.objectivePresentation(a.report);assert.equal(first.length,3);assert(first.every(x=>x.text.includes("Không áp dụng")));
+ const second=d.objectivePresentation(b.report);assert.deepEqual(second.map(x=>x.text),["17,68 m/s³","6,067 m/s","17,518 m"]);
+ const third=d.objectivePresentation(c.report);assert(third[0].text.includes("21,621"));assert.match(third[1].text,/Không áp dụng/);assert(third[2].text.includes("16,627"));
+ assert.deepEqual(d.hypothesisPresentation(a.report),[]);
+ assert.match(d.hypothesisPresentation(b.report)[0].label,/Thời điểm can thiệp/);assert.equal(d.hypothesisPresentation(b.report)[0].status,"Cần điều tra");
+ assert.match(d.hypothesisPresentation(c.report)[0].label,/Dự đoán nguy cơ/);
+ assert(d.missingEvidencePresentation(b.report).some(x=>x.includes("phê duyệt")));
+ const report=structuredClone(b.report), value=report.objectives.rms_jerk_mps3.canonical_value;
+ for(const [status,text] of [["INVALID","Dữ liệu không hợp lệ"],["CONFLICTING","Dữ liệu mâu thuẫn"],["UNKNOWN","Chưa xác định"],["NOT_APPLICABLE","Không áp dụng"]]) {value.status=status;assert.match(d.objectivePresentation(report)[0].text,new RegExp(text));}
+ value.status="CONDITIONAL";assert.match(d.objectivePresentation(report)[0].text,/17,68.*có điều kiện/);
+ value.value=null;assert.equal(d.objectivePresentation(report)[0].text,"Chưa xác định");
+ value.value=0;value.status="OBSERVED";assert.match(d.objectivePresentation(report)[0].text,/^0 m\/s³/);
+});
+test("real report renders objective states, measured timeline, model screen and non-confirmed hypothesis",async()=>{
+ const source=await fs.readFile(new URL("../src/components/analysis/FailureAnalysisV3Report.tsx",import.meta.url),"utf8");
+ const dataSource=await fs.readFile(new URL("../src/components/analysis/failureAnalysisV3Data.ts",import.meta.url),"utf8");
+ const compile=(code,jsx)=>ts.transpileModule(code,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022,jsx}}).outputText;
+ const url=code=>"data:text/javascript;base64,"+Buffer.from(code).toString("base64");
+ const runtime=pathToFileURL(createRequire(import.meta.url).resolve("react/jsx-runtime")).href;
+ const css=url("export default new Proxy({}, {get: (_, k) => k})");
+ const reportModule=compile(source,ts.JsxEmit.ReactJSX)
+  .replace('"react/jsx-runtime"',JSON.stringify(runtime))
+  .replace('"./failureAnalysisV3Data"',JSON.stringify(url(compile(dataSource))))
+  .replace('"./FailureAnalysisV3.module.css"',JSON.stringify(css));
+ const {FailureAnalysisV3Report}=await import(url(reportModule));
+ const fixture=async path=>JSON.parse(await fs.readFile(new URL(`../../docs/failure-analysis-v3/json-input-integration/evidence/accepted/${path}/diagnostics/${path.includes("1033")?2499:2500}.json`,import.meta.url),"utf8"));
+ const content=renderToStaticMarkup(React.createElement(FailureAnalysisV3Report,{data:await fixture("input-3-vehicsim-variant-1033-collection")}));
+ for(const expected of ["17,68 m/s³","6,067 m/s","17,518 m","2,35 s","2,6 s","0,25 s","17,964 m","22,335 m","-4,371 m","Nghi ngờ","Cần điều tra"]) assert(content.includes(expected),expected);
+ assert.match(content,/chưa chứng minh khả năng tránh va chạm hai chiều/);
+ assert.match(content,/Các mốc khác đồng hồ/);
+ assert.doesNotMatch(content,/Nguyên nhân đã xác nhận theo báo cáo/);
+ const other=renderToStaticMarkup(React.createElement(FailureAnalysisV3Report,{data:await fixture("input-4-vehicsim-variant-1034-collection")}));
+ assert.match(other,/N\/A — Không áp dụng/);assert.match(other,/Dự đoán nguy cơ và quyết định phanh/);
+});
 test("presentation giữ riêng va chạm, dấu hiệu AEB và mức chắc chắn",()=>{
  const base=structuredClone(r.report), evidence=(value,status="OBSERVED",unit=null)=>({value,status,unit});
  const view=(patch)=>d.diagnosticPresentation({...base,...patch});

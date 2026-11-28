@@ -1,5 +1,66 @@
 # Kiểm chứng Failure Analysis V3 → MOBO — 26/11/2026
 
+## Scenario Explorer và báo cáo dựa trên bằng chứng — 27/11/2026
+
+Đầu đợt `HEAD` và `git ls-remote origin refs/heads/main-chuvvV1` cùng
+`35387581ab4bdf6ee0243c12fa08f58dfce8f320`. Không checkout, commit, push hoặc sửa DB nhóm.
+Đã đối chiếu các hợp đồng DATA, DIAGNOSIS, FORMULA, OBJECTIVE, MOBO,
+`analysis-metrics-contract` và ADR-055; một số spec còn ghi DESIGN ONLY dù REST/DB
+đã được triển khai. Trạng thái runtime lấy theo source, README và ADR-067.
+
+**IMPLEMENTED:** thêm ba read API `/analysis/v3/explorer/scenarios`,
+`/scenarios/{id}/variants`, `/scenarios/{id}/runs`; tìm toàn project theo tên,
+code và ID họ/biến thể/run, phân trang/sắp xếp server, lọc kết hợp theo mode,
+candidate, giả thuyết, physical outcome và weather/tốc độ/khoảng cách từ snapshot
+run. Màn họ → biến thể/run → report giữ tìm kiếm/bộ lọc khi quay lại; biến thể
+chưa chạy được tải riêng. UI đọc đủ ba canonical objective và trạng thái, timeline,
+đối chiếu dừng 1D, giả thuyết, bằng chứng thiếu và ON/OFF khi pairing hợp lệ.
+Root cause không còn viết cứng; không suy lỗi AEB từ va chạm hoặc đổi null thành 0.
+
+Read model kiểm project/run/variant/seed/mode/repetition/attempt, checksum source,
+execution/report và provenance member collection trước khi chọn một report cho mỗi
+run. AEB OFF không vào thống kê lỗi. `SUSPECTED` là dấu hiệu theo báo cáo, không
+là xác nhận; `NO_SUPPORTED_FAILURE` không chứng minh an toàn hay nguyên nhân ngoài
+AEB. Truy vấn không truyền toàn bộ report về frontend, không chạy lại mô phỏng.
+API và giới hạn chi tiết được cập nhật trong `failure-analysis-v3/README.md`.
+
+**BLOCKED / chưa hoàn chỉnh:** read model chưa tái kiểm freshness context duyệt,
+baseline/catalog, calibration hoặc requirements; phân loại/số lượng CONFIRMED và
+không lỗi có đủ bằng chứng vì vậy chưa được công bố. Context MOBO hiện xác nhận
+cohort/baseline nhưng không cung cấp functional requirements hoặc calibration để
+xác nhận nguyên nhân. Chưa có filter ma sát dựa trên nguồn áp dụng đã xác minh,
+filter nguyên nhân hiện theo nhóm hypothesis thực có thay vì các stage suy đoán.
+Chưa benchmark hàng nghìn report lớn; query checksum/JSON có thể tốn tài nguyên.
+Nhánh provenance approved collection chưa có kiểm thử MySQL riêng; không khẳng định
+mọi report lịch sử đều hiển thị trong explorer. Báo cáo không bind được vẫn giữ
+trong lịch sử. Chưa đối chiếu Figma, CARLA thật hoặc DB nhóm.
+
+**Audit diagnosis:** `DiagnosisPolicy.assess(... Map.of())` tạo symptom trước;
+`DiagnosticReport.analyze` sau đó gọi `applyRequirements` với requirements đã
+xác minh. Không nâng SUSPECTED/UNKNOWN bằng dữ liệu giả. Đã cập nhật tham chiếu
+source/mô tả `CarlaSession` cho đúng profile va chạm mới; tham chiếu source không
+chứng minh binary đã chạy tương đương. Fixture producer: 2499 có COLLISION và
+INEFFECTIVE_BRAKING SUSPECTED, canonical jerk 17,680 m/s³, impact 6,067 m/s,
+stopping 17,518 m; screen 17,964 − 22,335 = −4,371 m chỉ có điều kiện. 2498
+không có candidate, physical UNKNOWN; 2500 FALSE_BRAKING SUSPECTED và physical
+UNKNOWN; OFF là NOT_APPLICABLE cho functional assessment.
+
+**TESTED:** `JsonInputIntegrationTest` + `Batch03ContextTest` 83/83 với export
+thật 2498/2499/2500/OFF; MySQL 8.4/HTTP cô lập kiểm direct/collection, checksum,
+attempt, project, authorization, tìm kiếm/lọc và variant chưa chạy. `MainFlowMysqlTest`
+đạt qua V3 handoff → campaign/GP → verification/Reviewer với HTTP/MySQL/Redis và
+simulator Java động học, không phải CARLA. Frontend production build, TypeScript,
+ESLint, 80 unit và 6 nhóm browser đạt; browser MOBO riêng đạt. Browser dùng fixture
+API, không chứng minh DB/CARLA live. Bảy browser suite legacy không chạy vì controls
+đã được thay trước đợt này. Ảnh fixture: `data/codex-fa-explorer-35387581/`
+`scenario-overview.png`, `scenario-runs.png`, `diagnostic-detail.png`.
+
+Source: `FailureAnalysisExplorerRepository`, `FailureAnalysisController`,
+`HypothesisInvestigator`; frontend `FailureAnalysisScenarioExplorer`,
+`FailureAnalysisV3`, `FailureAnalysisV3Report`, `failureAnalysisV3Data`,
+`BaselineAnalysisDashboard`, `services/failureAnalysisV3`; mở rộng test FA/core và
+fixture browser hiện có. Không migration, không đổi công thức objective/optimizer.
+
 ## Sửa lỗi capacity khi hoàn tất run — 26/11/2026
 
 - **Đã sửa nguyên nhân được báo:** producer nội bộ lưu `result.json` không còn

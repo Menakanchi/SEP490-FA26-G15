@@ -662,6 +662,9 @@ public class AnalysisViewService {
         Map<String, Object> raw = b.raw();
         Double simulated = b.run().dbl("simulated_duration_s");
         Map<String, Object> out = new LinkedHashMap<>(header(b));
+        // The recorded decision events can be shadow decisions for OFF runs.
+        // Expose the authoritative run mode so clients do not present them as applied AEB intervention.
+        if (b.run().str("aeb_mode") != null) out.put("aeb_mode", b.run().str("aeb_mode"));
         out.put("related_runs", related);
         out.put("motion_telemetry", com.vsos.core.simulation.RecordedTelemetry.project(Json.asList(raw.get("frames")), Json.asDouble(raw.get("crossing_x"))));
         out.put("source","RECORDED_SIMULATOR_RESULT");

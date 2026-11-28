@@ -7,6 +7,7 @@ import { Card, CardTitle, EmptyState, ErrorNote, StatCard, Tag, fmt, simulatorLa
 import { decel, dimensions, withUnit } from "@/components/vehicleFormat";
 import { VehicleModelViewer } from "@/components/VehicleModelViewer";
 import { vehicsimApi } from "@/services/vehicsim";
+import { useAuth } from "@/context/AuthContext";
 import type { VehicleDetail, VehicleSensor } from "@/types/vehicsim";
 
 /** Một dòng "tên — giá trị" trong khối thông số. */
@@ -48,6 +49,8 @@ function SensorRow({ sensor: s }: { sensor: VehicleSensor }) {
 }
 
 export default function VehicleDetailPage() {
+  const { user } = useAuth();
+  const catalogOnly = user?.roleCode === "MANAGER";
   const { vehicleId } = useParams<{ vehicleId: string }>();
   const [v, setV] = useState<VehicleDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +71,7 @@ export default function VehicleDetailPage() {
       badges={
         v && (
           <>
-            {v.in_use && <Tag tone="info">Project đang dùng</Tag>}
+            {v.in_use && !catalogOnly && <Tag tone="info">Project đang dùng</Tag>}
             {!v.is_supported && <Tag tone="neutral">Chỉ để xem</Tag>}
           </>
         )
@@ -86,7 +89,7 @@ export default function VehicleDetailPage() {
       {v && (
         <>
           {/* 4 thẻ: 2 × 2 khi hẹp, 1 hàng 4 thẻ từ xl — không để thẻ lẻ một mình ở hàng sau. */}
-          <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
+          <div className={catalogOnly ? "grid w-full grid-cols-2 gap-3 xl:grid-cols-3" : "grid w-full grid-cols-2 gap-3 xl:grid-cols-4"}>
             <StatCard label="Khối lượng" value={withUnit(v.mass_kg, 0, "kg")} note={`${v.num_wheels} bánh`} />
             {/* Giới hạn = min(phanh xe thật, phanh 100% đo trên CARLA) theo migration 017, nên có thể thấp hơn số CARLA. */}
             <StatCard label="Phanh động học" value={decel(v.max_brake_decel_mps2)} tone="info" note="giới hạn AEB = min(xe thật, CARLA)" />
@@ -98,7 +101,7 @@ export default function VehicleDetailPage() {
               tone={v.carla_full_brake_decel_mps2 === null || !v.is_supported ? "warn" : "ok"}
               note={v.carla_full_brake_decel_mps2 === null ? "chưa đo" : v.is_supported ? "phanh 100%, đã hiệu chuẩn" : "phanh 100%, chưa hiệu chuẩn được"}
             />
-            <StatCard label="Lượt chạy" value={v.run_count} note="trong project hiện tại" />
+            {!catalogOnly && <StatCard label="Lượt chạy" value={v.run_count} note="trong project hiện tại" />}
           </div>
 
           {!v.is_supported && (
@@ -171,7 +174,7 @@ export default function VehicleDetailPage() {
             )}
           </Card>
 
-          <div className="grid grid-cols-2 gap-4">
+          {!catalogOnly && <div className="grid grid-cols-2 gap-4">
             <Card className="col-span-2 flex flex-col gap-3 p-5">
               <CardTitle aside={<Tag>{v.run_count} lượt</Tag>}>Lịch sử sử dụng</CardTitle>
               {v.usage.length === 0 ? (
@@ -188,7 +191,7 @@ export default function VehicleDetailPage() {
                 </div>
               )}
             </Card>
-          </div>
+          </div>}
         </>
       )}
     </VehicSimPage>
