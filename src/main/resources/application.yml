@@ -17,6 +17,11 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:vehicsim}
     password: ${SPRING_DATASOURCE_PASSWORD:vehicsim}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # Connector/J timeouts in milliseconds; these properties override matching URL parameters.
+      data-source-properties:
+        connectTimeout: ${VSOS_JDBC_CONNECT_TIMEOUT_MS:10000}
+        socketTimeout: ${VSOS_JDBC_SOCKET_TIMEOUT_MS:60000}
   jpa:
     hibernate:
       ddl-auto: none

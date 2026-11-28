@@ -117,6 +117,17 @@ class ProjectCleanupNetworkMysqlTest {
         assertOtherProjectIntact();
     }
 
+    @Test void mysqlDriverUsesConfiguredTimeouts() throws Exception {
+        try (var connection = jdbc.getDataSource().getConnection()) {
+            var properties = connection.unwrap(com.mysql.cj.jdbc.JdbcConnection.class).getPropertySet();
+            var configured = jdbc.getDataSource().unwrap(com.zaxxer.hikari.HikariDataSource.class).getDataSourceProperties();
+            assertThat(properties.getIntegerProperty("connectTimeout").getValue())
+                    .isEqualTo(Integer.parseInt(configured.getProperty("connectTimeout"))).isPositive();
+            assertThat(properties.getIntegerProperty("socketTimeout").getValue())
+                    .isEqualTo(Integer.parseInt(configured.getProperty("socketTimeout"))).isPositive();
+        }
+    }
+
     @Test void realDockerDisconnectAfterFileDeletionLeavesJobForRetry() throws Exception {
         projects.delete(1, 7, "Demo", STORAGE);
         Path own = ROOT.resolve("runs/1");
