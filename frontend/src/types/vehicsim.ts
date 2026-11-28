@@ -113,6 +113,8 @@ export interface ProjectItem {
   created_date: string;
   updated_at: string;
   workspace_id?: number | null;
+  created_by_user_id?: number | null;
+  workspace_status?: "ACTIVE" | "ARCHIVED" | null;
   journey: ProjectJourney;
 }
 
@@ -182,6 +184,7 @@ export interface ProjectJourney {
 export interface VehicSimContextData {
   reviewer_projects: { id: number; name: string; workspace_name: string; can_decide: boolean }[];
   reviewer_can_decide: boolean;
+  project_writable?: boolean;
   project: { id: number; name: string };
   workspace: { id: number; name: string } | null;
   vehicle: { id: number; name: string } | null;

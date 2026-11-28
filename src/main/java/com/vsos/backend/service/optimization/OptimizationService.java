@@ -396,6 +396,8 @@ public class OptimizationService {
             Integer maxTrials, Integer nInitialPoints, String customSearchSpaceJson, String customObjectiveConfigJson,
             String name, String simulatorType, Long datasetId, String datasetDigest, String handoffId, String handoffDigest) {
 
+        queries.lockWritableProjectForJob(projectId);
+
 
 
 

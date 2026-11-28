@@ -9,6 +9,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/vehicsim/admin")
@@ -47,6 +48,18 @@ public class AdminController {
     @PutMapping("/workspaces/{id}")
     public Map<String,Object> updateWorkspace(@PathVariable long id,@Valid @RequestBody WorkspaceRequest b,@AuthenticationPrincipal UserDetails user) {
         return service.updateWorkspace(writer(user),id,b);
+    }
+    @GetMapping("/workspaces/{id}/members")
+    public List<Map<String,Object>> workspaceMembers(@PathVariable long id,@AuthenticationPrincipal UserDetails user) {
+        VehicSimAccess.requireAdmin(user); return service.workspaceMembers(id);
+    }
+    @PostMapping("/workspaces/{id}/archive")
+    public Map<String,Object> archiveWorkspace(@PathVariable long id,@AuthenticationPrincipal UserDetails user) {
+        return service.setWorkspaceArchived(writer(user),id,true);
+    }
+    @PostMapping("/workspaces/{id}/restore")
+    public Map<String,Object> restoreWorkspace(@PathVariable long id,@AuthenticationPrincipal UserDetails user) {
+        return service.setWorkspaceArchived(writer(user),id,false);
     }
     @PostMapping("/tech-references") @ResponseStatus(HttpStatus.CREATED)
     public Map<String,Object> createReference(@Valid @RequestBody ReferenceRequest b,@AuthenticationPrincipal UserDetails user) {

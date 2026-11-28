@@ -67,7 +67,7 @@ public class ProjectController {
     @Operation(summary = "Chi tiết project cá nhân")
     @GetMapping("/{projectId}")
     public ProjectItem get(@PathVariable long projectId, @AuthenticationPrincipal UserDetails user) {
-        return projects.get(VehicSimAccess.userId(user), projectId);
+        return projects.get(VehicSimAccess.userId(user), VehicSimAccess.roleOf(user), projectId);
     }
 
     @Operation(summary = "Hành trình 5 bước của project: trạng thái từng bước, bước tiếp theo và số liệu tóm tắt")
@@ -86,26 +86,32 @@ public class ProjectController {
     @Operation(summary = "Sửa tên, mô tả hoặc xe (xe chỉ đổi được khi chưa có lượt chạy)")
     @PatchMapping("/{projectId}")
     public ProjectItem update(@PathVariable long projectId, @RequestBody ProjectRequest body, @AuthenticationPrincipal UserDetails user) {
-        return projects.update(writer(user), projectId, body);
+        return projects.update(projectWriter(user), VehicSimAccess.roleOf(user), projectId, body);
     }
 
     @Operation(summary = "Lưu trữ project")
     @PostMapping("/{projectId}/archive")
     public ProjectItem archive(@PathVariable long projectId, @AuthenticationPrincipal UserDetails user) {
-        return projects.archive(writer(user), projectId);
+        return projects.archive(projectWriter(user), VehicSimAccess.roleOf(user), projectId);
     }
 
     @Operation(summary = "Bỏ lưu trữ project")
     @PostMapping("/{projectId}/unarchive")
     public ProjectItem unarchive(@PathVariable long projectId, @AuthenticationPrincipal UserDetails user) {
-        return projects.unarchive(writer(user), projectId);
+        return projects.unarchive(projectWriter(user), VehicSimAccess.roleOf(user), projectId);
     }
 
     @Operation(summary = "Xoá vĩnh viễn project cùng mọi dữ liệu (gõ đúng tên để xác nhận)")
     @DeleteMapping("/{projectId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable long projectId, @RequestBody DeleteProjectRequest body, @AuthenticationPrincipal UserDetails user) {
-        projects.delete(writer(user), projectId, body.confirmName());
+        projects.delete(projectWriter(user), VehicSimAccess.roleOf(user), projectId, body.confirmName());
+    }
+
+    private long projectWriter(UserDetails user) {
+        long userId = VehicSimAccess.requireProjectCreator(user);
+        access.limitWrites(userId, "project");
+        return userId;
     }
 
     private long writer(UserDetails user) {

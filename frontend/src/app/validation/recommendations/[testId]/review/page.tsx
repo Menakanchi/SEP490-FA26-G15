@@ -61,6 +61,8 @@ export default function ReviewPage() {
   const firstRegressed = r.summary.pairs?.find((p) => p.change === "regressed");
   const firstPair = r.summary.pairs?.find((p) => Number.isSafeInteger(p.candidate_run_id) && p.candidate_run_id > 0);
 
+  const playbackHref = (runId: number) => `/analysis/failures/${runId}/playback?${new URLSearchParams({ returnTo: `/validation/recommendations/${r.id}/review` })}`;
+
   const checklist = [
     <>
       Tôi đã xem kết quả kiểm thử hồi quy{" "}
@@ -72,10 +74,10 @@ export default function ReviewPage() {
     <>Tôi đã xem các đánh đổi và họ kịch bản bị ảnh hưởng</>,
     firstFixed || firstRegressed || firstPair ? <>
       Tôi đã phát lại ít nhất một{" "}
-      {firstFixed && <Link href={`/analysis/failures/${firstFixed.candidate_run_id}/playback`} className="font-semibold underline">kịch bản được sửa</Link>}
+      {firstFixed && <Link href={playbackHref(firstFixed.candidate_run_id)} className="font-semibold underline">kịch bản được sửa</Link>}
       {firstFixed && firstRegressed && " và một "}
-      {firstRegressed && <Link href={`/analysis/failures/${firstRegressed.candidate_run_id}/playback`} className="font-semibold underline">kịch bản bị xấu đi</Link>}
-      {!firstFixed && !firstRegressed && firstPair && <Link href={`/analysis/failures/${firstPair.candidate_run_id}/playback`} className="font-semibold underline">kịch bản được kiểm thử</Link>}
+      {firstRegressed && <Link href={playbackHref(firstRegressed.candidate_run_id)} className="font-semibold underline">kịch bản bị xấu đi</Link>}
+      {!firstFixed && !firstRegressed && firstPair && <Link href={playbackHref(firstPair.candidate_run_id)} className="font-semibold underline">kịch bản được kiểm thử</Link>}
     </> : <>Tôi đã xem các lượt chạy và kết quả kiểm thử hiện có</>,
     <>Tôi đã xem trạng thái bằng chứng độ bền vững, Pareto và độ nhạy của ứng viên này; các bằng chứng chưa chạy không được xem là đã đạt</>,
     ...(r.simulator_caveat?.carla && !r.simulator_caveat.calibrated

@@ -57,7 +57,7 @@ public class WorkspaceReportService {
     @Transactional
     public ReportItem decide(long userId, String role, long workspaceId, long reportId, String decision, String note) {
         WorkspaceSummary ws = workspaces.requireAccessible(userId, role, workspaceId);
-        WorkspaceService.requireActive(ws);
+        workspaces.requireActiveForWrite(ws);
         String d = decision == null ? "" : decision.trim();
         if (!DECISIONS.contains(d)) {
             throw new InvalidRequestException("Quyết định phải thuộc " + DECISIONS);

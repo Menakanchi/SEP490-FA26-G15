@@ -120,6 +120,7 @@ public class RegressionService {
     @Transactional
     public long createTest(long projectId, long userId, long candidateVersionId, long scenarioId, boolean includeOldCritical,
                            boolean includeAllVariants, Map<String, Map<String, Object>> criteria, String name, List<Long> variantIds) {
+        queries.lockWritableProjectForJob(projectId);
         if (variantIds == null && !(includeOldCritical || includeAllVariants)) {
             throw new InvalidScenarioSetException("chọn ít nhất một bộ kịch bản");
         }
@@ -173,6 +174,7 @@ public class RegressionService {
     public long createFrozenTest(long projectId, long userId, long candidateVersionId, long scenarioId,
                                  long baselineVersionId, long vehicleModelId, String simulator,
                                  List<Row> variants, List<Row> baselineSources, Map<String,Object> dataset, String name) {
+        queries.lockWritableProjectForJob(projectId);
         Row baseline = requireBaseline(projectId);
         if (baseline.lng("id") != baselineVersionId) throw new InvalidRequestException("Analysis baseline changed");
         Row candidate = repo.findVersion(projectId, candidateVersionId);

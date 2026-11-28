@@ -18,7 +18,7 @@ public class ProjectRepository {
     private static final String DEFAULT_VEHICLE = "vehicle.audi.etron";
 
     private static final String SELECT = """
-            SELECT p.*, COALESCE(NULLIF(m.display_name, ''), m.carla_blueprint_id) AS vehicle_name,
+            SELECT p.*, w.status AS workspace_status, COALESCE(NULLIF(m.display_name, ''), m.carla_blueprint_id) AS vehicle_name,
                    COALESCE(NULLIF(b.label, ''), CONCAT('v', b.version_no)) AS baseline_label,
                    (SELECT COUNT(*) FROM scenarios s WHERE s.project_id = p.id) AS family_count,
                    (SELECT COUNT(*) FROM simulation_runs r WHERE r.project_id = p.id) AS run_count,
@@ -28,6 +28,7 @@ public class ProjectRepository {
                    + (SELECT COUNT(*) FROM regression_tests t WHERE t.project_id = p.id AND t.execution_status IN ('PENDING','RUNNING'))
                      AS running_work
               FROM projects p
+              LEFT JOIN workspaces w ON w.id = p.workspace_id
               LEFT JOIN carla_vehicle_models m ON m.id = p.carla_vehicle_model_id
               LEFT JOIN aeb_versions b ON b.project_id = p.id AND b.status = 'BASELINE'
             """;
@@ -75,7 +76,8 @@ public class ProjectRepository {
     }
 
     public Row firstActiveTeamProject() {
-        return db.first("SELECT * FROM projects WHERE workspace_id IS NOT NULL AND status = 'ACTIVE' ORDER BY id LIMIT 1");
+        return db.first("SELECT p.*, w.status AS workspace_status FROM projects p JOIN workspaces w ON w.id = p.workspace_id "
+                + "WHERE p.status = 'ACTIVE' ORDER BY p.id LIMIT 1");
     }
 
     public String existingName(long ownerId, String name, long exceptProjectId) {
@@ -95,6 +97,14 @@ public class ProjectRepository {
         return db.first("""
                 SELECT 1 AS ok FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id
                  WHERE m.user_id = ? AND m.workspace_id = ? AND w.status = 'ACTIVE'
+                """, userId, workspaceId) != null;
+    }
+
+    /** Lock membership and workspace state while applying a project management change. */
+    public boolean lockActiveWorkspaceMember(long userId, long workspaceId) {
+        return db.first("""
+                SELECT 1 AS ok FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id
+                 WHERE m.user_id = ? AND m.workspace_id = ? AND w.status = 'ACTIVE' FOR UPDATE
                 """, userId, workspaceId) != null;
     }
 

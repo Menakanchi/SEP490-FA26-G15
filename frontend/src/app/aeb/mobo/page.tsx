@@ -170,7 +170,7 @@ export default function AebMoboStudioPage() {
   // Dừng run
   const handleCancelRun = async (runId: number) => {
     if (!canWrite || cancellationLock.current || activeRun?.id !== runId || !["PENDING", "RUNNING"].includes(activeRun.status)) return;
-    if (!confirm("Bạn có chắc muốn dừng đợt tối ưu hoá này?")) return;
+    if (!confirm("Bạn có chắc muốn dừng đợt tối ưu hóa này?")) return;
     cancellationLock.current = true;
     setCancelling(true);
     try {
@@ -179,7 +179,7 @@ export default function AebMoboStudioPage() {
       loadRuns();
       setDetailRevision(value => value + 1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể huỷ đợt chạy");
+      setError(err instanceof Error ? err.message : "Không thể hủy đợt chạy");
     } finally {
       setCancelling(false);
       cancellationLock.current = false;
@@ -281,7 +281,7 @@ export default function AebMoboStudioPage() {
       <ErrorNote message={error} />
       {activeRun?.status === "FAILED" && <ErrorNote message={vi(activeRun.error_message) || "Đợt tối ưu đã thất bại. Kiểm tra nguồn dữ liệu và trạng thái mô phỏng trước khi tạo đợt mới."} />}
       {activeRun?.handoff_id && <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-vehicsim-line bg-vehicsim-surface p-4 text-[13px]" aria-label="Nguồn handoff V3 của đợt tối ưu">
-        <p className="min-w-0 break-all">Handoff V3 {activeRun.handoff_id} · {activeRun.optimization_run_ids?.length ?? "—"} run tối ưu · {activeRun.validation_run_ids?.length ?? "—"} run xác minh độc lập</p>
+        <p className="min-w-0 break-all">Tập bàn giao {activeRun.handoff_id} · {activeRun.optimization_run_ids?.length ?? "—"} lượt tối ưu · {activeRun.validation_run_ids?.length ?? "—"} lượt xác minh độc lập</p>
         {activeRun.handoff_execution_id && <PillButton href={`/analysis/failures?fa_execution=${encodeURIComponent(activeRun.handoff_execution_id)}`}>Xem phân tích nguồn V3</PillButton>}
       </section>}
       {!activeRun?.handoff_id && activeRun?.dataset_id && <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-vehicsim-line bg-vehicsim-surface p-4 text-[13px]" aria-label="Nguồn dataset của đợt tối ưu">
@@ -330,7 +330,7 @@ export default function AebMoboStudioPage() {
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-vehicsim-primary"></span>
               </span>
               <span className="font-bold text-vehicsim-primary">
-                {activeRun.status === "PENDING" ? "Đang chờ đợt tối ưu" : "Đang chạy đợt tối ưu"}: Run #{activeRun.id} — {activeRun.name}
+                {activeRun.status === "PENDING" ? "Đang chờ đợt tối ưu" : "Đang chạy đợt tối ưu"}: Đợt #{activeRun.id} — {activeRun.name}
               </span>
               <span className="font-mono text-vehicsim-muted">
                 ({completedTrialsCount} / {maxTrialsCount} lượt thử · {runProgressPct}%)
@@ -434,7 +434,7 @@ export default function AebMoboStudioPage() {
                       <th className="px-2 py-3.5">Trễ kích hoạt (s)</th>
                       <th className="px-2 py-3.5">Tăng lực phanh (m/s³)</th>
                       <th className="px-2 py-3.5">Giảm tốc tối đa (m/s²)</th>
-                      <th className="px-2 py-3.5 text-emerald-300">RMS Jerk</th>
+                      <th className="px-2 py-3.5 text-emerald-300">Độ giật RMS</th>
                       <th className="px-2 py-3.5 text-rose-300">Tốc độ va chạm</th>
                       <th className="px-2 py-3.5 text-slate-200">Quãng phanh</th>
                       <th className="w-[160px] px-2 py-3.5 text-center">Thao tác</th>
@@ -521,7 +521,7 @@ export default function AebMoboStudioPage() {
                       <th className="pl-5 pr-4 py-3.5 whitespace-nowrap">Lượt thử</th>
                       <th className="px-4 py-3.5 whitespace-nowrap">Nguồn</th>
                       <th className="px-4 py-3.5 whitespace-nowrap">Điểm tiềm năng (qEHVI)</th>
-                      <th className="px-4 py-3.5 text-emerald-300 whitespace-nowrap">RMS Jerk</th>
+                      <th className="px-4 py-3.5 text-emerald-300 whitespace-nowrap">Độ giật RMS</th>
                       <th className="px-4 py-3.5 text-rose-300 whitespace-nowrap">Tốc độ va chạm</th>
                       <th className="px-4 py-3.5 text-slate-200 whitespace-nowrap">Quãng phanh</th>
                       <th className="px-4 py-3.5 text-center whitespace-nowrap">Ràng buộc</th>
@@ -597,7 +597,7 @@ export default function AebMoboStudioPage() {
               <table className="w-full min-w-[960px] text-left text-[13px]">
                 <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
                   <tr className="h-12">
-                    <th className="px-5 py-3.5">Mã run</th>
+                    <th className="px-5 py-3.5">Mã đợt</th>
                     <th className="px-5 py-3.5">Tên đợt chạy</th>
                     <th className="px-5 py-3.5">Bộ mô phỏng</th>
                     <th className="px-5 py-3.5">Trạng thái</th>

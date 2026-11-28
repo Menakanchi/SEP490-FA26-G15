@@ -97,11 +97,14 @@ class ProjectSecurityTest {
 
     private static List<MockHttpServletRequestBuilder> experiencerOnly() {
         return List.of(
-                json(HttpMethod.POST, "/1/regressions/2/adopt", "{\"reason\":\"Đạt\",\"confirmed\":true}"),
                 json(HttpMethod.PATCH, "/1", "{\"name\":\"Mới\"}"),
                 request(HttpMethod.POST, BASE + "/1/archive"),
                 request(HttpMethod.POST, BASE + "/1/unarchive"),
                 json(HttpMethod.DELETE, "/1", "{\"confirm_name\":\"Thử AEB\"}"));
+    }
+
+    private static List<MockHttpServletRequestBuilder> adoption() {
+        return List.of(json(HttpMethod.POST, "/1/regressions/2/adopt", "{\"reason\":\"Đạt\",\"confirmed\":true}"));
     }
 
     private int statusOf(MockHttpServletRequestBuilder builder, RoleCode code) throws Exception {
@@ -110,7 +113,7 @@ class ProjectSecurityTest {
 
     @Test
     void everyProjectRouteRequiresLogin() throws Exception {
-        for (MockHttpServletRequestBuilder route : List.of(reads(), creatorRoutes(), experiencerOnly()).stream().flatMap(List::stream).toList()) {
+        for (MockHttpServletRequestBuilder route : List.of(reads(), creatorRoutes(), experiencerOnly(), adoption()).stream().flatMap(List::stream).toList()) {
             assertThat(statusOf(route, null)).isEqualTo(401);
         }
     }
@@ -128,16 +131,24 @@ class ProjectSecurityTest {
     void onlyExperiencersManageAndWorkInPersonalProjects() throws Exception {
         for (RoleCode code : RoleCode.values()) {
             for (MockHttpServletRequestBuilder route : experiencerOnly()) {
-                if (code == RoleCode.EXPERIENCER) {
+                if (code == RoleCode.EXPERIENCER || code == RoleCode.ENGINEER) {
                     assertThat(statusOf(route, code)).isBetween(200, 299);
                 } else if (code == RoleCode.MANAGER) {
                     assertThat(statusOf(route, code)).isEqualTo(403);
                 } else {
                     mvc.perform(route.with(user(as(code))))
                             .andExpect(status().isForbidden())
-                            .andExpect(jsonPath("$.code").value("EXPERIENCER_ONLY"))
-                            .andExpect(jsonPath("$.detail").value("Project cá nhân chỉ dành cho tài khoản Experiencer."));
+                            .andExpect(jsonPath("$.code").value("CREATE_ROLE_NOT_ALLOWED"));
                 }
+            }
+        }
+    }
+
+    @Test
+    void onlyExperiencersCanAdoptPersonalBaseline() throws Exception {
+        for (RoleCode code : RoleCode.values()) {
+            for (MockHttpServletRequestBuilder route : adoption()) {
+                assertThat(statusOf(route, code)).isEqualTo(code == RoleCode.EXPERIENCER ? 200 : 403);
             }
         }
     }

@@ -102,6 +102,20 @@ function PlaybackContent() {
     return () => { cancelAnimationFrame(raf); };
   }, [playing, speed, pb, requestKey]);
 
+  // Stop the animation before a same-tab navigation starts. Continuous frame updates
+  // can otherwise keep a large trace rendering while Next is transitioning away.
+  useEffect(() => {
+    if (!playing) return;
+    const leave = (event: MouseEvent) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (link instanceof HTMLAnchorElement && (!link.target || link.target === "_self") && !link.hasAttribute("download"))
+        dispatch({ type: "pause", key: requestKey });
+    };
+    document.addEventListener("click", leave, true);
+    return () => document.removeEventListener("click", leave, true);
+  }, [playing, requestKey]);
+
   useEffect(() => {
     if (!pb) return;
     const hidden = () => { if (document.hidden) dispatch({ type: "pause", key: requestKey, background: true }); };

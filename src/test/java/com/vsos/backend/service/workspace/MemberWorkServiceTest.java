@@ -60,6 +60,7 @@ class MemberWorkServiceTest {
         notifications = mock(NotificationService.class);
         service = new MemberWorkService(workspaces, tasks, reports, notifications);
         when(workspaces.find(WS)).thenReturn(workspace("ACTIVE"));
+        when(workspaces.lockActiveWorkspace(WS)).thenReturn(true);
         when(workspaces.isMember(WS, ME)).thenReturn(true);
         when(workspaces.memberProjects(ME)).thenReturn(List.of(new MyProject(PROJECT, "VF9", new WorkspaceRef(WS, "AEB", "ACTIVE"))));
         when(tasks.workspaceOf(TASK)).thenReturn(WS);
@@ -146,6 +147,14 @@ class MemberWorkServiceTest {
 
         service.submitReport(ME, report(PROJECT, null, "  "));
         verify(reports).insert(eq(PROJECT), isNull(), eq(ME), eq("Tuần 44"), eq("Đã chạy lại họ PX2"), isNull());
+    }
+
+    @Test
+    void reportIsRejectedIfWorkspaceWasArchivedAfterListingProjects() {
+        when(workspaces.lockActiveWorkspace(WS)).thenReturn(false);
+        assertThatThrownBy(() -> service.submitReport(ME, report(PROJECT, null, null)))
+                .isInstanceOf(InvalidRequestException.class).hasMessageContaining("lưu trữ");
+        verify(reports, never()).insert(anyLong(), any(), anyLong(), anyString(), anyString(), any());
     }
 
     @Test

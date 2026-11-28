@@ -106,7 +106,7 @@ function WorstCase({ variant, failure, category }: { variant: Variant; failure?:
       <dl className="flex flex-col gap-1 text-[14px]">
         {m?.collision_occurred && (
           <div className="flex justify-between gap-4">
-            <dt className="text-vehicsim-muted">Tốc độ khi va chạm</dt>
+            <dt className="text-vehicsim-muted">Tốc độ va chạm tương đối</dt>
             <dd className="font-semibold text-vehicsim-ink">{fmt.kmh(m.impact_speed_mps === null ? null : m.impact_speed_mps * 3.6)}</dd>
           </div>
         )}

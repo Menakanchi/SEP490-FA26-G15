@@ -22,7 +22,7 @@ try {
   if(req.method()==="OPTIONS")return route.fulfill({status:204,headers:{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization,content-type,x-vehicsim-project","Access-Control-Allow-Methods":"GET,POST,OPTIONS"}});
   requests.push({path:p,query:url.search,method:req.method(),project,body:req.postData()});
   if(p==="/auth/me")return reply(actor);
-  if(p==="/vehicsim/context")return reply({project:{id:project,name:`Project ${project}`},workspace:{id:1,name:"FE-R4 fixture"},vehicle:{id:2,name:"Fixture car"},system:{id:1,name:"AEB",baseline:{id:7,label:"v7"}},versions:[{id:7,label:"v7",status:"BASELINE"}],families:[{id:42,name:"Legacy fixture",code:"CP"}],parameters:[],reviewer_projects:[1,2].map(id=>({id,name:`Project ${id}`,workspace_name:"Fixture",can_decide:true}))});
+  if(p==="/vehicsim/context")return reply({project:{id:project,name:`Project ${project}`},workspace:{id:1,name:"FE-R4 fixture"},vehicle:{id:2,name:"Fixture car"},system:{id:1,name:"AEB",baseline:{id:7,label:"v7"}},versions:[{id:7,label:"v7",status:"BASELINE"}],families:[{id:42,name:"Legacy fixture",code:"CP"}],parameters:[],reviewer_can_decide:true,reviewer_projects:[1,2].map(id=>({id,name:`Project ${id}`,workspace_name:"Fixture",can_decide:true}))});
     if (/^\/vehicsim\/analysis\/v3\/database\/(runs|collections)$/.test(p)) return reply({schema_version:"vehicsim.fa-db-input/v1",selection_kind:p.endsWith("collections")?"COLLECTION":"RUN",project_id:Number(route.request().headers()["x-vehicsim-project"]),items:[],limit:20,offset:0}); // Independent database source fixture.
   if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
   if(p==="/vehicsim/regression")return reply({items:[],kpis:{total:0,passed:0,failed:0,running:0}});
@@ -103,6 +103,7 @@ try {
  checks.push("empty-summary distinguishes zero from null; kinematic runs do not expose CARLA analysis and AEB filter reaches server");
  await page.goto(base+"/analysis/failures");
  await page.getByRole("heading",{name:"Họ kịch bản",exact:true}).waitFor();
+ await page.getByText("Chọn lượt chạy để xem kết quả đã lưu. Mở các công cụ bổ sung khi cần điều tra hoặc bàn giao.",{exact:true}).waitFor();
  await page.getByRole("button",{name:"Họ kiểm thử · CP",exact:true}).waitFor();await shot("scenario-overview");
  await page.getByRole("searchbox",{name:"Tìm kiếm",exact:true}).fill("2499");
  await page.waitForURL(url=>url.searchParams.get("fa_q")==="2499");
@@ -123,8 +124,9 @@ try {
  const row2499=page.getByRole("row").filter({hasText:"Lượt 2499"});
  const replay2499=row2499.getByRole("link",{name:"Xem phát lại lượt 2499",exact:true});
  const table=page.getByRole("region",{name:"Bảng biến thể và lượt chạy"});
- for(const width of [1440,375]) {
+ for(const width of [1440,769,375]) {
   await page.setViewportSize({width,height:900});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`No page overflow at width ${width}`);
   for(const scroll of ["start","end"]) {
    await table.evaluate((el,edge)=>{el.scrollLeft=edge==="start"?0:el.scrollWidth},scroll);
    const tableBounds=await table.boundingBox();

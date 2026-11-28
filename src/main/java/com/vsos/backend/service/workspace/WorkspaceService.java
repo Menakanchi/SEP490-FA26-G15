@@ -92,7 +92,7 @@ public class WorkspaceService {
     @Transactional
     public MemberItem addMember(long userId, String role, long workspaceId, long memberUserId, String grantedRole) {
         WorkspaceSummary ws = requireAccessible(userId, role, workspaceId);
-        requireActive(ws);
+        requireActiveForWrite(repo, ws);
         if (grantedRole == null || !MEMBER_ROLES.contains(grantedRole)) {
             throw new InvalidRequestException("Chọn vai trò ENGINEER hoặc REVIEWER cho người được thêm");
         }
@@ -131,7 +131,7 @@ public class WorkspaceService {
     @Transactional
     public RemoveMemberResult removeMember(long userId, String role, long workspaceId, long memberUserId) {
         WorkspaceSummary ws = requireAccessible(userId, role, workspaceId);
-        requireActive(ws);
+        requireActiveForWrite(repo, ws);
         if (!repo.isMember(workspaceId, memberUserId)) {
             throw new NotFoundException("thành viên");
         }
@@ -186,9 +186,21 @@ public class WorkspaceService {
     }
 
     static void requireActive(WorkspaceSummary ws) {
-        if (!"ACTIVE".equals(ws.status())) {
+        if (ws == null || !"ACTIVE".equals(ws.status())) {
             throw new InvalidRequestException("Workspace đã lưu trữ, không thay đổi được");
         }
+    }
+
+    static void requireActiveForWrite(WorkspaceRepository repo, WorkspaceSummary ws) {
+        requireActive(ws);
+        // The locking read sees the latest committed status and serializes with archive.
+        if (!repo.lockActiveWorkspace(ws.id())) {
+            throw new InvalidRequestException("Workspace đã lưu trữ, không thay đổi được");
+        }
+    }
+
+    void requireActiveForWrite(WorkspaceSummary ws) {
+        requireActiveForWrite(repo, ws);
     }
 
     private static boolean isAdmin(String role) {
@@ -225,7 +237,7 @@ public class WorkspaceService {
     @Transactional
     public WorkspaceSummary updateInfo(long userId, String role, long workspaceId, String name, String description) {
         WorkspaceSummary ws = requireAccessible(userId, role, workspaceId);
-        requireActive(ws);
+        requireActiveForWrite(repo, ws);
         String cleanName = name == null ? "" : name.trim();
         if (cleanName.isEmpty()) {
             throw new InvalidRequestException("Tên workspace không được để trống");
@@ -250,7 +262,7 @@ public class WorkspaceService {
     @Transactional
     public ChatMessage sendMessage(long userId, long workspaceId, String messageText) {
         WorkspaceSummary ws = requireMemberOrManager(userId, workspaceId);
-        requireActive(ws);
+        requireActiveForWrite(repo, ws);
         String text = messageText == null ? "" : messageText.trim();
         if (text.isEmpty()) {
             throw new InvalidRequestException("Nội dung tin nhắn không được để trống");
