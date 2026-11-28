@@ -92,7 +92,7 @@ export const vehicsimApi = {
   archiveProject: (id: number) => apiRequest<ProjectItem>(`/vehicsim/projects/${id}/archive`, { method: "POST" }),
   unarchiveProject: (id: number) => apiRequest<ProjectItem>(`/vehicsim/projects/${id}/unarchive`, { method: "POST" }),
   deleteProject: (id: number, confirmName: string) =>
-    apiRequest<void>(`/vehicsim/projects/${id}`, { method: "DELETE", body: JSON.stringify({ confirm_name: confirmName }) }),
+    apiRequest<{ deleted: true; cleanup_failed_run_ids: number[] } | undefined>(`/vehicsim/projects/${id}`, { method: "DELETE", body: JSON.stringify({ confirm_name: confirmName }) }),
   adoptCandidate: (id: number, testId: number, reason: string) =>
     apiRequest<ProjectJourney>(`/vehicsim/projects/${id}/regressions/${testId}/adopt`, {
       method: "POST",

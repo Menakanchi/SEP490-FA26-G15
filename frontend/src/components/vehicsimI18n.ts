@@ -67,6 +67,8 @@ type Rule = [RegExp, (m: RegExpMatchArray) => string];
 const re = (pattern: string) => new RegExp(`^${pattern}$`);
 
 const RULES: Rule[] = [
+  [re("Chưa xác định được vùng lưu trữ của project\\. Liên hệ quản trị viên để kiểm tra trước khi xóa\\."),
+    () => "Chưa xác định được vùng lưu trữ của project. Liên hệ quản trị viên để kiểm tra trước khi xóa."],
   [re("This scenario family has runs or related analysis, optimization or regression data and cannot be deleted"), () => "Không thể xóa họ kịch bản vì đã có lượt chạy hoặc dữ liệu phân tích, tối ưu hay kiểm chứng liên quan."],
   [re("This scenario family is in use and cannot be deleted"), () => "Họ kịch bản đang được sử dụng, chưa thể xóa. Hãy tải lại danh sách và thử lại."],
   [re("Analysis dataset ID is required with its digest"), () => "Cần mã dataset và checksum từ bước kiểm tra bàn giao."],

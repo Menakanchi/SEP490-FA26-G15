@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Archive, ArchiveRestore, Check, Ellipsis, Loader2, Settings, Trash2, TriangleAlert, X } from "lucide-react";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { Card, ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
+import { ApiError } from "@/services/api";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { JourneyStatus, ProjectItem } from "@/types/vehicsim";
 
@@ -326,9 +327,15 @@ export function useProjectActions(
     if (!action) return;
     const { kind, project } = action;
     setBusy(true);
+    let deleteConfirmed = false;
     try {
-      if (kind === "delete") await vehicsimApi.deleteProject(project.id, confirmName);
-      else await RUN[kind](project.id);
+      if (kind === "delete") {
+        const result = await vehicsimApi.deleteProject(project.id, confirmName);
+        deleteConfirmed = true;
+        if (result?.cleanup_failed_run_ids.length) {
+          window.alert(`Project đã được xóa khỏi cơ sở dữ liệu. File cục bộ của các lượt ${result.cleanup_failed_run_ids.map(id => `#${id}`).join(", ")} đang chờ dọn lại tự động. Nếu tình trạng kéo dài, hãy liên hệ quản trị viên. Không cần xóa lại project.`);
+        }
+      } else await RUN[kind](project.id);
       setAction(null);
       const text = `${COPY[kind].done} “${project.name}”.`;
       if (project.id === ctx?.project.id && kind !== "unarchive") openProject(null);
@@ -340,7 +347,11 @@ export function useProjectActions(
       setNotice(text);
       await onDone(kind);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Thao tác không thành công");
+      if (kind === "delete" && !deleteConfirmed && (!(err instanceof ApiError) || err.status >= 500)) {
+        setError("Chưa xác định được project đã xóa hay chưa. Hãy tải lại danh sách project hoặc liên hệ quản trị viên để kiểm tra trước khi thử lại.");
+      } else {
+        setError(err instanceof Error ? err.message : "Thao tác không thành công");
+      }
     } finally {
       setBusy(false);
     }
