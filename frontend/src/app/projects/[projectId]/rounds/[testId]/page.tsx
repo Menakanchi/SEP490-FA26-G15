@@ -47,12 +47,13 @@ function AdoptDialog({ detail, projectId, onClose }: { detail: RegressionDetail;
         </p>
         <label className="flex flex-col gap-[6px] text-[14px] font-semibold text-vehicsim-ink">
           <span className="flex items-baseline justify-between gap-3">
-            Lý do
+            Lý do <span aria-hidden="true">*</span>
             <span className={cx("text-[13px] font-normal tabular-nums", reasonTooLong ? "text-vehicsim-danger" : "text-vehicsim-muted")}>
               {reasonLength} / {REASON_MAX}
             </span>
           </span>
           <textarea
+            required
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={3}

@@ -319,7 +319,7 @@ export function MoboSection({
 
         {runs?.map((r) => {
           const isSelected = r.id === selectedRunId;
-          const isRunning = r.status === "RUNNING";
+          const isRunning = ["PENDING", "RUNNING"].includes(r.status);
           return (
             <div
               key={r.id}
@@ -343,7 +343,7 @@ export function MoboSection({
                       : "neutral"
                   }
                 >
-                  {r.status === "RUNNING" ? "Đang chạy" : r.status === "COMPLETED" ? "Hoàn thành" : r.status === "CANCELLED" ? "Đã huỷ" : r.status}
+                  {r.status === "PENDING" ? "Đang chờ" : r.status === "RUNNING" ? "Đang chạy" : r.status === "COMPLETED" ? "Hoàn thành" : r.status === "CANCELLED" ? "Đã huỷ" : r.status}
                 </Tag>
               </span>
               <span className="w-[140px] text-[13px] font-medium text-vehicsim-ink">
@@ -521,8 +521,8 @@ export function MoboSection({
                     <tr key={t.id} className={cx(t.is_pareto_optimal && "bg-vehicsim-ok-bg/30")}>
                       <td className="px-3 py-2 font-mono font-bold text-vehicsim-ink">{t.trial_number}</td>
                       <td className="px-3 py-2">
-                        <Tag tone={t.sampling_source === "INITIAL_DESIGN" ? "neutral" : "info"}>
-                          {t.sampling_source === "INITIAL_DESIGN" ? "Khởi tạo ngẫu nhiên" : "qEHVI Bayes"}
+                        <Tag tone={["INITIAL_DESIGN", "SOBOL_INIT"].includes(t.sampling_source) ? "neutral" : "info"}>
+                          {["INITIAL_DESIGN", "SOBOL_INIT"].includes(t.sampling_source) ? "Khởi tạo ban đầu" : "qEHVI Bayes"}
                         </Tag>
                       </td>
                       <td className="px-3 py-2 font-mono text-vehicsim-muted">

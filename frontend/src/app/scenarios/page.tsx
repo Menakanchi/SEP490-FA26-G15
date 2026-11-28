@@ -3,12 +3,12 @@
 import React, { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Pencil, Play, X } from "lucide-react";
+import { Pencil, Play, Trash2, X } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { FamilyForm } from "@/components/FamilyForm";
 import { EmptyState, ErrorNote, Pagination, PillButton, Tag, cx, fmt, simulatorLabel, TableScroll, VehicSimSelect } from "@/components/VehicSimUi";
-import { vi } from "@/components/vehicsimI18n";
+import { vi, viSummary, viTime, viWeather } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { ActiveFamilyRun, FamilyItem, FamilyVariantList, FamilyVersion, RiskLabel, TimeOfDay, Weather } from "@/types/vehicsim";
 
@@ -55,11 +55,20 @@ export default function ScenarioFamiliesPage() {
   const [openRuns, setOpenRuns] = useState<number | null>(null);
   const [activeRuns, setActiveRuns] = useState<ActiveFamilyRun[] | null>(null);
   const [runBusy, setRunBusy] = useState<number | null>(null);
+  const loadSequence = useRef(0);
+  const deletedFamilies = useRef(new Set<number>());
 
   const load = useCallback(() => {
+    const sequence = ++loadSequence.current;
     vehicsimApi.families()
-      .then(setItems)
-      .catch((err) => setError(err instanceof Error ? err.message : "Không tải được họ kịch bản"));
+      .then((list) => {
+        if (sequence !== loadSequence.current) return;
+        // GET có thể dùng chung request được gửi trước DELETE; không để dữ liệu cũ hiện lại.
+        const visible = list.filter((family) => !deletedFamilies.current.has(family.id));
+        for (const id of deletedFamilies.current) if (!list.some((family) => family.id === id)) deletedFamilies.current.delete(id);
+        setItems(visible);
+      })
+      .catch((err) => { if (sequence === loadSequence.current) setError(err instanceof Error ? err.message : "Không tải được họ kịch bản"); });
   }, []);
   useEffect(load, [load]);
 
@@ -140,6 +149,40 @@ export default function ScenarioFamiliesPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const deleteFamily = async (f: FamilyItem) => {
+    if (!window.confirm(`Xóa họ kịch bản “${f.code} · ${f.name}” cùng các phiên bản và biến thể? Họ đã có lượt chạy hoặc dữ liệu phân tích, tối ưu, kiểm chứng liên quan sẽ không thể xóa.`)) return;
+    setBusy(f.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await vehicsimApi.deleteFamily(f.id);
+    } catch (err) {
+      setError(err instanceof Error ? vi(err.message) : "Không xóa được họ kịch bản");
+      setBusy(null);
+      return;
+    }
+    // Đã xóa thành công: lỗi làm mới ngữ cảnh không được báo nhầm là lỗi xóa.
+    try {
+      // Bỏ qua các request tải danh sách đã bắt đầu trước khi xóa.
+      ++loadSequence.current;
+      deletedFamilies.current.add(f.id);
+      setItems((current) => current?.filter((item) => item.id !== f.id) ?? null);
+      setPage((current) => Math.min(current, Math.max(1, Math.ceil(((items?.length ?? 1) - 1) / PAGE_SIZE))));
+      setFocusId((current) => current === f.id ? null : current);
+      setEditing((current) => current?.id === f.id ? null : current);
+      setOpenVariants((current) => current === f.id ? null : current);
+      setOpenRuns((current) => current === f.id ? null : current);
+      setVersions((current) => without(current, f.id));
+      setViewing((current) => without(current, f.id));
+      setNotice(`Đã xóa họ kịch bản ${f.code} · ${f.name}.`);
+      await refresh();
+    } catch {
+      setError("Đã xóa họ kịch bản nhưng không cập nhật được ngữ cảnh. Hãy tải lại trang.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const loadActiveRuns = useCallback((scenarioId: number) => {
     vehicsimApi.activeFamilyRuns(scenarioId)
       .then((list) => setActiveRuns(list))
@@ -189,21 +232,21 @@ export default function ScenarioFamiliesPage() {
       actions={
         isNew ? (
           <>
-            <PillButton variant="dark" href={canWrite ? "/scenarios/new" : undefined} disabled={!canWrite}>
+            {canWrite && <PillButton variant="dark" href="/scenarios/new">
               + Sinh từ mô tả (AI)
-            </PillButton>
+            </PillButton>}
             <PillButton variant="light" href="/scenarios">
               ← Xem danh sách họ kịch bản
             </PillButton>
           </>
         ) : (
           <>
-            <PillButton variant="dark" href={canWrite ? "/scenarios/new" : undefined} disabled={!canWrite}>
+            {canWrite && <PillButton variant="dark" href="/scenarios/new">
               + Sinh từ mô tả (AI)
-            </PillButton>
-            <PillButton variant="light" href={canWrite ? "/scenarios?new=1" : undefined} disabled={!canWrite}>
+            </PillButton>}
+            {canWrite && <PillButton variant="light" href="/scenarios?new=1">
               + Nhập tham số
-            </PillButton>
+            </PillButton>}
           </>
         )
       }
@@ -223,7 +266,8 @@ export default function ScenarioFamiliesPage() {
       {!isNew && focusId && items && !focused && (
         <ErrorNote message={`Không tìm thấy họ kịch bản #${focusId} trong project hiện tại.`} />
       )}
-      {editing && (
+      {isNew && !canWrite && <p role="status">Tài khoản này chỉ có quyền xem kịch bản; hãy nhờ kỹ sư tạo kịch bản mới.</p>}
+      {editing && canWrite && (
         <div className="flex flex-col gap-2">
           <FamilyForm
             key={`${editing.id}-v${editing.version}`}
@@ -265,7 +309,7 @@ export default function ScenarioFamiliesPage() {
           </button>
         </div>
       )}
-      {(isNew || formOpen) && (
+      {canWrite && (isNew || formOpen) && (
         <FamilyForm
           busy={busy === "create"}
           onSubmit={async (body) => {
@@ -293,7 +337,7 @@ export default function ScenarioFamiliesPage() {
       {!isNew && (
         <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
         <div className="flex items-center px-5 py-4">
-          <span className="text-[15px] font-bold text-vehicsim-ink">{items ? `${items.length} ${items.length === 1 ? "family" : "families"}` : "…"}</span>
+          <span className="text-[15px] font-bold text-vehicsim-ink">{items ? `${items.length} họ kịch bản` : "…"}</span>
         </div>
         {items && items.length === 0 && (
           <EmptyState title="Chưa có họ kịch bản nào">Tạo họ đầu tiên (ví dụ người đi bộ băng ngang) rồi chạy cơ sở để có ca lỗi.</EmptyState>
@@ -356,7 +400,7 @@ export default function ScenarioFamiliesPage() {
                   <span className="flex min-w-[200px] flex-1 flex-wrap gap-1 pr-3">
                     {Object.entries(shown.parameter_space).map(([axis, values]) => (
                       <Tag key={axis} className="px-2 py-[2px] text-[10.5px]">
-                        {axisLabel(axis)}: {values.map((v) => (typeof v === "boolean" ? (v ? "dừng" : "băng qua") : String(v))).join(" / ")}
+                        {axisLabel(axis)}: {values.map((v) => axisValue(axis, v)).join(" / ")}
                       </Tag>
                     ))}
                   </span>
@@ -435,14 +479,14 @@ export default function ScenarioFamiliesPage() {
                   </span>
                   <span className="w-[85px] shrink-0 text-[11.5px] text-vehicsim-faint">{fmt.date(old ? old.created_at : f.created_at)}</span>
                   <div className="grid w-[215px] shrink-0 grid-cols-2 gap-1.5">
-                    <Link
+                    {canWrite && <Link
                       href={`/scenarios/run?scenario_id=${f.id}`}
                       title="Chuyển sang màn Chạy baseline với họ kịch bản này"
                       className="inline-flex h-7 w-full items-center justify-center gap-1 rounded-md bg-vehicsim-primary px-1.5 text-[11.5px] font-bold text-white hover:bg-vehicsim-primary-hover transition shadow-xs"
                     >
                       <Play className="size-2.5 fill-current shrink-0" />
                       <span>Chạy</span>
-                    </Link>
+                    </Link>}
 
                     <Link
                       href={`/analysis/failures?scenario_id=${f.id}`}
@@ -466,7 +510,7 @@ export default function ScenarioFamiliesPage() {
                       <span>{openVariants === f.id ? "Đóng" : "Biến thể"}</span>
                     </button>
 
-                    <button
+                    {canWrite && <button
                       type="button"
                       disabled={busy !== null || !canWrite}
                       onClick={() => startEdit(f)}
@@ -475,7 +519,18 @@ export default function ScenarioFamiliesPage() {
                     >
                       <Pencil className="size-2.5 shrink-0" />
                       <span>Sửa v{f.version + 1}</span>
-                    </button>
+                    </button>}
+                    {canWrite && <button
+                      type="button"
+                      disabled={busy !== null || !canWrite}
+                      onClick={() => void deleteFamily(f)}
+                      title={canWrite ? "Xóa họ kịch bản chưa có dữ liệu liên quan" : "Tài khoản chỉ có quyền xem"}
+                      aria-label={`Xóa họ kịch bản ${f.code} · ${f.name}`}
+                      className="col-span-2 inline-flex h-7 w-full items-center justify-center gap-1 rounded-md border border-solid border-vehicsim-danger/40 bg-vehicsim-surface px-1.5 text-[11px] font-semibold text-vehicsim-danger hover:bg-red-50 disabled:opacity-40"
+                    >
+                      <Trash2 className="size-3 shrink-0" />
+                      {busy === f.id ? "Đang xóa…" : "Xóa"}
+                    </button>}
                   </div>
                 </div>
                 {openRuns === f.id && !old && (
@@ -559,8 +614,13 @@ function VariantLabels({
               >
                 <span className="w-[60px] font-bold text-vehicsim-ink" title={`Mã lưu trữ: #${v.scenario_version_id}`}>#{index + 1}</span>
                 <span className="min-w-0 flex-1 truncate text-vehicsim-ink">
-                  {v.ego_speed_kmh} km/h · kích hoạt {v.trigger_distance_m} m · người đi bộ {v.pedestrian_speed_mps} m/s ·{" "}
-                  {v.stops_at_curb ? "dừng ở lề" : "băng qua"} · {v.weather} · {v.time_of_day}
+                  {v.stops_at_curb == null ? viSummary(v.summary) : [
+                    `${v.ego_speed_kmh} km/h`,
+                    `kích hoạt ${v.trigger_distance_m} m`,
+                    `người đi bộ ${v.pedestrian_speed_mps} m/s`,
+                    v.stops_at_curb ? "dừng ở lề" : "băng qua",
+                    viWeather(v.weather), viTime(v.time_of_day),
+                  ].join(" · ")}
                 </span>
                 <span className="flex w-[110px] justify-center">
                   <Tag tone={RISK[v.risk_label].tone} className="px-2 py-[2px] text-[10px]">
@@ -644,9 +704,14 @@ function ActiveRuns({
                   <Tag tone={status.tone} className="px-2 py-[2px] text-[10px]">{status.label}</Tag>
                 </span>
                 <span className="min-w-0 flex-1 truncate text-vehicsim-ink">
-                  {v.ego_speed_kmh != null ? `${v.ego_speed_kmh} km/h · kích hoạt ${v.trigger_distance_m} m · người đi bộ ${v.pedestrian_speed_mps} m/s · ` : ""}
-                  {v.stops_at_curb != null ? (v.stops_at_curb ? "dừng ở lề · " : "băng qua · ") : ""}
-                  {[v.weather, v.time_of_day].filter(Boolean).join(" · ")}
+                  {[
+                    v.ego_speed_kmh != null ? `${v.ego_speed_kmh} km/h` : null,
+                    v.trigger_distance_m != null ? `kích hoạt ${v.trigger_distance_m} m` : null,
+                    v.pedestrian_speed_mps != null ? `người đi bộ ${v.pedestrian_speed_mps} m/s` : null,
+                    v.stops_at_curb == null ? null : v.stops_at_curb ? "dừng ở lề" : "băng qua",
+                    v.weather ? viWeather(v.weather) : null,
+                    v.time_of_day ? viTime(v.time_of_day) : null,
+                  ].filter(Boolean).join(" · ")}
                   {run.aeb_mode === "OFF" ? " · AEB tắt" : ""}
                 </span>
                 <span className="w-[230px] truncate text-vehicsim-faint" title={run.simulator_version}>{simulatorLabel(run.simulator_version)}</span>
@@ -719,12 +784,16 @@ function initialFrom(f: FamilyItem) {
 
 function axisLabel(axis: string): string {
   const map: Record<string, string> = {
-    ego_speed_kmh: "km/h",
-    ego_speeds_kmh: "km/h",
+    ego_speed_kmh: "tốc độ xe km/h",
+    ego_speeds_kmh: "tốc độ xe km/h",
     trigger_distance_m: "khoảng cách m",
     trigger_distances_m: "khoảng cách m",
     pedestrian_speed_mps: "người đi bộ m/s",
     pedestrian_speeds_mps: "người đi bộ m/s",
+    target_speed_kmh: "xe phía trước km/h",
+    initial_distance_m: "khoảng cách ban đầu m",
+    target_decel_mps2: "giảm tốc xe trước m/s²",
+    lateral_overlap_pct: "độ chồng lấn %",
     stops_at_curb: "hành vi",
     weather: "thời tiết",
     weathers: "thời tiết",
@@ -732,4 +801,11 @@ function axisLabel(axis: string): string {
     times_of_day: "thời điểm",
   };
   return map[axis] ?? axis;
+}
+
+function axisValue(axis: string, value: number | boolean | string): string {
+  if (typeof value === "boolean") return value ? "dừng" : "băng qua";
+  if (typeof value === "string" && (axis === "weather" || axis === "weathers")) return viWeather(value);
+  if (typeof value === "string" && (axis === "time_of_day" || axis === "times_of_day")) return viTime(value);
+  return String(value);
 }

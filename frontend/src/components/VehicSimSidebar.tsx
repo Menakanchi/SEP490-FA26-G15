@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { BookOpen, Building2, ChevronDown, ChevronRight, FolderOpen, House, LogOut, Settings, Users } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderOpen, House, LogOut, Settings } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { cx } from "@/components/VehicSimUi";
@@ -36,6 +36,7 @@ type Group = {
   roles?: string[];
   hint?: string;
   active?: boolean;
+  defaultExpanded?: boolean;
 };
 
 type NavSection = {
@@ -139,7 +140,7 @@ const GROUPS: Group[] = [
       { label: "Tra cứu lịch sử", note: SOON },
     ],
   },
-  { key: "optimization", label: "Tối ưu hóa", icon: barsIcon, note: `${SOON} (FE-13)` },
+  { key: "optimization", label: "Tối ưu hóa", icon: barsIcon, note: SOON },
   {
     key: "validation",
     label: "Kiểm định",
@@ -174,6 +175,7 @@ const GROUPS: Group[] = [
     icon: svgIcon("/vehicsim/icon-sliders.svg"),
     prefix: "/admin",
     roles: ["ADMIN"],
+    defaultExpanded: true,
     children: [
       { label: "Tài khoản", href: "/admin/users" },
       { label: "Workspace", href: "/admin/workspaces" },
@@ -183,13 +185,6 @@ const GROUPS: Group[] = [
 ];
 
 const lucideIcon = (Icon: typeof House) => <Icon aria-hidden className="size-[18px] shrink-0 text-current" />;
-
-/** ADMIN: 3 trang quản trị đặt thẳng trong mục "Hệ thống & Quản trị", không gói trong dropdown "Quản trị hệ thống". */
-const ADMIN_GROUPS: Group[] = [
-  { key: "admin-users", label: "Tài khoản", icon: lucideIcon(Users), href: "/admin/users", prefix: "/admin/users" },
-  { key: "admin-workspaces", label: "Workspace", icon: lucideIcon(Building2), href: "/admin/workspaces", prefix: "/admin/workspaces" },
-  { key: "admin-tech-references", label: "Tài liệu kỹ thuật", icon: lucideIcon(BookOpen), href: "/admin/tech-references", prefix: "/admin/tech-references" },
-];
 
 /**
  * Tính điểm khớp độ cụ thể của href đối với pathname và search params hiện tại.
@@ -293,7 +288,7 @@ function NavGroups({ groups, sections }: NavGroupsProps) {
               // Tự động mở nhóm nếu có child đang active hoặc trực tiếp active
               const isExpanded = expandedKeys[g.key] !== undefined
                 ? expandedKeys[g.key]
-                : (isChildActive || isDirectActive);
+                : (isChildActive || isDirectActive || Boolean(g.defaultExpanded));
 
               const isHighlighted = isDirectActive || isChildActive;
 
@@ -430,21 +425,22 @@ function NavGroups({ groups, sections }: NavGroupsProps) {
 }
 
 function TeamNav({ role }: { role: string }) {
-  const [personal, setPersonal] = useState(0);
+  const [personal, setPersonal] = useState<number | null>(null);
+  const { ctx } = useVehicSimContext();
   const pathname = usePathname();
   const search = useSearchParams();
   const verifyEvidence = isVerifyEvidence(pathname, search.get("returnTo"));
 
   useEffect(() => {
+    if (role === "MANAGER" || role === "ADMIN") return;
     vehicsimApi
       .projects()
       .then((list) => setPersonal(list.active_count + list.archived_count))
-      .catch(() => setPersonal(0));
-  }, []);
+      .catch(() => setPersonal(null));
+  }, [role, ctx?.project.id]);
 
   const reviewer = role === "REVIEWER";
-  const isAdmin = role === "ADMIN";
-  const team = reviewer || role === "ENGINEER" || isAdmin;
+  const team = reviewer || role === "ENGINEER";
   const stepLinks = teamJourneyLinks(reviewer);
   const steps: Group[] = JOURNEY_STEPS.map(({ key, n, title }) => ({
     key,
@@ -457,25 +453,32 @@ function TeamNav({ role }: { role: string }) {
 
   const personalGroup: Group = {
     key: "personal",
-    label: `Project cá nhân (${personal})`,
+    label: `${role === "ENGINEER" ? "Project của tôi" : "Project cá nhân"} (${personal ?? "…"})`,
     icon: lucideIcon(FolderOpen),
     href: "/projects",
     prefix: "/projects",
   };
 
-  const adminGroup: Group = {
-    key: "admin",
-    label: "Quản trị hệ thống",
-    icon: svgIcon("/vehicsim/icon-sliders.svg"),
-    prefix: "/admin",
-    children: [
-      { label: "Tài khoản", href: "/admin/users" },
-      { label: "Workspace", href: "/admin/workspaces" },
-      { label: "Tài liệu kỹ thuật", href: "/admin/tech-references" },
-    ],
-  };
-
-  const sections: NavSection[] = team
+  const sections: NavSection[] = role === "ADMIN"
+    ? [{
+        id: "admin",
+        title: "Hệ thống & Quản trị",
+        groups: GROUPS.filter((g) => g.key === "admin"),
+      }]
+    : role === "MANAGER"
+    ? [
+        {
+          id: "general",
+          title: "Tổng quan & Thiết bị",
+          groups: GROUPS.filter((g) => g.key === "vehicles"),
+        },
+        {
+          id: "workspace",
+          title: "Hệ thống & Quản trị",
+          groups: GROUPS.filter((g) => g.key === "workspace"),
+        },
+      ]
+    : team
     ? [
         {
           id: "general",
@@ -496,18 +499,9 @@ function TeamNav({ role }: { role: string }) {
           groups: [
             { key: "workspace", label: "Workspace nhóm", icon: peopleIcon, href: "/workspace", prefix: "/workspace" },
             { key: "my-work", label: "Nhiệm vụ & Báo cáo", icon: taskIcon, href: "/my-work", prefix: "/my-work" },
-            ...(personal > 0 ? [personalGroup] : []),
+            ...(role === "ENGINEER" || (personal !== null && personal > 0) ? [personalGroup] : []),
           ],
         },
-        ...(isAdmin
-          ? [
-              {
-                id: "admin",
-                title: "Hệ thống & Quản trị",
-                groups: [adminGroup],
-              },
-            ]
-          : []),
       ]
     : [
         {
@@ -525,9 +519,7 @@ function TeamNav({ role }: { role: string }) {
         {
           id: "workspace",
           title: "Hệ thống & Quản trị",
-          // ADMIN không làm việc trong workspace: bỏ "Workspace nhóm", "Nhiệm vụ & Báo cáo" và dropdown "Quản trị hệ thống",
-          // chỉ còn 3 trang quản trị. Role khác giữ nguyên.
-          groups: role === "ADMIN" ? ADMIN_GROUPS : GROUPS.filter((g) => ["workspace", "my-work", "admin"].includes(g.key)),
+          groups: GROUPS.filter((g) => ["workspace", "my-work", "admin"].includes(g.key)),
         },
       ];
 
@@ -660,7 +652,7 @@ export function VehicSimSidebar() {
         </>
       ) : (
         <>
-          {(user?.roleCode === "ENGINEER" || user?.roleCode === "REVIEWER" || user?.roleCode === "ADMIN") && (
+          {(user?.roleCode === "ENGINEER" || user?.roleCode === "REVIEWER") && (
             <TeamProjectContext reviewer={user.roleCode === "REVIEWER"} />
           )}
           <TeamNav role={user?.roleCode ?? ""} />

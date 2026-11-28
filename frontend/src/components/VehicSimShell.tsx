@@ -16,14 +16,24 @@ import { jakarta } from "@/components/vehicsimFonts";
 
 /** Khung chung cho các trang sau đăng nhập. */
 export function VehicSimShell({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  // Các màn nghiệp vụ thuộc quy trình kiểm thử không dành cho quản lý workspace.
+  const managerDenied = user?.roleCode === "MANAGER" && (
+    pathname === "/" || ["/projects", "/scenarios", "/analysis", "/aeb", "/validation", "/runs", "/my-work"].some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+    )
+  );
+  const adminHome = user?.roleCode === "ADMIN" && pathname === "/";
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.replace("/login");
-  }, [isLoading, isAuthenticated, router]);
+    else if (!isLoading && managerDenied) router.replace("/workspace");
+    else if (!isLoading && adminHome) router.replace("/admin/users");
+  }, [isLoading, isAuthenticated, managerDenied, adminHome, router]);
 
-  if (isLoading || !isAuthenticated) {
+  if (isLoading || !isAuthenticated || managerDenied || adminHome) {
     return (
       <div className={`${jakarta.className} flex min-h-dvh w-full items-center justify-center bg-vehicsim-bg`}>
         <Loader2 aria-label="Đang tải phiên đăng nhập" className="size-6 motion-safe:animate-spin text-vehicsim-muted" />
@@ -70,7 +80,7 @@ function WorkspaceFrame({ children }: { children: React.ReactNode }) {
         }} className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-slate-900 focus:p-3 text-white">
           Đến nội dung chính
         </a>
-        <Link href="/" className="inline-flex min-h-11 shrink-0 items-center gap-2.5 font-bold lg:w-[272px] lg:px-6">
+        <Link href={user?.roleCode === "MANAGER" ? "/workspace" : user?.roleCode === "ADMIN" ? "/admin/users" : "/"} className="inline-flex min-h-11 shrink-0 items-center gap-2.5 font-bold lg:w-[272px] lg:px-6">
           <Image src="/vehicsim/logo.svg" alt="" width={26} height={26} />
           <span className="text-[18px] font-black tracking-tight text-white">VehicSim</span>
         </Link>

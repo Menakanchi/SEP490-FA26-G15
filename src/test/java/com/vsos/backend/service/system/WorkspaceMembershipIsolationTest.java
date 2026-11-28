@@ -36,7 +36,9 @@ class WorkspaceMembershipIsolationTest {
         service.updateUser(1, 2, new UserRequest("user@example.com","Nguyen",null,"An",role,true,null));
 
         verify(db).insert(contains("INSERT INTO users"),any(Object[].class));
-        verify(db).update(contains("UPDATE users SET"),any(Object[].class));
+        var updateSql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(db).update(updateSql.capture(),any(Object[].class));
+        assertThat(updateSql.getValue()).contains("UPDATE users SET").doesNotContain("email");
         verify(db,never()).update(contains("workspace_members"),any(Object[].class));
         verify(db,never()).insert(contains("workspace_members"),any(Object[].class));
         verify(db,never()).batchInsert(contains("workspace_members"),any());

@@ -259,7 +259,7 @@ export default function RegressionResultsPage() {
                         </span>
                         <span className={cx("flex-1", c.enabled ? "text-vehicsim-ink" : "text-vehicsim-faint")}>
                           {vi(c.label)}
-                          {c.threshold !== null ? ` ${c.threshold}` : ""}
+                          {c.threshold != null ? ` ${c.threshold}${c.key === "false_activation_increase_max_pts" ? " điểm %" : c.key === "median_min_ttc_change_min_s" ? " s" : ""}` : ""}
                         </span>
                         {c.required && <span className="text-[10px] font-semibold uppercase text-vehicsim-danger">Bắt buộc</span>}
                         <span className="w-16 text-right font-semibold text-vehicsim-muted">{vi(criterionActual(c.actual))}</span>

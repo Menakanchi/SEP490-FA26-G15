@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { CLASS_STYLE, ErrorNote, cx } from "@/components/VehicSimUi";
+import { CLASS_STYLE, ErrorNote, cx, displayUnit } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion, ParameterDef } from "@/types/vehicsim";
 import { VehicSimSelect } from "@/components/VehicSimSelect";
-import { KEY_PARAMS, STATUS_LABEL } from "./aebTypes";
+import { KEY_PARAMS, PARAM_NAMES, STATUS_LABEL } from "./aebTypes";
 
 function stepFor(p: ParameterDef): string {
   if (p.code === "BRAKE_ACTIVATION_DELAY") return "0.01";
@@ -139,7 +139,7 @@ export function CandidateForm({
           <input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder="vd. v1.1"
+            placeholder="Ví dụ: Cấu hình thử nghiệm"
             className="h-9 rounded-md border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[13.5px] font-medium text-vehicsim-ink placeholder:text-vehicsim-faint focus:border-vehicsim-primary focus:outline-none focus:ring-2 focus:ring-vehicsim-primary/20"
           />
         </label>
@@ -178,19 +178,19 @@ export function CandidateForm({
             >
               <div className="flex flex-col gap-1 min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-[14px] font-bold text-vehicsim-ink truncate">{p.name}</span>
+                  <span className="text-[14px] font-bold text-vehicsim-ink truncate">{PARAM_NAMES[p.code] ?? p.name}</span>
                   <span className={cx("rounded px-1.5 py-0.5 text-[11px] font-semibold shrink-0", catStyle.cls)}>
                     {catStyle.label}
                   </span>
                 </div>
                 <span className="text-[12px] text-vehicsim-muted">
-                  Phạm vi: <strong className="font-semibold text-vehicsim-ink">{p.min_value} – {p.max_value}</strong> {p.unit === "ratio" ? "" : p.unit}
+                  Phạm vi: <strong className="font-semibold text-vehicsim-ink">{p.min_value} – {p.max_value}</strong> {displayUnit(p.unit)}
                 </span>
                 {isInvalid && (
                   <span className="text-[11px] font-semibold text-vehicsim-danger">
                     {current(p).trim() === "" || Number.isNaN(numVal)
                       ? "Giá trị không hợp lệ"
-                      : `Phải từ ${p.min_value} đến ${p.max_value} ${p.unit === "ratio" ? "" : p.unit}`}
+                      : `Phải từ ${p.min_value} đến ${p.max_value} ${displayUnit(p.unit)}`}
                   </span>
                 )}
               </div>
@@ -202,7 +202,7 @@ export function CandidateForm({
                   max={p.max_value}
                   step={stepFor(p)}
                   value={current(p)}
-                  aria-label={p.name}
+                  aria-label={PARAM_NAMES[p.code] ?? p.name}
                   onChange={(e) => handleInputChange(p, e.target.value)}
                   onBlur={() => handleBlur(p)}
                   className={cx(
@@ -215,7 +215,7 @@ export function CandidateForm({
                   )}
                 />
                 <span className="min-w-[42px] text-[15px] font-bold text-vehicsim-ink">
-                  {p.unit === "ratio" ? "" : p.unit === "m/s2" ? "m/s²" : p.unit === "m/s3" ? "m/s³" : p.unit}
+                  {displayUnit(p.unit)}
                 </span>
               </div>
             </div>

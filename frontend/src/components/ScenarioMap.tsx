@@ -178,10 +178,11 @@ export function ScenarioMap({
 }
 
 function Pill({ x, y, color, text, height }: { x: number; y: number; color: string; text: string; height: number }) {
+  const anchor = Math.min(100, Math.max(0, (x / W) * 100));
   return (
     <span
-      className="absolute whitespace-nowrap rounded-full bg-white px-[9px] py-1 text-[11px] font-semibold drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]"
-      style={{ left: `${Math.min(86, Math.max(0, (x / W) * 100))}%`, top: y * (height / H), color }}
+      className="absolute max-w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-full bg-white px-[9px] py-1 text-[11px] font-semibold drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]"
+      style={{ left: `${anchor}%`, transform: `translateX(-${anchor}%)`, top: y * (height / H), color }}
     >
       {text}
     </span>

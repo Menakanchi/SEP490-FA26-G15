@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Tag } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -19,8 +19,10 @@ export interface TrialSelections {
  * Trial nào đã được chọn: dựng từ danh sách phiên bản AEB và kiểm thử hồi quy sẵn có, không thêm trường vào API tối ưu
  * (source {@code OptimizationService} được Failure Analysis ghim hash để audit). Tải lại mỗi khi danh sách trial đổi (sau khi chọn).
  */
-export function useTrialSelections(trials: unknown): TrialSelections {
+export function useTrialSelections(trials: unknown) {
   const [state, setState] = useState<TrialSelections>({ versionStatus: {}, latestTest: {} });
+  // A read started before selection may finish afterwards with an older list.
+  const selectedHere = useRef<Record<number, number>>({});
   useEffect(() => {
     let alive = true;
     Promise.all([vehicsimApi.aebVersions(), vehicsimApi.regressions()])
@@ -30,12 +32,20 @@ export function useTrialSelections(trials: unknown): TrialSelections {
         versions.forEach((v) => { versionStatus[v.id] = v.status; });
         const latestTest: Record<number, number> = {};
         tests.items.forEach((t) => { latestTest[t.candidate_version_id] = Math.max(latestTest[t.candidate_version_id] ?? 0, t.id); });
+        Object.entries(selectedHere.current).forEach(([candidateId, testId]) => {
+          const id = Number(candidateId);
+          latestTest[id] = Math.max(latestTest[id] ?? 0, testId);
+        });
         setState({ versionStatus, latestTest });
       })
       .catch(() => { /* Không tải được thì giữ nút chọn như cũ; backend vẫn kiểm khi tạo kiểm thử. */ });
     return () => { alive = false; };
   }, [trials]);
-  return state;
+  const markSelected = (candidateId: number, regressionId: number) => {
+    selectedHere.current[candidateId] = regressionId;
+    setState(current => ({ ...current, latestTest: { ...current.latestTest, [candidateId]: regressionId } }));
+  };
+  return { selections: state, markSelected };
 }
 
 /**

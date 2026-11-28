@@ -20,6 +20,7 @@
 .wide { grid-column: 1 / -1; }
 .fieldset label:not(.status) { display: block; margin-bottom: var(--admin-space-2); color: var(--admin-text); font-size: var(--admin-font-control); font-weight: 600; }
 .fieldset input:not([type="checkbox"]), .fieldset select { width: 100%; min-height: var(--admin-control-height); padding: var(--admin-space-2) var(--admin-space-3); border: 1px solid var(--admin-input-line); border-radius: var(--admin-control-radius); background: var(--admin-surface); color: var(--admin-text); font-size: var(--admin-font-body); }
+.fieldset input[readonly] { background: var(--admin-hover); cursor: default; }
 .fieldset :is(input,select,textarea):disabled { background: var(--admin-hover); color: var(--admin-muted); cursor: not-allowed; }
 .fieldset [aria-invalid="true"] { border-color: var(--admin-danger); }
 .fieldError { margin-top: var(--admin-space-1); color: var(--admin-danger); font-size: var(--admin-font-caption); line-height: 1.7; }

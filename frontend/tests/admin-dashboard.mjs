@@ -13,9 +13,15 @@ await fs.mkdir(output,{recursive:true});
 const base=process.env.ADMIN_UI_URL||"http://localhost:3100";
 const actor={id:999999,email:"admin-entry@example.invalid",full_name:"Admin Entry Fixture",role:"ADMIN",is_active:true};
 const row={id:101,email:"entry-user@example.invalid",full_name:"Nguyễn Kiểm Thử",last_name:"Nguyễn",first_name:"Thử",role:"ENGINEER",is_active:true,created_date:"2026-11-07T08:00:00"};
+const vehicle={id:8,name:"Xe kiểm thử",carla_blueprint_id:"vehicle.fixture.car",length_m:4,width_m:2,height_m:1.5,num_wheels:4,mass_kg:1800,max_brake_decel_mps2:8,carla_full_brake_decel_mps2:8,is_supported:true,in_use:false,run_count:0};
 const resources=["users","workspaces","tech-references"];
 const viewports=[[1920,1080],[1366,768],[768,1024],[390,844]];
 let role="ADMIN",mode="normal";
+let dashboardProgress={"old-simulator":{completed_variants:2,active_runs:0,failed_runs:0}};
+const currentSimulator="vehicsim-kinematic-1.4";
+const dashboardVersions=[{id:1,label:"v1",status:"BASELINE",parent_version_id:99,parameters:{}},
+ ...[2,3,4,5].map(id=>({id,label:`v${id}`,status:"CANDIDATE",parent_version_id:1,parameters:{}}))];
+const dashboardFamily=()=>({id:1,code:"CP-1",name:"Fixture family",variants:2,failures:0,runs:{COMPLETED:40,RUNNING:10},baseline_progress:dashboardProgress});
 const reads=[],writes=[],unexpected=[],errors=[],pending=[],screenshots=[];
 const browser=await chromium.launch(browserOptions());
 try{
@@ -27,8 +33,15 @@ try{
   if(p==="/auth/login")return reply({access_token:"admin-entry-fixture-only",token_type:"bearer",expires_in:3600,user:{...actor,role}});
   if(p==="/auth/me")return reply({...actor,role});
   if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
+  if(p==="/vehicsim/workspaces")return reply([]);
   if(p==="/vehicsim/projects")return reply({items:[],total:0,page:1,page_size:20,active_count:0,archived_count:0});
-  if(p==="/vehicsim/context")return reply({project:{id:1,name:"Fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:null},versions:[],families:[],parameters:[],reviewer_projects:[],reviewer_can_decide:false});
+  if(p==="/vehicsim/vehicles")return reply([vehicle]);
+  if(p==="/vehicsim/vehicles/8")return reply({...vehicle,physics:{drag_coefficient:null,center_of_mass_m:null,tire_friction:null,max_brake_torque_nm:null,wheelbase_m:null,max_speed_mps:null},sensors:[],usage:[]});
+  if(p==="/vehicsim/context")return reply({project:{id:1,name:"Fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},simulator:currentSimulator,system:{id:1,baseline:dashboardVersions[0]},versions:dashboardVersions,families:[],parameters:[],reviewer_projects:[],reviewer_can_decide:false});
+  if(p==="/vehicsim/families")return reply([dashboardFamily()]);
+  if(p==="/vehicsim/regression")return reply({items:[],kpis:{total:0,passed:0,failed:0,running:0}});
+  if(p==="/vehicsim/recommendations")return reply([]);
+  if(p==="/vehicsim/aeb/versions")return reply(dashboardVersions);
   if(p.startsWith("/vehicsim/admin/")){
    if(req.method()!=="GET"){writes.push(p);return reply({detail:"No writes allowed in entry regression"},405);}
    const resource=p.slice("/vehicsim/admin/".length);
@@ -49,6 +62,7 @@ try{
   unexpected.push(p);return reply({detail:"Unhandled fixture "+p},404);
  });
  const page=await context.newPage();page.setDefaultTimeout(15000);
+ page.setDefaultNavigationTimeout(60000);
  page.on("pageerror",error=>errors.push(error.message));
  const frame=page.locator("[data-admin-frame]");
  const nav=()=>page.getByRole("navigation",{name:"Điều hướng VehicSim",exact:true}).filter({visible:true});
@@ -62,6 +76,7 @@ try{
  const release=()=>{assert(pending.length>0);pending.shift()();};
  // Exercise the real login form with an intercepted session, without auto-restoring expired tokens.
  await page.goto(base+"/login");
+ await page.waitForLoadState("networkidle");
  await page.getByLabel("Email",{exact:true}).fill(actor.email);
  await page.getByLabel("Mật khẩu",{exact:true}).fill("Browser-fixture-only-12");
  await page.getByRole("button",{name:"Đăng nhập",exact:true}).click();await ready("Tài khoản");
@@ -73,10 +88,17 @@ try{
  assert.equal(await frame.getByRole("article").count(),0);
  assert.equal(await frame.getByText("Số liệu quản trị",{exact:true}).count(),0);
  assert.equal(await frame.getByText("Thiết lập workspace",{exact:true}).count(),0);
+ await page.goto(base+"/");await page.waitForURL(base+"/admin/users");await ready("Tài khoản");
  for(const [width,height] of viewports){
   await page.setViewportSize({width,height});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   if(width<1024){await page.getByRole("button",{name:"Menu",exact:true}).focus();await page.keyboard.press("Enter");}
+  assert.equal(await nav().getByText("Hệ thống & Quản trị",{exact:true}).count(),1);
+  assert.equal(await nav().getByText("Quản trị hệ thống",{exact:true}).count(),1);
+  assert.deepEqual(await nav().locator("a[href]").evaluateAll(nodes=>nodes.map(n=>n.getAttribute("href"))),resources.map(r=>"/admin/"+r),"Admin navigation contains only the three administration pages");
+  for(const technicalSection of ["Tổng quan & Thiết bị","Quy trình kiểm thử (5 bước)","Không gian làm việc"]){
+   assert.equal(await nav().getByText(technicalSection,{exact:true}).count(),0,`Admin must not see ${technicalSection}`);
+  }
   assert.deepEqual(await nav().locator('a[href^="/admin/"]').evaluateAll(nodes=>nodes.map(n=>n.getAttribute("href"))),resources.map(r=>"/admin/"+r));
   assert.equal(await nav().locator('[aria-current="page"]').getAttribute("href"),"/admin/users");
   assert.equal(await page.getByRole("link",{name:/Tổng quan quản trị/}).count(),0);
@@ -84,9 +106,9 @@ try{
   if(width<1024){await nav().getByRole("link",{name:"Tài khoản",exact:true}).focus();await page.keyboard.press("Escape");assert.equal(await page.getByRole("button",{name:"Menu",exact:true}).getAttribute("aria-expanded"),"false");}
  }
  await page.setViewportSize({width:1366,height:768});
- // Shared brand points home; Admin links, breadcrumb and Back retain resource navigation.
+ // The Admin brand returns to the administration entry; resource navigation retains history.
  await nav().getByRole("link",{name:/^Workspace$/}).click();await ready("Workspace");
- assert.equal(await page.locator("header").getByRole("link",{name:"VehicSim",exact:true}).getAttribute("href"),"/");
+ assert.equal(await page.locator("header").getByRole("link",{name:"VehicSim",exact:true}).getAttribute("href"),"/admin/users");
  await nav().getByRole("link",{name:"Tài khoản",exact:true}).click();
  await page.waitForURL(base+"/admin/users");await ready("Tài khoản");
  await page.goBack();await ready("Workspace");
@@ -121,7 +143,53 @@ try{
   // AuthGate may suppress the streamed redirect child for a denied role.
   await page.getByRole("heading",{name:"Trang này yêu cầu quyền truy cập",exact:true}).waitFor();
   assert.equal(await frame.count(),0);assert.equal(reads.length,count);
+  if(otherRole==="ENGINEER"||otherRole==="REVIEWER"){
+   assert(await nav().getByText("Quy trình kiểm thử (5 bước)",{exact:true}).isVisible(),`${otherRole} retains technical navigation`);
+   assert.equal(await nav().getByRole("link",{name:"Nhiệm vụ & Báo cáo",exact:true}).getAttribute("href"),"/my-work");
+  }
  }
+ // Manager may browse the common vehicle catalog and manage workspaces, but not enter other technical workflows.
+ role="MANAGER";
+ await page.goto(base+"/login");
+ await page.getByLabel("Email",{exact:true}).fill(actor.email);
+ await page.getByLabel("Mật khẩu",{exact:true}).fill("Browser-fixture-only-12");
+ await page.getByRole("button",{name:"Đăng nhập",exact:true}).click();
+ await page.waitForURL(base+"/workspace");
+ await page.getByText("Bạn chưa được giao workspace nào",{exact:true}).waitFor();
+ assert.deepEqual(await nav().locator("a[href]").evaluateAll(nodes=>nodes.map(n=>n.getAttribute("href"))),["/vehicles","/workspace"]);
+ assert(await nav().getByText("Hệ thống & Quản trị",{exact:true}).isVisible());
+ await nav().getByRole("link",{name:"Phương tiện & Cấu hình",exact:true}).click();
+ await page.waitForURL(base+"/vehicles");
+ await page.getByText("Xe kiểm thử",{exact:true}).first().waitFor();
+ assert.equal(await page.getByText("Project đang dùng",{exact:true}).count(),0);
+ assert.equal(await page.getByText("Lượt chạy",{exact:true}).count(),0);
+ await shot("manager-vehicles");
+ await page.getByRole("link",{name:"Chi tiết",exact:true}).click();
+ await page.waitForURL(base+"/vehicles/8");
+ await page.getByText("Vật lý CARLA",{exact:true}).waitFor();
+ assert.equal(await page.getByText("Lượt chạy",{exact:true}).count(),0);
+ assert.equal(await page.getByText("Lịch sử sử dụng",{exact:true}).count(),0);
+ await shot("manager-vehicle-detail");
+ for(const target of ["/", "/projects/12", "/scenarios", "/analysis/failures/3", "/aeb/mobo", "/validation/regression", "/my-work"]){
+  await page.goto(base+target);await page.waitForURL(base+"/workspace");
+  await page.getByText("Bạn chưa được giao workspace nào",{exact:true}).waitFor();
+ }
+ assert.equal(await page.locator("header").getByRole("link",{name:"VehicSim",exact:true}).getAttribute("href"),"/workspace");
+ await page.goto(base+"/profile");assert.equal(new URL(page.url()).pathname,"/profile");
+ // Old baseline / other simulator / optimization counts cannot complete the current baseline.
+ role="ENGINEER";await page.goto(base+"/login");
+ await page.getByLabel("Email",{exact:true}).fill(actor.email);
+ await page.getByLabel("Mật khẩu",{exact:true}).fill("Browser-fixture-only-12");
+ await page.getByRole("button",{name:"Đăng nhập",exact:true}).click();
+ await page.waitForURL(base+"/");
+ await page.getByText("Chưa chạy cơ sở",{exact:true}).waitFor();
+ assert.equal(await page.getByText("4 cấu hình ứng viên",{exact:true}).count(),1);
+ assert.equal(await page.getByText(/Đang chạy 10 run/).count(),0);
+ await page.goto(base+"/aeb");await page.getByText("4 ứng viên",{exact:true}).waitFor();
+ dashboardProgress={[currentSimulator]:{completed_variants:2,active_runs:0,failed_runs:0}};
+ await page.goto(base+"/");await page.getByText("Bản cơ sở AEB v1 đã chạy xong",{exact:true}).waitFor();
+ dashboardProgress={[currentSimulator]:{completed_variants:1,active_runs:1,failed_runs:0}};
+ await page.reload();await page.getByText("Đang chạy 1 run…",{exact:true}).waitFor();
  role="ADMIN";mode="expired";await page.goto(base+"/admin");await page.waitForURL(base+"/login");
  assert.equal(await page.evaluate(()=>localStorage.getItem("vehicsim_access_token")),null);
  const count=reads.length;mode="normal";await page.goto(base+"/admin");await page.waitForURL(base+"/login");assert.equal(reads.length,count);

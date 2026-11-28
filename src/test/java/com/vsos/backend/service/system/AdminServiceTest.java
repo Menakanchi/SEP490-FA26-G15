@@ -67,11 +67,17 @@ class AdminServiceTest {
     }
     @Test void roleAndStatusChangesRevokeSessionsButNameChangesDoNot() {
         service.updateUser(1,2,userRequest(RoleCode.REVIEWER,true));
-        verify(repo).updateUser(2,"user@example.com","Nguyen",null,"An","REVIEWER",true,true);
+        verify(repo).updateUser(2,"Nguyen",null,"An","REVIEWER",true,true);
         service.updateUser(1,2,userRequest(RoleCode.ENGINEER,false));
-        verify(repo).updateUser(2,"user@example.com","Nguyen",null,"An","ENGINEER",false,true);
+        verify(repo).updateUser(2,"Nguyen",null,"An","ENGINEER",false,true);
         service.updateUser(1,2,userRequest(RoleCode.ENGINEER,true));
-        verify(repo).updateUser(2,"user@example.com","Nguyen",null,"An","ENGINEER",true,false);
+        verify(repo).updateUser(2,"Nguyen",null,"An","ENGINEER",true,false);
+    }
+    @Test void cannotChangeEmailOfExistingUser() {
+        var request=new UserRequest("other@example.com","Nguyen",null,"An",RoleCode.ENGINEER,true,null);
+        assertThatThrownBy(()->service.updateUser(1,2,request))
+                .isInstanceOf(InvalidRequestException.class).hasMessageContaining("email");
+        verify(repo,never()).updateUser(anyLong(),anyString(),any(),anyString(),anyString(),anyBoolean(),anyBoolean());
     }
     @Test void workspaceNeedsActiveManagerAndUniqueName() {
         var b=new WorkspaceRequest("Lab",null,2L);

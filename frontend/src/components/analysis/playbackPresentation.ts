@@ -14,7 +14,22 @@ export const EVENT_COLOR: Record<string, string> = {
   aeb_decision: "var(--color-vehicsim-decision)", brake_onset: "var(--color-vehicsim-decision)",
   gt_stop: "var(--color-vehicsim-faint)", collision: "var(--color-vehicsim-danger)", stopped: "var(--color-vehicsim-ok)",
 };
-export const eventName = (event: SimEvent) => event.kind === "brake_onset" ? "Bắt đầu lệnh phanh" : event.kind === "aeb_decision" ? "Quyết định AEB" : vi(event.label || event.kind || "Sự kiện đã ghi");
+export type PlaybackAebMode = Playback["aeb_mode"];
+export const eventName = (event: SimEvent, mode?: PlaybackAebMode) => {
+  if (event.kind === "aeb_decision") {
+    if (mode === "OFF") return "Tín hiệu AEB giả lập (không tác động phanh)";
+    if (mode !== "ON") return "Tín hiệu AEB đã ghi (chưa rõ chế độ AEB)";
+    return "Quyết định AEB";
+  }
+  if (event.kind === "brake_onset") {
+    if (mode === "OFF") return "Mốc phanh đã ghi (AEB tắt; chưa rõ nguồn)";
+    if (mode !== "ON") return "Mốc phanh đã ghi (chưa rõ chế độ AEB)";
+    return "Bắt đầu lệnh phanh";
+  }
+  if (event.kind === "fcw" && mode === "OFF") return "Mốc FCW tính toán (shadow)";
+  if (event.kind === "fcw" && mode !== "ON") return "Tín hiệu FCW đã ghi (chưa xác nhận chế độ)";
+  return vi(event.label || event.kind || "Sự kiện đã ghi");
+};
 export const eventColor = (event: SimEvent) => EVENT_COLOR[event.kind] ?? "var(--color-vehicsim-muted)";
 
 /** Validate display timestamps only; preserve the recorded field values and event identity. */
@@ -41,13 +56,16 @@ export function playbackPresentation(data: Playback) {
 }
 
 // Existing recorded-flag/event priority; no inference from speed, acceleration or TTC.
-export function frameStatus(f: Frame, t: number, events: SimEvent[]) {
+export function frameStatus(f: Frame, t: number, events: SimEvent[], mode?: PlaybackAebMode) {
   const collision = events.find((e) => e.kind === "collision");
   if (collision && t >= collision.t) return { label: "VA CHẠM", cls: "bg-vehicsim-danger-bg text-vehicsim-danger" };
   const stopped = events.find(e => e.kind === "stopped");
   if (stopped && t >= stopped.t) return { label: "ĐÃ DỪNG", cls: "bg-vehicsim-ok-bg text-vehicsim-ok" };
-  if (f.aeb) return { label: "AEB ĐÃ RA QUYẾT ĐỊNH", cls: "bg-vehicsim-decision-bg text-vehicsim-decision" };
-  if (f.fcw) return { label: "CẢNH BÁO FCW", cls: "bg-vehicsim-warn-bg text-vehicsim-warn" };
+  if (mode === "OFF") return { label: "AEB TẮT", cls: "bg-vehicsim-soft text-vehicsim-muted" };
+  if (f.aeb && mode === "ON") return { label: "AEB ĐÃ RA QUYẾT ĐỊNH", cls: "bg-vehicsim-decision-bg text-vehicsim-decision" };
+  if (f.aeb) return { label: "TÍN HIỆU AEB · CHƯA RÕ CHẾ ĐỘ", cls: "bg-vehicsim-soft text-vehicsim-muted" };
+  if (f.fcw && mode === "ON") return { label: "CẢNH BÁO FCW", cls: "bg-vehicsim-warn-bg text-vehicsim-warn" };
+  if (f.fcw) return { label: "TÍN HIỆU FCW · CHƯA RÕ CHẾ ĐỘ", cls: "bg-vehicsim-soft text-vehicsim-muted" };
   if (f.detected) return { label: "ĐANG BÁM", cls: "bg-vehicsim-perception-bg text-vehicsim-perception" };
   return { label: "CHƯA CÓ CỜ AEB/FCW", cls: "bg-vehicsim-soft text-vehicsim-muted" };
 }

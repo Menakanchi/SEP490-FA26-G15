@@ -253,6 +253,12 @@ class FailureAnalysisDatabaseMysqlTest {
         assertThat(at(families,"/summary/scenario_count")).isEqualTo(1L);
         assertThat(at(families,"/summary/confirmed_count")).isNull();
         assertThat(at(families,"/summary/no_failure_count")).isNull();
+        var pastEnd=explorer.scenarios(4,"2499",20,20,"id_desc");
+        assertThat((List<?>)pastEnd.get("items")).isEmpty();
+        assertThat(at(pastEnd,"/summary/scenario_count")).isEqualTo(1L);
+        assertThat(at(pastEnd,"/summary/analyzed_count")).isEqualTo(at(families,"/summary/analyzed_count"));
+        var noMatch=explorer.scenarios(4,"nonexistent-family",20,0,"id_desc");
+        assertThat(at(noMatch,"/summary/scenario_count")).isEqualTo(0L);
         assertThat(((Number)explorer.scenarios(2,"2499",20,0,"id_desc").get("total")).intValue()).isZero();
         jdbc.update("INSERT INTO scenario_versions(id,scenario_id,version_no,source,parent_version_id,created_by_user_id,scenario_ir_json) VALUES(1040,26,13,'GENERATED',1033,7,'{}')");
         var emptyVariants=explorer.variants(4,26,null,true,20,0,"id_desc");
@@ -282,6 +288,14 @@ class FailureAnalysisDatabaseMysqlTest {
         assertThatThrownBy(()->explorer.runs(2,26,null,null,null,null,null,null,null,null,20,0,"id_desc")).hasMessage("DB_SELECTION_NOT_FOUND");
         assertThatThrownBy(()->explorer.runs(4,26,null,null,null,null,"CONFIRMED",null,null,null,20,0,"id_desc")).hasMessage("FA_CONTEXT_CURRENTNESS_UNAVAILABLE");
         String collectionSource=collection.get("source_id").toString();
+        byte[] reportMetadata=jdbc.queryForObject("SELECT metadata_bytes FROM fa_json_reports WHERE id=?",byte[].class,collectionReport);
+        jdbc.update("UPDATE fa_json_reports SET metadata_bytes=? WHERE id=?","not-json".getBytes(StandardCharsets.UTF_8),collectionReport);
+        try {
+            assertThat(((List<Map<String,Object>>)explorer.runs(4,26,null,null,2499L,null,null,null,null,null,20,0,"id_desc").get("items")).getFirst())
+                    .containsEntry("report_id",directReport);
+            assertThat(((Number)explorer.scenarios(4,"2499",20,0,"id_desc").get("total")).intValue()).isEqualTo(1);
+        }
+        finally {jdbc.update("UPDATE fa_json_reports SET metadata_bytes=? WHERE id=?",reportMetadata,collectionReport);}
         byte[] metadata=jdbc.queryForObject("SELECT metadata_bytes FROM fa_json_sources WHERE id=?",byte[].class,collectionSource);
         jdbc.update("UPDATE fa_json_sources SET metadata_bytes=? WHERE id=?","{}".getBytes(StandardCharsets.UTF_8),collectionSource);
         try {assertThat(((List<Map<String,Object>>)explorer.runs(4,26,null,null,2499L,null,null,null,null,null,20,0,"id_desc").get("items")).getFirst())
