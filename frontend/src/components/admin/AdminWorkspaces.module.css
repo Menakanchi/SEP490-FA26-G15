@@ -1,6 +1,8 @@
 .toolbar.toolbar { grid-template-columns: minmax(240px, 1.8fr) repeat(2, minmax(150px, 1fr)); }
 .table.table table { min-width: 880px; }
 .counts span { display: block; line-height: 1.8; white-space: nowrap; }
+.members { margin-bottom: var(--admin-space-6); color: var(--admin-secondary); font-size: var(--admin-font-control); line-height: 1.8; overflow-wrap: anywhere; }
+.members ul { display: flex; flex-direction: column; gap: var(--admin-space-2); }
 .feedback strong, .feedback span { display: block; }
 .feedback:focus { outline: 3px solid var(--admin-focus); outline-offset: 3px; }
 .manager { min-width: 200px; max-width: 290px; overflow-wrap: anywhere; }

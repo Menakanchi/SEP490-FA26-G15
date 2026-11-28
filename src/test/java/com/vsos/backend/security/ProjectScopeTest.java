@@ -85,7 +85,10 @@ class ProjectScopeTest {
     void otherRolesWithoutATeamProjectAreToldToBootstrap() {
         loginAs(RoleCode.ADMIN);
 
-        assertThatThrownBy(scope(null)::current).isInstanceOf(NotFoundException.class).hasMessageContaining("bootstrap");
+        assertThatThrownBy(scope(null)::current).isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("khôi phục project hoặc workspace đã lưu trữ")
+                .hasMessageContaining("nếu chưa có project")
+                .hasMessageContaining("bootstrap");
     }
 
     @Test

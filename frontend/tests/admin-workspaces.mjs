@@ -128,7 +128,13 @@ try{
  assert.deepEqual(await region().getByRole("columnheader").allTextContents(),["Workspace","Manager phụ trách","Thành viên / Project","Trạng thái","Thao tác"]);
  const firstRow=region().locator("tbody tr").first(),firstId=Number((await firstRow.getByRole("rowheader").innerText()).match(/ID #(\d+)/)[1]),firstWorkspace=workspaces.find(item=>item.id===firstId);
  await firstRow.getByRole("cell").filter({hasText:firstWorkspace.member_count+" thành viên"}).filter({hasText:firstWorkspace.project_count+" project"}).waitFor();
- await open(firstWorkspace);await dialog().getByText("Thành viên kiểm thử",{exact:false}).waitFor();await dialog().getByRole("button",{name:"Hủy",exact:true}).click();
+ await open(firstWorkspace);const member=dialog().getByText("Thành viên kiểm thử",{exact:false});await member.waitFor();
+ for(const width of [1366,390]){
+  await page.setViewportSize({width,height:768});
+  const memberBox=await member.boundingBox(),detailsBox=await dialog().locator("legend").filter({hasText:"Thông tin workspace"}).boundingBox();
+  assert(memberBox&&detailsBox&&detailsBox.y-memberBox.y-memberBox.height>=16,"Danh sách thành viên cần cách thông tin workspace ở khổ "+width);
+ }
+ await page.setViewportSize({width:1366,height:768});await dialog().getByRole("button",{name:"Hủy",exact:true}).click();
  page.on("dialog",dialog=>dialog.accept());
  await frame.getByRole("button",{name:"Lưu trữ workspace "+firstWorkspace.name,exact:true}).click();await ready();
  assert.equal(firstWorkspace.status,"ARCHIVED");

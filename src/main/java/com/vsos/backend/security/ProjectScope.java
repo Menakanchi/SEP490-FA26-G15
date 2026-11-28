@@ -32,7 +32,7 @@ public class ProjectScope {
 
     public Row current() {
         return find().orElseThrow(() -> experiencerId() == null
-                ? new NotFoundException("project — ADMIN gọi POST /api/v1/vehicsim/bootstrap để tạo project mặc định")
+                ? new NotFoundException("project đang hoạt động — khôi phục project hoặc workspace đã lưu trữ; nếu chưa có project, ADMIN gọi POST /api/v1/vehicsim/bootstrap")
                 : new ProjectException(NO_PROJECT_OPEN));
     }
 

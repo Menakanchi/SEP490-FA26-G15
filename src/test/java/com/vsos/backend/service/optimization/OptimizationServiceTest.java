@@ -630,4 +630,17 @@ class OptimizationServiceTest {
                     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.detail").isString());
         }
     }
+
+    @Test void archivedProjectExceptionMapsToConflictWithoutExposingAWebDependencyInRepository() throws Exception {
+        OptimizationService failing = mock(OptimizationService.class);
+        VehicSimAccess access = mock(VehicSimAccess.class);
+        when(access.projectId()).thenReturn(1L);
+        when(failing.getRun(1L,7L)).thenThrow(new com.vsos.backend.common.Vs.ArchivedProjectException());
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new OptimizationController(failing,access))
+                .setControllerAdvice(new ApiExceptionHandler()).build();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/vehicsim/optimizations/7"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isConflict())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.detail")
+                        .value("Project hoặc workspace đang lưu trữ, chỉ có thể xem"));
+    }
 }

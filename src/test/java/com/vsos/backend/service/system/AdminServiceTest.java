@@ -132,9 +132,13 @@ class AdminServiceTest {
         queries.lockWritableProjectForJob(3);
         verify(db).first(contains("FOR SHARE"),eq(3L));
         when(db.first(anyString(),eq(3L))).thenReturn(new Row(Map.of("status","ACTIVE","workspace_id",2L,"workspace_status","ARCHIVED")));
-        assertThatThrownBy(() -> queries.lockWritableProjectForJob(3)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThatThrownBy(() -> queries.lockWritableProjectForJob(3)).isInstanceOf(com.vsos.backend.common.Vs.ArchivedProjectException.class);
         when(db.first(anyString(),eq(3L))).thenReturn(new Row(Map.of("status","ARCHIVED","workspace_id",2L,"workspace_status","ACTIVE")));
-        assertThatThrownBy(() -> queries.lockWritableProjectForJob(3)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThatThrownBy(() -> queries.lockWritableProjectForJob(3)).isInstanceOf(com.vsos.backend.common.Vs.ArchivedProjectException.class);
+        when(db.first(anyString(),eq(3L))).thenReturn(new Row(Map.of("status","ACTIVE")));
+        queries.lockWritableProjectForJob(3);
+        when(db.first(anyString(),eq(3L))).thenReturn((Row) null);
+        assertThatThrownBy(() -> queries.lockWritableProjectForJob(3)).isInstanceOf(com.vsos.backend.common.Vs.NotFoundException.class);
     }
     @Test void referenceNumericContractAndUniquenessAreEnforced() {
         assertThatThrownBy(()->service.createReference(1,reference(TechRefType.STANDARD,BigDecimal.ONE,true))).hasMessageContaining("CONSTANT");

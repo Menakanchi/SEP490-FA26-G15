@@ -1,6 +1,7 @@
 package com.vsos.backend.repository.common;
 
 import com.vsos.backend.common.Vs.NotFoundException;
+import com.vsos.backend.common.Vs.ArchivedProjectException;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -30,8 +31,7 @@ public class Queries {
                 """, projectId);
         if (row == null) throw new NotFoundException("project");
         if (!"ACTIVE".equals(row.str("status")) || (!row.isNull("workspace_id") && !"ACTIVE".equals(row.str("workspace_status"))))
-            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
-                    "Project hoặc workspace đang lưu trữ, chỉ có thể xem");
+            throw new ArchivedProjectException();
     }
 
     public List<Row> versions(long projectId, boolean newestFirst) {

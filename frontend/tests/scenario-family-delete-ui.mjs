@@ -14,7 +14,7 @@ const requests = [];
 let unblockDelete;
 let deleteStarted;
 
-async function session(role) {
+async function session(role, { writable = true, contextFailure = false, selectedProject = true } = {}) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await context.route("**/api/v1/**", async route => {
     const p = new URL(route.request().url()).pathname.replace("/api/v1", "");
@@ -26,8 +26,12 @@ async function session(role) {
     if (p === "/auth/login") return reply({ access_token: "scenario-fixture", token_type: "bearer", expires_in: 3600, user: actor(role) });
     if (p === "/auth/me") return reply(actor(role));
     if (p === "/vehicsim/reviewer/projects") return reply([{ id: 77, name: "Workspace fixture", workspace_name: "Fixture", can_decide: true }]);
-    if (p === "/vehicsim/context") return reply({ project: { id: Number(route.request().headers()["x-vehicsim-project"]) || 1, name: "Fixture" }, workspace: null, vehicle: { id: 1, name: "Fixture" },
-      system: { id: 1, baseline: null }, versions: [], families: families.map(({ id, code, name }) => ({ id, code, name })), parameters: [], reviewer_projects: [] });
+    if (p === "/vehicsim/context") {
+      if (contextFailure) return reply({ detail: "Context unavailable" }, 503);
+      return reply({ project: { id: Number(route.request().headers()["x-vehicsim-project"]) || 1, name: "Fixture" }, workspace: role === "EXPERIENCER" ? null : { id: 1, name: "Fixture" }, vehicle: { id: 1, name: "Fixture" },
+        system: { id: 1, baseline: null }, versions: [], families: families.map(({ id, code, name }) => ({ id, code, name })), parameters: [], reviewer_projects: [],
+        reviewer_can_decide: role !== "EXPERIENCER" && writable === true, project_writable: writable });
+    }
     if (p === "/vehicsim/families" && method === "GET") return reply(families);
     if (p === "/vehicsim/regression") return reply({ items: [], kpis: { total: 0, passed: 0, failed: 0, running: 0 } });
     if (p === "/vehicsim/decisions") return reply({ decisions: [], baselines: [] });
@@ -59,8 +63,10 @@ async function session(role) {
   await page.getByLabel("Mật khẩu", { exact: true }).fill("Fixture-password-15");
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
   await page.waitForURL(url => url.pathname !== "/login");
+  if (role === "EXPERIENCER" && selectedProject) await page.evaluate(() => localStorage.setItem("vehicsim_project", "1"));
   await page.goto(base + "/scenarios");
-  await page.locator("#family-41").waitFor();
+  if (role === "EXPERIENCER" && !selectedProject) await page.waitForURL(url => url.pathname === "/projects");
+  else await page.locator("#family-41").waitFor();
   return { context, page, errors };
 }
 
@@ -138,6 +144,31 @@ try {
   assert.equal(await readonly.page.getByRole("button", { name: /Bắt đầu tối ưu/ }).count(), 0);
   assert.deepEqual(readonly.errors, []);
   await readonly.context.close();
+
+  // Quyền ghi và banner phụ thuộc trạng thái project, kể cả Admin và project cá nhân.
+  for (const role of ["ADMIN", "ENGINEER", "EXPERIENCER", "REVIEWER"]) {
+    const archived = await session(role, { writable: false });
+    await archived.page.getByText("Project hoặc workspace đã lưu trữ. Bạn có thể xem lịch sử.").waitFor();
+    assert.equal(await archived.page.locator("#family-41").getByRole("button", { name: /Xóa họ kịch bản/ }).count(), 0, `${role}: archived không được ghi`);
+    await archived.context.close();
+  }
+  for (const role of ["ADMIN", "EXPERIENCER"]) {
+    const active = await session(role);
+    await active.page.locator("#family-41").getByRole("button", { name: /Xóa họ kịch bản/ }).waitFor();
+    assert.equal(await active.page.getByText("Project hoặc workspace đã lưu trữ. Bạn có thể xem lịch sử.").count(), 0);
+    await active.context.close();
+  }
+  const failedContext = await session("ADMIN", { contextFailure: true });
+  await failedContext.page.getByText("Context unavailable").waitFor();
+  assert.equal(await failedContext.page.locator("#family-41").getByRole("button", { name: /Xóa họ kịch bản/ }).count(), 0, "Lỗi context không được bật ghi");
+  await failedContext.context.close();
+  const missingState = await session("ADMIN", { writable: null });
+  await missingState.page.getByText("Dự án:").waitFor();
+  assert.equal(await missingState.page.locator("#family-41").getByRole("button", { name: /Xóa họ kịch bản/ }).count(), 0, "Thiếu project_writable không được bật ghi");
+  await missingState.context.close();
+  const noProject = await session("EXPERIENCER", { selectedProject: false });
+  assert.equal(await noProject.page.locator("#family-41").getByRole("button", { name: /Xóa họ kịch bản/ }).count(), 0, "Chưa chọn project không được bật ghi");
+  await noProject.context.close();
   console.log("PASS: cancel, 409, busy, success, readonly and text escaping");
 } finally {
   await browser.close();

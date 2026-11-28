@@ -34,6 +34,13 @@ public final class Vs {
         }
     }
 
+    /** Không thể tạo công việc vì project hoặc workspace đã lưu trữ. */
+    public static class ArchivedProjectException extends RuntimeException {
+        public ArchivedProjectException() {
+            super("Project hoặc workspace đang lưu trữ, chỉ có thể xem");
+        }
+    }
+
     public static final String OUTCOME_COLLISION = "COLLISION";
     public static final String OUTCOME_NEAR_MISS = "NEAR_MISS";
     public static final String OUTCOME_SAFE = "SAFE";

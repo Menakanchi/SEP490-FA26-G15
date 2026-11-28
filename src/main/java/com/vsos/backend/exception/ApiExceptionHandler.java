@@ -60,6 +60,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return detail(HttpStatus.BAD_REQUEST, e.getMessage());
     }
 
+    @ExceptionHandler(Vs.ArchivedProjectException.class)
+    public ResponseEntity<Map<String, String>> handleArchivedProject(Vs.ArchivedProjectException e) {
+        return detail(HttpStatus.CONFLICT, e.getMessage());
+    }
+
     /** Vi phạm UNIQUE / khoá ngoại lọt qua bước kiểm trước (vd. hai request tạo cùng một bản ghi cùng lúc). */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, String>> handleIntegrity(DataIntegrityViolationException e) {

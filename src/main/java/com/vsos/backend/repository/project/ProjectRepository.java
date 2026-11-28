@@ -77,7 +77,7 @@ public class ProjectRepository {
 
     public Row firstActiveTeamProject() {
         return db.first("SELECT p.*, w.status AS workspace_status FROM projects p JOIN workspaces w ON w.id = p.workspace_id "
-                + "WHERE p.status = 'ACTIVE' ORDER BY p.id LIMIT 1");
+                + "WHERE p.status = 'ACTIVE' AND w.status = 'ACTIVE' ORDER BY p.id LIMIT 1");
     }
 
     public String existingName(long ownerId, String name, long exceptProjectId) {

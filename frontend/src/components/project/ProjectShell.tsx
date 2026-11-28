@@ -319,7 +319,7 @@ export function ProjectSwitcher() {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className={cx(PROJECT_CONTEXT_CLASS, "flex w-full items-center gap-3 text-left hover:bg-vehicsim-soft")}
+        className={cx(PROJECT_CONTEXT_CLASS, "flex w-full items-center gap-3 text-left hover:bg-slate-800")}
       >
         {!current && <FolderOpen className="size-5 text-vehicsim-muted" />}
         <ProjectIdentity project={current} label="Project đang mở" fallback={choosing ? "Chưa chọn project" : "Đang tải…"} />

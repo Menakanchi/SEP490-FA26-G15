@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { useAuth } from "@/context/AuthContext";
 
 export type Crumb = { label: string; href?: string };
 
@@ -24,11 +23,9 @@ interface VehicSimPageProps {
 
 export function VehicSimPage({ crumbs, title, badges, subtitle, actions, showContext = true, hideMissingProjectError = false, children }: VehicSimPageProps) {
   const { ctx, error, canResetProject, noProjectInScope, selectProject } = useVehicSimContext();
-  const { user } = useAuth();
   const pathname = usePathname();
   const viewedProjectId = pathname.match(/^\/projects\/(\d+)(?:\/|$)/)?.[1];
   const showCurrentContext = showContext && (!viewedProjectId || Number(viewedProjectId) === ctx?.project.id);
-  const reviewer = user?.roleCode === "REVIEWER";
   const baseline = ctx?.system.baseline;
 
   return (
@@ -70,7 +67,7 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, showCon
         </div>
       )}
 
-      {reviewer && ctx && !ctx.reviewer_can_decide && (
+      {showCurrentContext && ctx?.project_writable === false && (
         <p className="rounded-[14px] bg-vehicsim-warn-bg px-4 py-3 text-[13px] text-vehicsim-warn">
           Project hoặc workspace đã lưu trữ. Bạn có thể xem lịch sử.
         </p>

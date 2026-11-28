@@ -19,7 +19,7 @@ try {
   if(req.method()==="OPTIONS")return route.fulfill({status:204,headers:{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization,content-type,x-vehicsim-project","Access-Control-Allow-Methods":"GET,POST,OPTIONS"}});
   requests.push({path:p,method:req.method(),project,body:req.postData()});
   if(p==="/auth/me")return reply(actor);
-  if(p==="/vehicsim/context")return reply({project:{id:project,name:`Project ${project}`},workspace:{id:1,name:"Isolated fixture"},vehicle:{id:5,name:"Fixture identity only"},system:{id:1,name:"AEB",baseline:{id:33,label:"Identity fixture, not verified v1"}},versions:[{id:33,label:"Fixture33",status:"CANDIDATE"}],families:[],parameters:[],reviewer_projects:[4,2].map(id=>({id,name:`Project ${id}`,workspace_name:"Fixture",can_decide:true}))});
+  if(p==="/vehicsim/context")return reply({project:{id:project,name:`Project ${project}`},workspace:{id:1,name:"Isolated fixture"},vehicle:{id:5,name:"Fixture identity only"},system:{id:1,name:"AEB",baseline:{id:33,label:"Identity fixture, not verified v1"}},versions:[{id:33,label:"Fixture33",status:"CANDIDATE"}],families:[],parameters:[],project_writable:true,reviewer_can_decide:true,reviewer_projects:[4,2].map(id=>({id,name:`Project ${id}`,workspace_name:"Fixture",can_decide:true}))});
   if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
   if(p==="/vehicsim/projects")return reply({items:[]});
   if(p==="/vehicsim/analysis/runs")return reply({total:0,page:1,page_size:10,counts:{},items:[],objective_groups:[],evaluation_version:"adr040-stored-aggregation/1"});

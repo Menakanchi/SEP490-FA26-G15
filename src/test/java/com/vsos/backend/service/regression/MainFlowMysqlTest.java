@@ -66,6 +66,7 @@ class MainFlowMysqlTest {
     @Autowired BootstrapService bootstrap;
     @Autowired com.vsos.backend.service.simulation.RunService runService;
     @Autowired com.vsos.backend.repository.common.Db db;
+    @Autowired com.vsos.backend.repository.project.ProjectRepository projectRepository;
     @Autowired com.vsos.backend.repository.common.Queries queries;
     @Autowired com.vsos.backend.service.analysis.AnalysisService analysis;
     @Autowired com.vsos.backend.repository.analysis.FailureAnalysisStore faStore;
@@ -113,6 +114,22 @@ class MainFlowMysqlTest {
         long managerId=user("audit-manager@example.invalid","MANAGER");
         projectId=id(bootstrap.ensureDefaultProject(admin),"project_id");
         long workspaceId=jdbc.queryForObject("SELECT workspace_id FROM projects WHERE id=?",Long.class,projectId);
+        // An archived first workspace must not hide a later active team project from ADMIN.
+        jdbc.update("INSERT INTO workspaces(name,manager_id,created_by_user_id) VALUES('audit-selection-workspace',?,?)",managerId,admin);
+        long secondWorkspace=jdbc.queryForObject("SELECT id FROM workspaces WHERE name='audit-selection-workspace'",Long.class);
+        jdbc.update("INSERT INTO projects(workspace_id,name,created_by_user_id) VALUES(?,'audit-selection-project',?)",secondWorkspace,admin);
+        long secondProject=jdbc.queryForObject("SELECT id FROM projects WHERE workspace_id=?",Long.class,secondWorkspace);
+        try {
+            assertThat(projectRepository.firstActiveTeamProject().lng("id")).isEqualTo(projectId);
+            jdbc.update("UPDATE workspaces SET status='ARCHIVED' WHERE id=?",workspaceId);
+            assertThat(projectRepository.firstActiveTeamProject().lng("id")).isEqualTo(secondProject);
+            jdbc.update("UPDATE workspaces SET status='ARCHIVED' WHERE id=?",secondWorkspace);
+            assertThat(projectRepository.firstActiveTeamProject()).isNull();
+        } finally {
+            jdbc.update("UPDATE workspaces SET status='ACTIVE' WHERE id=?",workspaceId);
+            jdbc.update("DELETE FROM projects WHERE id=?",secondProject);
+            jdbc.update("DELETE FROM workspaces WHERE id=?",secondWorkspace);
+        }
         jdbc.update("UPDATE workspaces SET manager_id=? WHERE id=?",managerId,workspaceId);
         String manager=login("audit-manager@example.invalid");
         json("POST",BASE+"/workspaces/"+workspaceId+"/members",manager,Json.obj("user_id",engineerId,"role","ENGINEER"),201);
