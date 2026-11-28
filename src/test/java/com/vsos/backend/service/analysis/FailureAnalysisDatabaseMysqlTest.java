@@ -242,11 +242,15 @@ class FailureAnalysisDatabaseMysqlTest {
         }
     }
     @Test @Order(12) void explorerUsesCurrentProducerReportsAndScopesSearchAndFilters()throws Exception {
+        // Earlier producer tests add large completed runs to this same variant; isolate the original two-run collection.
+        jdbc.update("DELETE FROM simulation_runs WHERE id IN (9002,9003,9004,9005,9006)");
         var direct=adapter.analyze(4,7,2499,false,null);adapter.analyze(4,7,2511,false,null);
         String directReport=service.list(Kind.REPORT,4,direct.get("id").toString(),20,0).getFirst().get("id").toString();
         var collection=adapter.analyze(4,7,1033,true,null);
         String collectionReport=service.list(Kind.REPORT,4,collection.get("id").toString(),20,0).stream()
                 .filter(m->"2499".equals(m.get("run_key"))).findFirst().orElseThrow().get("id").toString();
+        // Partial collection reports from prior tests are newer but unrelated to this fallback scenario.
+        jdbc.update("DELETE FROM fa_json_reports WHERE project_id=? AND execution_id NOT IN (?,?)",4,direct.get("id"),collection.get("id"));
         var explorer=new FailureAnalysisExplorerRepository(new Db(jdbc));
         var families=explorer.scenarios(4,"2499",20,0,"id_desc");
         assertThat(((Number)families.get("total")).intValue()).isEqualTo(1);
