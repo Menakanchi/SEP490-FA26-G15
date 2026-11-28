@@ -35,12 +35,12 @@ import static org.mockito.Mockito.when;
  *
  * <ul>
  *   <li>Each changed parameter must lie in [min_value, max_value] of {@code aeb_parameters} (seed of 01_schema.sql):
- *       TTC_THRESHOLD [0.50, 4.00] s, BRAKE_ACTIVATION_DELAY [0.00, 0.50] s, MAX_DECELERATION [3.00, 10.00] m/s2,
+ *       TTC_THRESHOLD [0.50, 3.50] s, BRAKE_ACTIVATION_DELAY [0.05, 0.45] s, MAX_DECELERATION [5.00, 10.00] m/s2,
  *       BRAKE_BUILDUP_RATE [5.00, 20.00] m/s3. Boundaries min-0.01, min, max, max+0.01 (and min+0.01 / max-0.01).</li>
  *   <li>The parent version must belong to the project; unknown codes are rejected (sorted list); the merged set must differ
  *       from the parent in at least one value.</li>
  *   <li>label / notes / source are stripped; blank label becomes "v&lt;n&gt;", blank notes null, blank source MANUAL,
- *       source is upper-cased. version_no = MAX(version_no) + 1 (1 for the first version).</li>
+ *       source is upper-cased. version_no = MAX(version_no) + 1.</li>
  *   <li>UTCID33 and UTCID34 cover the defects DEF-AEB-01 (null value threw NullPointerException) and DEF-AEB-02 (NaN was stored); both are
  *       fixed since 23/11/2026 and the cases now expect InvalidRequestException.</li>
  * </ul>
@@ -73,9 +73,9 @@ class AebServiceCreateCandidateBvaTest {
         when(db.first(startsWith("SELECT * FROM aeb_versions"), eq(PARENT), eq(PROJECT)))
                 .thenReturn(new Row(Json.obj("id", PARENT, "project_id", PROJECT, "version_no", 3L, "status", "BASELINE")));
         when(db.list("SELECT * FROM aeb_parameters")).thenReturn(List.of(
-                param(1L, TTC, 0.50, 4.00, "s"),
-                param(2L, DELAY, 0.00, 0.50, "s"),
-                param(3L, DECEL, 3.00, 10.00, "m/s2"),
+                param(1L, TTC, 0.50, 3.50, "s"),
+                param(2L, DELAY, 0.05, 0.45, "s"),
+                param(3L, DECEL, 5.00, 10.00, "m/s2"),
                 param(4L, BUILDUP, 5.00, 20.00, "m/s3")));
         Map<String, Double> parentValues = new LinkedHashMap<>();
         parentValues.put(TTC, 1.5);
@@ -140,19 +140,19 @@ class AebServiceCreateCandidateBvaTest {
     }
 
     @Test
-    @DisplayName("UTCID08 N: first version of the project (MAX(version_no) is null) gets version_no 1 and label v1")
+    @DisplayName("UTCID08 N: numbering follows the project maximum rather than the parent version")
     void utcid08() {
-        when(db.scalar(startsWith("SELECT MAX(version_no)"), eq(PROJECT))).thenReturn(null);
+        when(db.scalar(startsWith("SELECT MAX(version_no)"), eq(PROJECT))).thenReturn(8L);
         create(Map.of(TTC, 2.0), null, null);
-        assertVersionRow(1L, "v1", "MANUAL", null);
+        assertVersionRow(9L, "v9", "MANUAL", null);
     }
 
 
     // ------------------------------------------------------------------ error cases
 
     @Test
-    @DisplayName("UTCID33 E: missing parent version throws NotFoundException")
-    void utcid33_missingParent() {
+    @DisplayName("Missing parent version throws NotFoundException")
+    void missingParent() {
         // parent not found
         when(db.first(startsWith("SELECT * FROM aeb_versions"), eq(MISSING_PARENT), eq(PROJECT)))
                 .thenReturn(null);
@@ -162,8 +162,8 @@ class AebServiceCreateCandidateBvaTest {
     }
 
     @Test
-    @DisplayName("UTCID34 E: parentValues null leads to InvalidRequestException")
-    void utcid34_nullParentValues() {
+    @DisplayName("Missing parent parameter values lead to InvalidRequestException")
+    void nullParentValues() {
         // simulate queries returning null for parent values
         when(queries.aebValues(PARENT)).thenReturn(null);
         assertThatThrownBy(() -> service.createCandidate(PROJECT, USER, PARENT, Map.of(TTC, 2.0), "label", null))
@@ -172,8 +172,8 @@ class AebServiceCreateCandidateBvaTest {
     }
 
     @Test
-    @DisplayName("UTCID35 E: race condition – two candidates created concurrently receive same version_no")
-    void utcid35_raceConditionDuplicateVersionNo() {
+    @DisplayName("Repeated mocked maximum produces repeated version numbers; this does not test concurrency")
+    void repeatedMockedMaximumProducesRepeatedVersionNumbers() {
         // keep scalar returning same max version_no (3) for both calls
         when(db.scalar(startsWith("SELECT MAX(version_no)"), eq(PROJECT))).thenReturn(3L);
         // mock insert to return two different ids for each call
@@ -182,7 +182,7 @@ class AebServiceCreateCandidateBvaTest {
                 .thenReturn(NEW_VERSION + 1);
         // first candidate
         long v1 = service.createCandidate(PROJECT, USER, PARENT, Map.of(TTC, 2.0), "c1", null);
-        // second candidate (simulating concurrent call)
+        // Second sequential call using the same mocked maximum; no concurrent execution or real database.
         long v2 = service.createCandidate(PROJECT, USER, PARENT, Map.of(TTC, 2.5), "c2", null);
         assertThat(v1).isNotEqualTo(v2);
         // capture insert arguments to verify version_no is duplicated
@@ -205,59 +205,59 @@ class AebServiceCreateCandidateBvaTest {
     @Test
     @DisplayName("UTCID10 B: TTC_THRESHOLD = 0.49 (min - 0.01) is rejected")
     void utcid10() {
-        assertRejected(Map.of(TTC, 0.49), "TTC_THRESHOLD = 0.49 ngoài khoảng [0.5, 4.0] s");
+        assertRejected(Map.of(TTC, 0.49), "TTC_THRESHOLD = 0.49 ngoài khoảng [0.5, 3.5] s");
     }
 
     @Test
-    @DisplayName("UTCID11 B: TTC_THRESHOLD = 4.00 (max) is accepted")
+    @DisplayName("UTCID11 B: TTC_THRESHOLD = 3.50 (max) is accepted")
     void utcid11() {
-        create(Map.of(TTC, 4.00), null, null);
-        assertValues(4.00, 0.15, 8.0, 20.0);
+        create(Map.of(TTC, 3.50), null, null);
+        assertValues(3.50, 0.15, 8.0, 20.0);
     }
 
     @Test
-    @DisplayName("UTCID12 B: TTC_THRESHOLD = 4.01 (max + 0.01) is rejected")
+    @DisplayName("UTCID12 B: TTC_THRESHOLD = 3.51 (max + 0.01) is rejected")
     void utcid12() {
-        assertRejected(Map.of(TTC, 4.01), "TTC_THRESHOLD = 4.01 ngoài khoảng [0.5, 4.0] s");
+        assertRejected(Map.of(TTC, 3.51), "TTC_THRESHOLD = 3.51 ngoài khoảng [0.5, 3.5] s");
     }
 
     @Test
-    @DisplayName("UTCID13 B: BRAKE_ACTIVATION_DELAY = 0.00 (min) is accepted")
+    @DisplayName("UTCID13 B: BRAKE_ACTIVATION_DELAY = 0.05 (min) is accepted")
     void utcid13() {
-        create(Map.of(DELAY, 0.00), null, null);
-        assertValues(1.5, 0.00, 8.0, 20.0);
+        create(Map.of(DELAY, 0.05), null, null);
+        assertValues(1.5, 0.05, 8.0, 20.0);
     }
 
     @Test
-    @DisplayName("UTCID14 B: BRAKE_ACTIVATION_DELAY = -0.01 (min - 0.01) is rejected")
+    @DisplayName("UTCID14 B: BRAKE_ACTIVATION_DELAY = 0.04 (min - 0.01) is rejected")
     void utcid14() {
-        assertRejected(Map.of(DELAY, -0.01), "BRAKE_ACTIVATION_DELAY = -0.01 ngoài khoảng [0.0, 0.5] s");
+        assertRejected(Map.of(DELAY, 0.04), "BRAKE_ACTIVATION_DELAY = 0.04 ngoài khoảng [0.05, 0.45] s");
     }
 
     @Test
-    @DisplayName("UTCID15 B: BRAKE_ACTIVATION_DELAY = 0.50 (max) is accepted")
+    @DisplayName("UTCID15 B: BRAKE_ACTIVATION_DELAY = 0.45 (max) is accepted")
     void utcid15() {
-        create(Map.of(DELAY, 0.50), null, null);
-        assertValues(1.5, 0.50, 8.0, 20.0);
+        create(Map.of(DELAY, 0.45), null, null);
+        assertValues(1.5, 0.45, 8.0, 20.0);
     }
 
     @Test
-    @DisplayName("UTCID16 B: BRAKE_ACTIVATION_DELAY = 0.51 (max + 0.01) is rejected")
+    @DisplayName("UTCID16 B: BRAKE_ACTIVATION_DELAY = 0.46 (max + 0.01) is rejected")
     void utcid16() {
-        assertRejected(Map.of(DELAY, 0.51), "BRAKE_ACTIVATION_DELAY = 0.51 ngoài khoảng [0.0, 0.5] s");
+        assertRejected(Map.of(DELAY, 0.46), "BRAKE_ACTIVATION_DELAY = 0.46 ngoài khoảng [0.05, 0.45] s");
     }
 
     @Test
-    @DisplayName("UTCID17 B: MAX_DECELERATION = 3.00 (min) is accepted")
+    @DisplayName("UTCID17 B: MAX_DECELERATION = 5.00 (min) is accepted")
     void utcid17() {
-        create(Map.of(DECEL, 3.00), null, null);
-        assertValues(1.5, 0.15, 3.00, 20.0);
+        create(Map.of(DECEL, 5.00), null, null);
+        assertValues(1.5, 0.15, 5.00, 20.0);
     }
 
     @Test
-    @DisplayName("UTCID18 B: MAX_DECELERATION = 2.99 (min - 0.01) is rejected")
+    @DisplayName("UTCID18 B: MAX_DECELERATION = 4.99 (min - 0.01) is rejected")
     void utcid18() {
-        assertRejected(Map.of(DECEL, 2.99), "MAX_DECELERATION = 2.99 ngoài khoảng [3.0, 10.0] m/s2");
+        assertRejected(Map.of(DECEL, 4.99), "MAX_DECELERATION = 4.99 ngoài khoảng [5.0, 10.0] m/s2");
     }
 
     @Test
@@ -270,7 +270,7 @@ class AebServiceCreateCandidateBvaTest {
     @Test
     @DisplayName("UTCID20 B: MAX_DECELERATION = 10.01 (max + 0.01) is rejected")
     void utcid20() {
-        assertRejected(Map.of(DECEL, 10.01), "MAX_DECELERATION = 10.01 ngoài khoảng [3.0, 10.0] m/s2");
+        assertRejected(Map.of(DECEL, 10.01), "MAX_DECELERATION = 10.01 ngoài khoảng [5.0, 10.0] m/s2");
     }
 
     @Test
@@ -357,7 +357,7 @@ class AebServiceCreateCandidateBvaTest {
         Map<String, Double> values = new LinkedHashMap<>();
         values.put(TTC, 2.0);
         values.put(DELAY, 0.6);
-        assertRejected(values, "BRAKE_ACTIVATION_DELAY = 0.6 ngoài khoảng [0.0, 0.5] s");
+        assertRejected(values, "BRAKE_ACTIVATION_DELAY = 0.6 ngoài khoảng [0.05, 0.45] s");
     }
 
     @Test
@@ -377,7 +377,7 @@ class AebServiceCreateCandidateBvaTest {
     @Test
     @DisplayName("UTCID35 A: +Infinity is rejected by the range check")
     void utcid35() {
-        assertRejected(Map.of(DECEL, Double.POSITIVE_INFINITY), "MAX_DECELERATION = Infinity ngoài khoảng [3.0, 10.0] m/s2");
+        assertRejected(Map.of(DECEL, Double.POSITIVE_INFINITY), "MAX_DECELERATION = Infinity ngoài khoảng [5.0, 10.0] m/s2");
     }
 
     // ------------------------------------------------------------------ helpers
