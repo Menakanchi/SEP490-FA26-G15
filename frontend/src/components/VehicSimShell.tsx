@@ -25,13 +25,15 @@ export function VehicSimShell({ children }: { children: React.ReactNode }) {
       (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
     )
   );
+  const adminHome = user?.roleCode === "ADMIN" && pathname === "/";
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.replace("/login");
     else if (!isLoading && managerDenied) router.replace("/workspace");
-  }, [isLoading, isAuthenticated, managerDenied, router]);
+    else if (!isLoading && adminHome) router.replace("/admin/users");
+  }, [isLoading, isAuthenticated, managerDenied, adminHome, router]);
 
-  if (isLoading || !isAuthenticated || managerDenied) {
+  if (isLoading || !isAuthenticated || managerDenied || adminHome) {
     return (
       <div className={`${jakarta.className} flex min-h-dvh w-full items-center justify-center bg-vehicsim-bg`}>
         <Loader2 aria-label="Đang tải phiên đăng nhập" className="size-6 motion-safe:animate-spin text-vehicsim-muted" />

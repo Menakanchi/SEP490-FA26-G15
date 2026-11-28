@@ -88,6 +88,7 @@ try{
  assert.equal(await frame.getByRole("article").count(),0);
  assert.equal(await frame.getByText("Số liệu quản trị",{exact:true}).count(),0);
  assert.equal(await frame.getByText("Thiết lập workspace",{exact:true}).count(),0);
+ await page.goto(base+"/");await page.waitForURL(base+"/admin/users");await ready("Tài khoản");
  for(const [width,height] of viewports){
   await page.setViewportSize({width,height});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));

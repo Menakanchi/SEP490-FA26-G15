@@ -85,6 +85,12 @@ try {
   if(visible)assert.match(await page.locator("[data-fa-empty-note]").innerText(),/AEB bật khớp nguồn/);
  }
  explorerSummary=null;explorerSimulator="KINEMATIC";
+ await page.goto(base+"/analysis/failures?scenario_id=42");
+ await page.getByRole("heading",{name:"Biến thể và lượt chạy",exact:true}).waitFor();
+ assert(requests.some(r=>r.path==="/vehicsim/analysis/v3/explorer/scenarios/42/runs"),"scenario_id entry point must load the selected family's runs");
+ await page.getByRole("button",{name:"← Các họ kịch bản",exact:true}).click();
+ await page.getByRole("heading",{name:"Họ kịch bản",exact:true}).waitFor();
+ assert.equal(new URL(page.url()).searchParams.has("scenario_id"),false,"back must clear the entry-point family");
  await page.goto(base+"/analysis/failures");await page.getByRole("button",{name:"Họ kiểm thử · CP",exact:true}).click();
  await page.getByRole("button",{name:/Biến thể 3 · ID 1033/}).click();
  assert.equal(await page.getByRole("button",{name:"Phân tích",exact:true}).count(),0);

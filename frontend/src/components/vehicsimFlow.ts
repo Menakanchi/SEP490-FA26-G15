@@ -89,7 +89,7 @@ export const MVP_STEPS: FlowStep[] = [
     n: 6,
     title: "So sánh & quyết định",
     short: "Quyết định",
-    detail: "So từng cặp lỗi → đạt, đạt → lỗi, rồi kỹ sư chấp nhận / từ chối kèm lý do",
+    detail: "So từng cặp lỗi → đạt, đạt → lỗi, rồi người duyệt chấp nhận / từ chối kèm lý do",
     feature: "FE-14",
     href: "/validation/recommendations",
   },

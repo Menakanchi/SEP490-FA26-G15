@@ -48,7 +48,7 @@ export default function RecommendationPage() {
             <PillButton onClick={() => window.print()} className="print:hidden">
               Xuất PDF
             </PillButton>
-            <PillButton
+            {!final && !superseded && <PillButton
               variant="dark"
               href={!final && !superseded && !running && canDecide ? `/validation/recommendations/${r.id}/review` : undefined}
               disabled={final || superseded || running || !canDecide}
@@ -57,7 +57,7 @@ export default function RecommendationPage() {
               className="print:hidden"
             >
               Duyệt quyết định
-            </PillButton>
+            </PillButton>}
           </>
         )
       }
@@ -177,7 +177,7 @@ export default function RecommendationPage() {
                     <span className="text-[14px] font-bold text-vehicsim-decision">→</span>
                   </Link>
                 ) : (
-                  <div key={e.key} className="flex items-center gap-3 rounded-[14px] bg-vehicsim-soft px-3 py-3" title="Chưa có trong MVP">
+                  <div key={e.key} className="flex items-center gap-3 rounded-[14px] bg-vehicsim-soft px-3 py-3">
                     {body}
                   </div>
                 );

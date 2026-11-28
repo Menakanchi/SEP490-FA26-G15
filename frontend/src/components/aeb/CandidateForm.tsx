@@ -139,7 +139,7 @@ export function CandidateForm({
           <input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder="vd. v1.1"
+            placeholder="Ví dụ: Cấu hình thử nghiệm"
             className="h-9 rounded-md border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[13.5px] font-medium text-vehicsim-ink placeholder:text-vehicsim-faint focus:border-vehicsim-primary focus:outline-none focus:ring-2 focus:ring-vehicsim-primary/20"
           />
         </label>

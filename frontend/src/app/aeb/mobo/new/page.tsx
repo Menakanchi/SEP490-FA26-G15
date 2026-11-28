@@ -146,6 +146,7 @@ export default function AebMoboNewPage() {
       }
     >
       <ErrorNote message={error} />
+      {!canWrite && <p className="rounded-xl border border-vehicsim-line bg-vehicsim-surface p-4 text-sm">Tài khoản của bạn chỉ có quyền xem, không thể tạo đợt tối ưu.</p>}
       {handoffLinked && <section className="rounded-xl border border-vehicsim-line bg-vehicsim-surface p-5" aria-label="Handoff Failure Analysis V3">
         {handoff && !sourceConflict ? <><h2 className="font-bold">Handoff V3 · {handoff.scenario.name}</h2><p className="mt-2 text-[13px] text-vehicsim-muted">Baseline {handoff.baseline.label} · xe #{handoff.reference.vehicle_id} · {handoff.reference.simulator} · dt {handoff.reference.dt} s</p><p className="mt-2 text-[13px]">{handoff.optimization_run_ids.length} run tối ưu · {handoff.validation_run_ids.length} run xác minh độc lập. Campaign và GP sử dụng đúng partition và miền đã xác nhận trong handoff V3.</p><details className="mt-3 text-[12px]"><summary>Nguồn và miền tham số đã xác nhận</summary><p className="mt-2 break-all">Handoff: {handoff.handoff_id} · SHA-256: {handoff.handoff_digest}</p><p className="mt-2">Run tối ưu: {handoff.optimization_run_ids.join(", ")}. Run xác minh: {handoff.validation_run_ids.join(", ")}.</p><dl>{Object.entries(handoff.search_space).map(([code, [low, high]]) => <div key={code} className="mt-2"><dt>{code}</dt><dd>{low}–{high}</dd></div>)}</dl></details></>
           : handoffError ? <><ErrorNote message={handoffError} />{handoffId && !sourceConflict && <PillButton onClick={() => setDatasetRevision(value => value + 1)}>Kiểm tra lại handoff V3</PillButton>}</>
@@ -223,7 +224,7 @@ export default function AebMoboNewPage() {
           {/* CHỌN BỘ MÔ PHỎNG */}
           <div className="flex flex-col gap-2">
             <span className="text-[13px] font-bold text-vehicsim-ink">
-              Chọn môi trường mô phỏng (Simulator) *
+              Chọn môi trường mô phỏng *
             </span>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <button
@@ -241,7 +242,7 @@ export default function AebMoboNewPage() {
                   Mô phỏng Động học (Kinematic)
                 </span>
                 <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[11.5px] font-bold text-emerald-900">
-                  Siêu tốc (~30s)
+                  Mô phỏng nhanh
                 </span>
               </button>
 

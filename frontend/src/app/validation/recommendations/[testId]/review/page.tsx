@@ -88,7 +88,7 @@ export default function ReviewPage() {
         </>
       )}
     </>,
-    <>Tôi hiểu rằng bằng chứng độ bền vững, Pareto và độ nhạy chưa được chạy cho ứng viên này</>,
+    <>Tôi đã xem trạng thái bằng chứng độ bền vững, Pareto và độ nhạy của ứng viên này; các bằng chứng chưa chạy không được xem là đã đạt</>,
     ...(r.simulator_caveat?.carla && !r.simulator_caveat.calibrated
       ? [<>Tôi hiểu rằng số CARLA chưa hiệu chuẩn phanh, chỉ để quan sát và đối chiếu, không phải chứng nhận an toàn</>]
       : []),
