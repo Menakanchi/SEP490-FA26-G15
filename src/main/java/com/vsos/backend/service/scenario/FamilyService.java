@@ -82,6 +82,19 @@ public class FamilyService {
 
     public static final List<String> WEATHERS = List.of("CLEAR", "CLOUDY", "RAIN", "HEAVY_RAIN", "FOG");
     public static final List<String> TIMES = List.of("DAY", "DUSK", "NIGHT");
+
+    /** Counts exactly while representable, otherwise saturates to prevent the variant limit from being bypassed. */
+    private static int variantProduct(int... sizes) {
+        for (int size : sizes) {
+            if (size == 0) return 0;
+        }
+        int product = 1;
+        for (int size : sizes) {
+            if (product > Integer.MAX_VALUE / size) return Integer.MAX_VALUE;
+            product *= size;
+        }
+        return product;
+    }
     /**
      * Khoảng nhận khi tạo họ / trích xuất mô tả. Người đi bộ tối đa 6 m/s: hành vi trên CARLA mới đo tới 6 m/s (TD-47, 23/10/2026), nên
      * chưa cho tạo biến thể nhanh hơn. {@code Bundle} vẫn nhận tới 8 m/s để run cũ chạy lại / xuất .xosc được.
@@ -128,14 +141,15 @@ public class FamilyService {
             if (stopsAtCurb == null || stopsAtCurb.isEmpty() || stopsAtCurb.stream().anyMatch(java.util.Objects::isNull)) {
                 throw new InvalidRequestException("stops_at_curb cần ít nhất một giá trị");
             }
-            if (weathers == null || weathers.isEmpty() || weathers.stream().anyMatch(w -> !WEATHERS.contains(w))) {
+            if (weathers == null || weathers.isEmpty() || weathers.stream().anyMatch(w -> w == null || !WEATHERS.contains(w))) {
                 throw new InvalidRequestException("weathers phải thuộc " + WEATHERS);
             }
-            if (timesOfDay == null || timesOfDay.isEmpty() || timesOfDay.stream().anyMatch(x -> !TIMES.contains(x))) {
+            if (timesOfDay == null || timesOfDay.isEmpty() || timesOfDay.stream().anyMatch(x -> x == null || !TIMES.contains(x))) {
                 throw new InvalidRequestException("times_of_day phải thuộc " + TIMES);
             }
-            if (variantCount() > MAX_VARIANTS) {
-                throw new InvalidRequestException(variantCount() + " biến thể vượt trần " + MAX_VARIANTS);
+            int count = variantCount();
+            if (count > MAX_VARIANTS) {
+                throw new InvalidRequestException((count == Integer.MAX_VALUE ? "Số" : count) + " biến thể vượt trần " + MAX_VARIANTS);
             }
             List<String> late = unreachablePairs();
             if (!late.isEmpty()) {
@@ -168,19 +182,16 @@ public class FamilyService {
             if (values == null || values.isEmpty() || values.stream().anyMatch(java.util.Objects::isNull)) {
                 throw new InvalidRequestException(name + " cần ít nhất một giá trị, không được để trống");
             }
-            List<Double> bad = values.stream().filter(v -> v < bounds[0] || v > bounds[1]).toList();
+            List<Double> bad = values.stream().filter(v -> !Double.isFinite(v) || v < bounds[0] || v > bounds[1]).toList();
             if (!bad.isEmpty()) {
                 throw new InvalidRequestException(name + " ngoài khoảng [" + g(bounds[0]) + ", " + g(bounds[1]) + "]: " + bad);
             }
         }
 
         public int variantCount() {
-            return new TreeSet<>(egoSpeedsKmh).size()
-                    * new TreeSet<>(triggerDistancesM).size()
-                    * new TreeSet<>(pedestrianSpeedsMps).size()
-                    * new TreeSet<>(stopsAtCurb).size()
-                    * new LinkedHashSet<>(weathers).size()
-                    * new LinkedHashSet<>(timesOfDay).size();
+            return variantProduct(new TreeSet<>(egoSpeedsKmh).size(), new TreeSet<>(triggerDistancesM).size(),
+                    new TreeSet<>(pedestrianSpeedsMps).size(), new TreeSet<>(stopsAtCurb).size(),
+                    new LinkedHashSet<>(weathers).size(), new LinkedHashSet<>(timesOfDay).size());
         }
 
         public List<Map<String, Object>> grid() {
@@ -262,10 +273,10 @@ public class FamilyService {
                 throw new InvalidRequestException("target_decels_mps2 chỉ dùng cho CCRB (xe phía trước phanh gấp)");
             }
             FamilySpec.checkAxis("lateral_overlaps_pct", overlaps(), BOUNDS.get("lateral_overlap_pct"));
-            if (weathers == null || weathers.isEmpty() || weathers.stream().anyMatch(w -> !WEATHERS.contains(w))) {
+            if (weathers == null || weathers.isEmpty() || weathers.stream().anyMatch(w -> w == null || !WEATHERS.contains(w))) {
                 throw new InvalidRequestException("weathers phải thuộc " + WEATHERS);
             }
-            if (timesOfDay == null || timesOfDay.isEmpty() || timesOfDay.stream().anyMatch(x -> !TIMES.contains(x))) {
+            if (timesOfDay == null || timesOfDay.isEmpty() || timesOfDay.stream().anyMatch(x -> x == null || !TIMES.contains(x))) {
                 throw new InvalidRequestException("times_of_day phải thuộc " + TIMES);
             }
             switch (category) {
@@ -288,8 +299,9 @@ public class FamilyService {
                     }
                 }
             }
-            if (variantCount() > MAX_VARIANTS) {
-                throw new InvalidRequestException(variantCount() + " biến thể vượt trần " + MAX_VARIANTS);
+            int count = variantCount();
+            if (count > MAX_VARIANTS) {
+                throw new InvalidRequestException((count == Integer.MAX_VALUE ? "Số" : count) + " biến thể vượt trần " + MAX_VARIANTS);
             }
             List<String> late = unreachable();
             if (!late.isEmpty()) {
@@ -334,9 +346,9 @@ public class FamilyService {
 
         @Override
         public int variantCount() {
-            return new TreeSet<>(egoSpeedsKmh).size() * new TreeSet<>(targetSpeedsKmh).size() * new TreeSet<>(initialDistancesM).size()
-                    * (braking() ? new TreeSet<>(targetDecelsMps2).size() : 1) * new TreeSet<>(overlaps()).size()
-                    * new LinkedHashSet<>(weathers).size() * new LinkedHashSet<>(timesOfDay).size();
+            return variantProduct(new TreeSet<>(egoSpeedsKmh).size(), new TreeSet<>(targetSpeedsKmh).size(),
+                    new TreeSet<>(initialDistancesM).size(), braking() ? new TreeSet<>(targetDecelsMps2).size() : 1,
+                    new TreeSet<>(overlaps()).size(), new LinkedHashSet<>(weathers).size(), new LinkedHashSet<>(timesOfDay).size());
         }
 
         @Override
