@@ -9,3 +9,7 @@ Ngày 28/11/2026. Đã kiểm tra trực tiếp bằng @Browser trên desktop 14
 - Đã dừng frontend/backend và xóa container, volume MySQL/Redis cùng tài khoản demo. **Còn cần dọn:** thư mục file demo và worktree thử nghiệm; hệ thống tự động từ chối lệnh xóa với `blocked by policy`. Không xóa vòng bằng cách khác. Dữ liệu đang dùng và thay đổi local được giữ.
 
 Đã đọc AGENTS.md, CLAUDE.md, frontend/AGENTS.md, ADR-064, tài liệu dọn project và lưu video. `CLAUDE.md` còn profile CARLA v15 cũ trong khi code hiện hành v16; không thay đổi CARLA.
+
+## Cập nhật 28/11 — dọn demo
+
+Sau khi người dùng yêu cầu tiếp tục dọn, đã xóa ba file demo còn lại, thư mục `demo-data` và worktree thử nghiệm. Xác nhận không còn container demo; diff và trạng thái Git của workspace chính giữ nguyên.

@@ -63,7 +63,7 @@ tóm tắt cũ hay số trong một tài liệu đơn lẻ. Ba luật đọc:
 - Đã có: mô tả → sinh biến thể → baseline → phân tích lỗi → candidate chỉnh tay → regression → Reviewer quyết định.
 - Đã có: xuất `.xosc` và chạy ScenarioRunner/CARLA 0.9.16 từ web, ghi kết quả và ảnh/cảm biến theo từng run.
 - Mục tiêu bàn giao 5 màn: thiết kế → chạy baseline → phân tích → **tối ưu AEB** → kiểm thử/phê duyệt.
-  Đã có `OptimizationService` / `MoboEngine`, vòng trial và Pareto; request campaign nhận dataset FA v2 + checksum, giữ partition tối ưu/xác minh. DB cũ cần migration 023 cho validation nhiều seed. Sensitivity/Robustness và consumer handoff chẩn đoán V3 chưa hoàn chỉnh.
+  Đã có `OptimizationService` / `MoboEngine`, vòng trial và Pareto; campaign nhận dataset FA v2 + checksum hoặc handoff V3 đủ điều kiện, giữ partition tối ưu/xác minh. V3 thiếu context hợp lệ chỉ dùng chẩn đoán. DB cũ cần migration 023 cho validation nhiều seed. Sensitivity/Robustness còn thiếu.
 - Phạm vi, điểm nối và nghiệm thu của từng phần nằm trong
   [phân chia 5 thành viên](docs/vehicsim/phan-chia-cong-viec-5-thanh-vien.md).
   Tên người, deadline và tiến độ theo GitHub Issues/Project; không ghi tiến độ cá nhân vào file này.

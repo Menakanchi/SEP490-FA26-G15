@@ -11,7 +11,7 @@ Scenario Forge đã gỡ ngày 04/10/2026 (ADR-032); bộ xuất OpenSCENARIO hi
 > Admin chỉ có ba trang quản trị, không có Overview riêng. Reviewer theo membership workspace;
 > Engineer và Reviewer theo membership workspace (ADR-064); ADMIN dùng project nhóm mặc định (TD-30). MANAGER xem danh mục phương tiện chung, không truy cập kỹ thuật khác (ADR-072).
 
-> **Cập nhật 26/11/2026 sau merge:** đã có `OptimizationService` / `core/mobo/MoboEngine`, trial/Pareto và API hủy run/họ/regression/campaign. Snapshot FA chưa được nối vào campaign; Sensitivity/Robustness còn mở. Profile CARLA hiện tại là `carla-0.9.16-xosc16` (ADR-066), động học `1.4`; các định danh v15 ở phần lịch sử bên dưới không dùng cho run mới. Worker trả lỗi khi CARLA không sẵn sàng. Xem [báo cáo kiểm chứng](../LOGIC_AUDIT_REPORT.md).
+> **Cập nhật 26/11/2026 sau merge:** đã có `OptimizationService` / `core/mobo/MoboEngine`, trial/Pareto và API hủy run/họ/regression/campaign. Campaign nhận snapshot FA v2 và handoff V3 đủ điều kiện; V3 thiếu context hợp lệ chỉ dùng chẩn đoán. Sensitivity/Robustness còn mở. Profile CARLA hiện tại là `carla-0.9.16-xosc16` (ADR-066), động học `1.4`; các định danh v15 ở phần lịch sử bên dưới không dùng cho run mới. Worker trả lỗi khi CARLA không sẵn sàng. Xem [báo cáo kiểm chứng](../LOGIC_AUDIT_REPORT.md).
 
 > Nguồn sự thật: schema DB là [`database/mysql/01_schema.sql`](../../database/mysql/01_schema.sql)
 > (code Java đọc/ghi bằng SQL thuần, không có bản mirror); lý do quyết định là ADR-023 →

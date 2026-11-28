@@ -24,7 +24,7 @@ Backend FastAPI và Scenario Forge đã gỡ; không khôi phục kiến trúc c
 
 Luồng mục tiêu 5 màn: **Thiết kế kịch bản → Baseline → Phân tích → Tối ưu AEB → Regression/Reviewer**.
 Code đã có mô tả, sinh biến thể, baseline, phân tích, candidate thủ công, MOBO/Pareto và regression;
-Campaign đã nhận snapshot/partition FA v2; Sensitivity/Robustness và consumer handoff chẩn đoán V3 còn thiếu (TD-39, TD-06).
+Campaign nhận snapshot/partition FA v2 và handoff V3 đủ điều kiện; V3 không có context hợp lệ vẫn chỉ chẩn đoán. Sensitivity/Robustness còn thiếu (TD-39, TD-06).
 CARLA web đã có `.xosc` + ScenarioRunner 0.9.16, RGB/sensor và API hủy run/họ/regression/campaign; còn cần kiểm vòng đời CARLA thật (TD-37).
 Schema có 7 category; bộ động học và `.xosc`/CARLA chạy `CP_CROSSING` và CCRs/CCRm/CCRb (ADR-050); còn 3 nhóm (TD-42).
 AEB của ca người đi bộ trên CARLA nhận perception từ radar từ `.xosc` v9 (ADR-043, ADR-055; hiện hành v16 / `-xosc16`, xác nhận va chạm cảm biến ADR-066; các thay đổi v15: bù pha tăng lực ADR-056/061/063, hành lang theo xe ADR-057, phanh đúng mốc ADR-058, bàn đạp 3 xe ADR-059, người tăng tốc dần ADR-062; động học `1.4`); xe phía trước vẫn dùng ground truth (TD-01).
