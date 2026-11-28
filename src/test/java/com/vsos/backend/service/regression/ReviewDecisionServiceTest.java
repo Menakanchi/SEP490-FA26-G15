@@ -79,7 +79,7 @@ class ReviewDecisionServiceTest {
         Row scope = member ? new Row(Map.of("project_status", projectStatus, "workspace_status", workspaceStatus)) : null;
         when(repo.lockReviewAccess(eq(PROJECT), anyLong())).thenReturn(scope);
         when(repo.lockTest(PROJECT, TEST)).thenReturn(testExists
-                ? new RegressionTestRow(TEST, PROJECT, 20L, BASELINE, CANDIDATE, 3L, "vehicsim-kinematic-1.0", "t", Map.of(),
+                ? new RegressionTestRow(TEST, PROJECT, 20L, BASELINE, CANDIDATE, 3L, "vehicsim-kinematic-1.4", "t", Map.of(),
                 executionStatus, verdict, 0L, 0L, CREATOR, null, null)
                 : null);
         when(repo.lockRecommendation(TEST)).thenReturn(recommendationExists
@@ -111,13 +111,19 @@ class ReviewDecisionServiceTest {
         verify(repo, never()).saveReview(anyLong(), anyString(), anyString(), anyLong(), any(), any());
     }
 
-    @Test void historicalPassedLabelCannotBypassIncompleteRunEvidence() {
-        evidenceComplete = false;
-        expectRefused(REVIEWER,"ACCEPT","kiểm tra lại bằng chứng",true,DecisionNotAllowedException.class,"bằng chứng regression");
+    private void verifyAccepted(long userId, String reason, String conditions) {
+        InOrder order = inOrder(repo);
+        order.verify(repo).archiveVersion(BASELINE);
+        order.verify(repo).promoteToBaseline(CANDIDATE);
+        order.verify(repo).saveReview(REC_ID, "ACCEPTED", "ACCEPT", userId, reason, conditions);
+        verify(repo, never()).rejectVersion(anyLong());
     }
-    @Test void cancelledExecutionCannotBeAcceptedEvenWithAStalePassedVerdict() {
-        executionStatus = "CANCELLED";
-        expectRefused(REVIEWER,"ACCEPT","kiểm tra lại bằng chứng",true,DecisionNotAllowedException.class,"chưa qua regression");
+
+    private void verifyRejected(String reason) {
+        verify(repo).rejectVersion(CANDIDATE);
+        verify(repo, never()).archiveVersion(anyLong());
+        verify(repo, never()).promoteToBaseline(anyLong());
+        verify(repo).saveReview(REC_ID, "REJECTED", "REJECT", REVIEWER, reason, null);
     }
 
     // ---------- Normal (EP valid classes) ----------
@@ -126,10 +132,7 @@ class ReviewDecisionServiceTest {
     @DisplayName("UTCID01 ACCEPT on a PASSED test archives the baseline, then promotes the candidate")
     void utcid01() {
         decide(REVIEWER, "ACCEPT", "đủ bằng chứng", null, true);
-        InOrder order = inOrder(repo);
-        order.verify(repo).archiveVersion(BASELINE);
-        order.verify(repo).promoteToBaseline(CANDIDATE);
-        order.verify(repo).saveReview(eq(REC_ID), eq("ACCEPTED"), eq("ACCEPT"), eq(REVIEWER), eq("đủ bằng chứng"), isNull());
+        verifyAccepted(REVIEWER, "đủ bằng chứng", null);
     }
 
     @Test
@@ -137,10 +140,15 @@ class ReviewDecisionServiceTest {
     void utcid02() {
         verdict = "FAILED";
         decide(REVIEWER, "REJECT", "tăng phanh oan", null, true);
-        verify(repo).rejectVersion(CANDIDATE);
-        verify(repo, never()).archiveVersion(anyLong());
-        verify(repo, never()).promoteToBaseline(anyLong());
-        verify(repo).saveReview(eq(REC_ID), eq("REJECTED"), eq("REJECT"), eq(REVIEWER), eq("tăng phanh oan"), isNull());
+        verifyRejected("tăng phanh oan");
+    }
+
+    @Test
+    void rejectAfterExecutionFailureKeepsBaseline() {
+        executionStatus = "FAILED";
+        verdict = "PENDING";
+        decide(REVIEWER, "REJECT", "lỗi thực thi", null, true);
+        verifyRejected("lỗi thực thi");
     }
 
     @Test
@@ -157,7 +165,7 @@ class ReviewDecisionServiceTest {
     @DisplayName("UTCID04 ACCEPT stores the conditions stripped")
     void utcid04() {
         decide(REVIEWER, "ACCEPT", "đạt", "  theo dõi thêm 2 tuần  ", true);
-        verify(repo).saveReview(eq(REC_ID), eq("ACCEPTED"), eq("ACCEPT"), eq(REVIEWER), eq("đạt"), eq("theo dõi thêm 2 tuần"));
+        verifyAccepted(REVIEWER, "đạt", "theo dõi thêm 2 tuần");
     }
 
     @Test
@@ -165,17 +173,14 @@ class ReviewDecisionServiceTest {
     void utcid05() {
         recommendationStatus = "MORE_TESTS_REQUESTED";
         decide(REVIEWER, "ACCEPT", "đã bổ sung ca", null, true);
-        verify(repo).promoteToBaseline(CANDIDATE);
-        verify(repo).saveReview(eq(REC_ID), eq("ACCEPTED"), eq("ACCEPT"), eq(REVIEWER), eq("đã bổ sung ca"), isNull());
+        verifyAccepted(REVIEWER, "đã bổ sung ca", null);
     }
 
     @Test
-    @DisplayName("UTCID06 REJECT is allowed when the run ended in execution error (status FAILED)")
+    @DisplayName("UTCID06 REJECT is allowed even when regression PASSED")
     void utcid06() {
-        executionStatus = "FAILED";
-        verdict = null;
-        decide(REVIEWER, "REJECT", "test lỗi", null, true);
-        verify(repo).rejectVersion(CANDIDATE);
+        decide(REVIEWER, "REJECT", "cần xem xét thêm", null, true);
+        verifyRejected("cần xem xét thêm");
     }
 
     @Test
@@ -184,7 +189,7 @@ class ReviewDecisionServiceTest {
         verdict = "FAILED";
         versionStatus.put(BASELINE, "ARCHIVED");
         decide(REVIEWER, "REJECT", "không đạt", null, true);
-        verify(repo).rejectVersion(CANDIDATE);
+        verifyRejected("không đạt");
     }
 
     // ---------- Boundary (BVA) ----------
@@ -193,7 +198,7 @@ class ReviewDecisionServiceTest {
     @DisplayName("UTCID08 reason of 1 character (min valid length) is accepted")
     void utcid08() {
         decide(REVIEWER, "ACCEPT", "x", null, true);
-        verify(repo).saveReview(eq(REC_ID), eq("ACCEPTED"), eq("ACCEPT"), eq(REVIEWER), eq("x"), isNull());
+        verifyAccepted(REVIEWER, "x", null);
     }
 
     @Test
@@ -212,7 +217,7 @@ class ReviewDecisionServiceTest {
     @DisplayName("UTCID11 reason with surrounding whitespace is stored stripped")
     void utcid11() {
         decide(REVIEWER, "ACCEPT", "  x  ", null, true);
-        verify(repo).saveReview(eq(REC_ID), eq("ACCEPTED"), eq("ACCEPT"), eq(REVIEWER), eq("x"), isNull());
+        verifyAccepted(REVIEWER, "x", null);
     }
 
     @Test
@@ -220,7 +225,7 @@ class ReviewDecisionServiceTest {
     void utcid12() {
         String reason = "a".repeat(4000);
         decide(REVIEWER, "ACCEPT", reason, null, true);
-        verify(repo).saveReview(eq(REC_ID), eq("ACCEPTED"), eq("ACCEPT"), eq(REVIEWER), eq(reason), isNull());
+        verifyAccepted(REVIEWER, reason, null);
     }
 
     @Test
@@ -233,21 +238,21 @@ class ReviewDecisionServiceTest {
     @DisplayName("UTCID14 reviewer id = creator id - 1 is accepted")
     void utcid14() {
         decide(CREATOR - 1, "ACCEPT", "x", null, true);
-        verify(repo).saveReview(eq(REC_ID), eq("ACCEPTED"), eq("ACCEPT"), eq(CREATOR - 1), eq("x"), isNull());
+        verifyAccepted(CREATOR - 1, "x", null);
     }
 
     @Test
     @DisplayName("UTCID15 reviewer id = creator id + 1 is accepted")
     void utcid15() {
         decide(CREATOR + 1, "ACCEPT", "x", null, true);
-        verify(repo).saveReview(eq(REC_ID), eq("ACCEPTED"), eq("ACCEPT"), eq(CREATOR + 1), eq("x"), isNull());
+        verifyAccepted(CREATOR + 1, "x", null);
     }
 
     @Test
     @DisplayName("UTCID16 conditions of whitespace only are stored as null")
     void utcid16() {
         decide(REVIEWER, "ACCEPT", "x", "   ", true);
-        verify(repo).saveReview(eq(REC_ID), eq("ACCEPTED"), eq("ACCEPT"), eq(REVIEWER), eq("x"), isNull());
+        verifyAccepted(REVIEWER, "x", null);
     }
 
     // ---------- Abnormal (EP invalid classes) ----------
@@ -315,6 +320,7 @@ class ReviewDecisionServiceTest {
     @DisplayName("UTCID26 test still PENDING cannot be decided")
     void utcid26() {
         executionStatus = "PENDING";
+        verdict = "PENDING";
         expectRefused(REVIEWER, "REJECT", "x", true, TestNotFinishedException.class, "chưa chạy xong");
     }
 
@@ -322,6 +328,7 @@ class ReviewDecisionServiceTest {
     @DisplayName("UTCID27 test still RUNNING cannot be decided")
     void utcid27() {
         executionStatus = "RUNNING";
+        verdict = "PENDING";
         expectRefused(REVIEWER, "REJECT", "x", true, TestNotFinishedException.class, "chưa chạy xong");
     }
 
@@ -370,6 +377,7 @@ class ReviewDecisionServiceTest {
     @Test
     @DisplayName("UTCID34 REJECT is refused when the candidate is already the baseline")
     void utcid34() {
+        versionStatus.put(BASELINE, "ARCHIVED");
         versionStatus.put(CANDIDATE, "BASELINE");
         expectRefused(REVIEWER, "REJECT", "x", true, DecisionNotAllowedException.class, "đã được quyết định");
     }
@@ -379,5 +387,30 @@ class ReviewDecisionServiceTest {
     void utcid35() {
         versionStatus.put(BASELINE, "ARCHIVED");
         expectRefused(REVIEWER, "ACCEPT", "x", true, DecisionNotAllowedException.class, "baseline đã đổi");
+    }
+
+    @Test
+    @DisplayName("UTCID36 ACCEPT refuses PASSED when run evidence is incomplete")
+    void utcid36() {
+        evidenceComplete = false;
+        expectRefused(REVIEWER, "ACCEPT", "kiểm tra lại bằng chứng", true,
+                DecisionNotAllowedException.class, "bằng chứng regression");
+    }
+
+    @Test
+    @DisplayName("UTCID37 ACCEPT refuses CANCELLED with PENDING verdict")
+    void utcid37() {
+        executionStatus = "CANCELLED";
+        verdict = "PENDING";
+        expectRefused(REVIEWER, "ACCEPT", "kiểm tra lại bằng chứng", true,
+                DecisionNotAllowedException.class, "chưa qua regression");
+    }
+
+    @Test
+    @DisplayName("UTCID38 ACCEPT refuses a legacy CANCELLED/PASSED state outside the current schema")
+    void utcid38() {
+        executionStatus = "CANCELLED";
+        expectRefused(REVIEWER, "ACCEPT", "kiểm tra lại bằng chứng", true,
+                DecisionNotAllowedException.class, "chưa qua regression");
     }
 }
