@@ -25,16 +25,8 @@ import {
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
 import { formatMetric, formatMeasurement } from "@/components/analysis/analysisMetricFormat";
-import { hasCompleteTrialEvidence, isFeasibleTrial } from "@/components/aeb/optimizationEvidence";
+import { hasCompleteTrialEvidence, isFeasibleTrial, RUN_STATUS_LABEL } from "@/components/aeb/optimizationEvidence";
 import { vi } from "@/components/vehicsimI18n";
-
-const RUN_STATUS_LABEL: Record<string, string> = {
-  PENDING: "Đang chờ",
-  RUNNING: "Đang chạy",
-  COMPLETED: "Hoàn tất",
-  FAILED: "Thất bại",
-  CANCELLED: "Đã hủy",
-};
 
 export default function AebMoboStudioPage() {
   const router = useRouter();
@@ -177,12 +169,13 @@ export default function AebMoboStudioPage() {
 
   // Dừng run
   const handleCancelRun = async (runId: number) => {
-    if (!canWrite || cancellationLock.current || activeRun?.id !== runId || activeRun.status !== "RUNNING") return;
+    if (!canWrite || cancellationLock.current || activeRun?.id !== runId || !["PENDING", "RUNNING"].includes(activeRun.status)) return;
     if (!confirm("Bạn có chắc muốn dừng đợt tối ưu hoá này?")) return;
     cancellationLock.current = true;
     setCancelling(true);
     try {
       await vehicsimApi.cancelOptimization(runId);
+      setRunResult(current => current?.id === runId ? { ...current, data: { ...current.data, status: "CANCELLED" } } : current);
       loadRuns();
       setDetailRevision(value => value + 1);
     } catch (err) {
@@ -273,7 +266,7 @@ export default function AebMoboStudioPage() {
         { label: "Tối ưu tự động MOBO" },
       ]}
       actions={
-        <div className="flex items-center gap-2">
+        canWrite && <div className="flex items-center gap-2">
           <PillButton
             href={newCampaignHref}
             variant="dark"
@@ -328,7 +321,7 @@ export default function AebMoboStudioPage() {
       )}
 
       {/* THANH TIẾN ĐỘ CHỈ KHI CÓ ĐỢT CHẠY ĐANG DIỄN RA */}
-      {activeRun?.status === "RUNNING" && (
+      {activeRun && ["PENDING", "RUNNING"].includes(activeRun.status) && (
         <section className="rounded-xl border border-solid border-vehicsim-primary/30 bg-vehicsim-primary/5 p-4 shadow-xs">
           <div className="flex flex-wrap items-center justify-between gap-3 text-[12.5px]">
             <div className="flex items-center gap-2.5">
@@ -337,7 +330,7 @@ export default function AebMoboStudioPage() {
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-vehicsim-primary"></span>
               </span>
               <span className="font-bold text-vehicsim-primary">
-                Đang chạy đợt tối ưu: Run #{activeRun.id} — {activeRun.name}
+                {activeRun.status === "PENDING" ? "Đang chờ đợt tối ưu" : "Đang chạy đợt tối ưu"}: Run #{activeRun.id} — {activeRun.name}
               </span>
               <span className="font-mono text-vehicsim-muted">
                 ({completedTrialsCount} / {maxTrialsCount} lượt thử · {runProgressPct}%)

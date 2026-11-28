@@ -12,6 +12,7 @@ interface OtpCodeFieldProps {
   value: string;
   onChange: (code: string) => void;
   onResend: () => Promise<void>;
+  conditionalDelivery?: boolean;
 }
 
 /**
@@ -20,7 +21,7 @@ interface OtpCodeFieldProps {
  * `autoComplete="one-time-code"` cho phép trình duyệt / điện thoại tự điền mã
  * từ email hoặc SMS. Chỉ nhận chữ số: ký tự khác bị bỏ ngay khi gõ hoặc dán.
  */
-export function OtpCodeField({ email, value, onChange, onResend }: OtpCodeFieldProps) {
+export function OtpCodeField({ email, value, onChange, onResend, conditionalDelivery = false }: OtpCodeFieldProps) {
   const [secondsLeft, setSecondsLeft] = useState(RESEND_COOLDOWN_SECONDS);
   const [resending, setResending] = useState(false);
 
@@ -60,7 +61,7 @@ export function OtpCodeField({ email, value, onChange, onResend }: OtpCodeFieldP
       />
       <div className="mt-1.5 flex items-center justify-between text-[12px] text-vehicsim-faint">
         <span>
-          Mã đã gửi tới <strong className="font-semibold text-vehicsim-ink">{email}</strong>
+          {conditionalDelivery ? "Nếu email hợp lệ, mã sẽ được gửi tới " : "Mã đã gửi tới "}<strong className="font-semibold text-vehicsim-ink">{email}</strong>
         </span>
         <button
           type="button"

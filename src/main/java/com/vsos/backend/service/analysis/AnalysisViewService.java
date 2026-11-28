@@ -492,6 +492,14 @@ public class AnalysisViewService {
         }
 
         Map<String, Object> out = new LinkedHashMap<>(header(b));
+        // Cùng mô tả đã lưu mà danh sách kết quả dùng; đây là giả thuyết theo luật,
+        // không phải xác nhận nguyên nhân vật lý của báo cáo chẩn đoán.
+        if (b.failure() != null && b.failure().getLong("id") != null) {
+            Row primaryCause = db.first("SELECT description FROM root_causes WHERE failure_id = ? AND is_primary = 1", b.failure().lng("id"));
+            String description = primaryCause == null ? null : primaryCause.str("description");
+            if (description == null || description.isBlank()) description = b.failure().str("description");
+            if (description != null && !description.isBlank()) out.put("recorded_cause", description);
+        }
         out.put("metrics", Json.obj(
                 "impact_speed_kmh", impact == null ? null : Vs.round(impact * 3.6, 1),
                 "min_distance_m", run.dbl("min_distance_m"),

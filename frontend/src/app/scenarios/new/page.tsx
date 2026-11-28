@@ -12,7 +12,7 @@ import { LEAD_CATEGORIES, type DescribeKey, type DescribeResult, type DescribedI
 const EXAMPLES = [
   "Ban ngày trời quang, xe chạy 40 km/h, người đi bộ đi chậm sang đường khi xe cách khoảng 20 m",
   "Lúc chạng vạng, xe chạy 50 km/h, người đi bộ đứng ở mép đường rồi dừng lại, không sang đường",
-  "Xe chạy 60 km/h, xe tải phía trước đang chạy 40 km/h thì phanh gấp 6 m/s2, cách 20 m, trời mưa",
+  "Xe chạy 60 km/h, xe phía trước đang chạy 40 km/h thì phanh gấp 6 m/s², cách 20 m, trời mưa",
   "Ban đêm, ô tô chạy 50 km/h, xe phía trước đang đứng yên cách 30 m",
 ];
 const MAX_TEXT = 2000;
@@ -110,6 +110,13 @@ export default function DescribeScenarioPage() {
         .map((n) => n.key)
     : [];
 
+  if (!canWrite) {
+    return <VehicSimPage step={1} crumbs={[{ label: "Thiết kế kịch bản", href: "/scenarios" }, { label: "Sinh từ mô tả" }]}>
+      <p role="status">Tài khoản này chỉ có quyền xem kịch bản; hãy nhờ kỹ sư tạo kịch bản mới.</p>
+      <PillButton href="/scenarios">Xem danh sách họ kịch bản</PillButton>
+    </VehicSimPage>;
+  }
+
   return (
     <VehicSimPage
       step={1}
@@ -177,7 +184,7 @@ export default function DescribeScenarioPage() {
               <ErrorNote
                 message={
                   result.source === "llm"
-                    ? `LLM chưa tự sửa hết sau ${result.repairs} lần: ${result.issues.join("; ")}. Hãy sửa tay bên dưới.`
+                    ? `Còn giá trị cần chỉnh sau ${result.repairs} lần kiểm tra: ${result.issues.join("; ")}. Hãy sửa bên dưới.`
                     : `Có giá trị cần chỉnh: ${result.issues.join("; ")}. Hãy sửa tay bên dưới trước khi lưu.`
                 }
               />
@@ -221,7 +228,7 @@ export default function DescribeScenarioPage() {
             </div>
             {result.notes && (
               <p className="rounded-[14px] bg-vehicsim-soft px-4 py-3 text-[12px] leading-[1.5] text-vehicsim-muted">
-                <b className="text-vehicsim-ink">Chưa biểu diễn được trong IR của MVP:</b> {result.notes}
+                <b className="text-vehicsim-ink">Chi tiết chưa thể đưa vào kịch bản:</b> {result.notes}
               </p>
             )}
             {irDirty && (
@@ -316,7 +323,7 @@ export default function DescribeScenarioPage() {
           hint={
             lead
               ? "Lưới dựng quanh giá trị IR (±1 bước); trường giả định dùng dải mặc định. Luôn gồm thêm ca xe ở làn bên (chồng lấn −100 %) để đo phanh oan."
-              : "Lưới dựng quanh giá trị IR (±1 bước); trường giả định dùng dải mặc định. Luôn gồm cả ca người đi bộ dừng ở lề để đo phanh oan (quy tắc MVP)."
+              : "Lưới dựng quanh giá trị đã trích xuất (±1 bước); trường giả định dùng dải mặc định. Luôn gồm cả ca người đi bộ dừng ở lề để đo phanh oan."
           }
           onSubmit={async (body) => {
             setCreating(true);
@@ -409,14 +416,12 @@ function gridFromIr(ir: DescribedIr, origins: Partial<Record<DescribeKey, FieldO
 function SourceBadge({ result }: { result: DescribeResult }) {
   if (result.source === "rules") {
     return (
-      <span title={result.llm_error ?? undefined}>
-        <Tag tone="warn">Trích bằng luật — LLM không dùng được</Tag>
-      </span>
+      <Tag tone="warn">Trích xuất bằng quy tắc</Tag>
     );
   }
   return (
     <Tag tone="neutral">
-      LLM {result.model ?? ""} · {result.llm_calls} lượt gọi{result.repairs ? ` · sửa ${result.repairs} lần` : ""} · ${result.cost_usd.toFixed(4)}
+      Đã trích xuất bằng AI{result.repairs ? ` · đã chỉnh ${result.repairs} lần` : ""}
     </Tag>
   );
 }

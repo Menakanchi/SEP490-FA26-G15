@@ -10,6 +10,7 @@ const family = (id, name) => ({ id, code: `CP-${id}`, name, description: null, c
 const malicious = '<img src=x onerror="window.__injected=1">';
 let families = [family(41, malicious), family(42, "Có dữ liệu")];
 const writes = [];
+const requests = [];
 let unblockDelete;
 let deleteStarted;
 
@@ -18,15 +19,23 @@ async function session(role) {
   await context.route("**/api/v1/**", async route => {
     const p = new URL(route.request().url()).pathname.replace("/api/v1", "");
     const method = route.request().method();
+    requests.push({ path: p, project: route.request().headers()["x-vehicsim-project"] });
     const headers = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization,content-type,x-vehicsim-project", "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS" };
     const reply = (body, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body), headers });
     if (method === "OPTIONS") return route.fulfill({ status: 204, headers });
     if (p === "/auth/login") return reply({ access_token: "scenario-fixture", token_type: "bearer", expires_in: 3600, user: actor(role) });
     if (p === "/auth/me") return reply(actor(role));
-    if (p === "/vehicsim/context") return reply({ project: { id: 1, name: "Fixture" }, workspace: null, vehicle: { id: 1, name: "Fixture" },
+    if (p === "/vehicsim/reviewer/projects") return reply([{ id: 77, name: "Workspace fixture", workspace_name: "Fixture", can_decide: true }]);
+    if (p === "/vehicsim/context") return reply({ project: { id: Number(route.request().headers()["x-vehicsim-project"]) || 1, name: "Fixture" }, workspace: null, vehicle: { id: 1, name: "Fixture" },
       system: { id: 1, baseline: null }, versions: [], families: families.map(({ id, code, name }) => ({ id, code, name })), parameters: [], reviewer_projects: [] });
     if (p === "/vehicsim/families" && method === "GET") return reply(families);
     if (p === "/vehicsim/regression") return reply({ items: [], kpis: { total: 0, passed: 0, failed: 0, running: 0 } });
+    if (p === "/vehicsim/decisions") return reply({ decisions: [], baselines: [] });
+    if (p === "/vehicsim/my/work") return reply({ tasks: [], reports: [] });
+    if (p === "/vehicsim/analysis/runs") return reply({ total: 0, page: 1, page_size: 10, counts: {}, items: [], objective_groups: [], evaluation_version: "adr040-stored-aggregation/1" });
+    if (p === "/vehicsim/analysis/v3/sources") return reply({ items: [], limit: 20, offset: 0 });
+    if (p === "/vehicsim/analysis/v3/explorer/scenarios/42/runs") return reply({ project_id: 77, items: [], total: 0, limit: 20, offset: 0 });
+    if (p === "/vehicsim/analysis/v3/explorer/scenarios") return reply({ project_id: 77, items: [], total: 0, limit: 20, offset: 0 });
     if (p === "/vehicsim/families/42" && method === "DELETE") {
       writes.push(p);
       return reply({ detail: "This scenario family has runs or related analysis, optimization or regression data and cannot be deleted" }, 409);
@@ -84,12 +93,49 @@ try {
   await page.getByText(/Đã xóa họ kịch bản CP-41/).waitFor();
   assert.equal(writes.filter(p => p.endsWith("/41")).length, 1);
   assert.deepEqual(errors, [], "Không có lỗi JavaScript khi thao tác");
+  const selectedContext = page.waitForResponse(response => response.url().includes("/vehicsim/context") && response.request().headers()["x-vehicsim-project"] === "77");
+  await page.goto(base + "/projects/77");
+  await page.waitForURL(url => url.pathname === "/");
+  await selectedContext;
+  assert(requests.some(r => r.path === "/vehicsim/context" && r.project === "77"), "Workspace project phải được chọn đúng context");
+  assert(!requests.some(r => r.path === "/vehicsim/projects/77"), "Không gọi API project cá nhân cho project workspace");
+  await page.goto(base + "/analysis/failures?scenario_id=42");
+  await page.getByRole("heading", { name: "Biến thể và lượt chạy", exact: true }).waitFor();
+  assert(requests.some(r => r.path === "/vehicsim/analysis/v3/explorer/scenarios/42/runs"), "Mở đúng họ từ scenario_id");
+  await page.getByRole("button", { name: "← Các họ kịch bản", exact: true }).click();
+  await page.getByRole("heading", { name: "Họ kịch bản", exact: true }).waitFor();
+  assert.equal(new URL(page.url()).searchParams.has("scenario_id"), false);
   await context.close();
 
-  // MANAGER chỉ xem: frontend không cho gửi DELETE, backend vẫn phải tự kiểm quyền.
+  // REVIEWER chỉ xem: không hiện thao tác ghi, cả khi mở đường dẫn tạo trực tiếp.
   families = [family(41, malicious)];
-  const readonly = await session("MANAGER");
-  assert.equal(await readonly.page.locator("#family-41").getByRole("button", { name: /Xóa họ kịch bản/ }).isDisabled(), true);
+  const readonly = await session("REVIEWER");
+  assert.equal(await readonly.page.locator("#family-41").getByRole("button", { name: /Xóa họ kịch bản/ }).count(), 0);
+  assert.equal(await readonly.page.locator("#family-41").getByRole("button", { name: "Sửa v2" }).count(), 0);
+  assert.equal(await readonly.page.locator("#family-41").getByRole("link", { name: "Chạy", exact: true }).count(), 0);
+  await readonly.page.goto(base + "/scenarios/new");
+  await readonly.page.getByText(/chỉ có quyền xem kịch bản/).waitFor();
+  assert.equal(await readonly.page.getByRole("textbox").count(), 0);
+  await readonly.page.goto(base + "/scenarios?new=1");
+  await readonly.page.getByText(/chỉ có quyền xem kịch bản/).waitFor();
+  const nav = readonly.page.getByRole("navigation", { name: "Điều hướng VehicSim" });
+  assert.equal(await nav.getByRole("link", { name: "Chỉnh tay tham số", exact: true }).count(), 0);
+  await readonly.page.goto(base + "/aeb");
+  await readonly.page.getByText("Quản lý phiên bản & Đối chiếu").waitFor();
+  assert.equal(await readonly.page.getByRole("link", { name: "Bắt đầu", exact: true }).count(), 0);
+  assert.equal(await readonly.page.getByRole("link", { name: "Chỉnh tay", exact: true }).count(), 0);
+  await readonly.page.goto(base + "/aeb/candidates");
+  await readonly.page.getByText(/Tất cả ứng viên/).waitFor();
+  assert.equal(await readonly.page.getByRole("link", { name: /Tối ưu MOBO mới|Chỉnh tay tham số/ }).count(), 0);
+  await readonly.page.goto(base + "/aeb/mobo");
+  await readonly.page.getByText("Tối ưu tự động MOBO", { exact: true }).first().waitFor();
+  assert.equal(await readonly.page.getByRole("link", { name: /Khởi tạo đợt mới/ }).count(), 0);
+  await readonly.page.goto(base + "/aeb/manual");
+  await readonly.page.getByText("Tài khoản của bạn chỉ có quyền xem, không thể chỉnh tay tham số.").waitFor();
+  assert.equal(await readonly.page.getByText(/chỉ có quyền xem hoặc dữ liệu tham số/).count(), 0);
+  await readonly.page.goto(base + "/aeb/mobo/new");
+  await readonly.page.getByText("Tài khoản của bạn chỉ có quyền xem, không thể tạo đợt tối ưu.").waitFor();
+  assert.equal(await readonly.page.getByRole("button", { name: /Bắt đầu tối ưu/ }).count(), 0);
   assert.deepEqual(readonly.errors, []);
   await readonly.context.close();
   console.log("PASS: cancel, 409, busy, success, readonly and text escaping");

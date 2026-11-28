@@ -140,7 +140,7 @@ const GROUPS: Group[] = [
       { label: "Tra cứu lịch sử", note: SOON },
     ],
   },
-  { key: "optimization", label: "Tối ưu hóa", icon: barsIcon, note: `${SOON} (FE-13)` },
+  { key: "optimization", label: "Tối ưu hóa", icon: barsIcon, note: SOON },
   {
     key: "validation",
     label: "Kiểm định",
@@ -425,7 +425,7 @@ function NavGroups({ groups, sections }: NavGroupsProps) {
 }
 
 function TeamNav({ role }: { role: string }) {
-  const [personal, setPersonal] = useState(0);
+  const [personal, setPersonal] = useState<number | null>(null);
   const { ctx } = useVehicSimContext();
   const pathname = usePathname();
   const search = useSearchParams();
@@ -436,7 +436,7 @@ function TeamNav({ role }: { role: string }) {
     vehicsimApi
       .projects()
       .then((list) => setPersonal(list.active_count + list.archived_count))
-      .catch(() => setPersonal(0));
+      .catch(() => setPersonal(null));
   }, [role, ctx?.project.id]);
 
   const reviewer = role === "REVIEWER";
@@ -453,7 +453,7 @@ function TeamNav({ role }: { role: string }) {
 
   const personalGroup: Group = {
     key: "personal",
-    label: `${role === "ENGINEER" ? "Project của tôi" : "Project cá nhân"} (${personal})`,
+    label: `${role === "ENGINEER" ? "Project của tôi" : "Project cá nhân"} (${personal ?? "…"})`,
     icon: lucideIcon(FolderOpen),
     href: "/projects",
     prefix: "/projects",
@@ -499,7 +499,7 @@ function TeamNav({ role }: { role: string }) {
           groups: [
             { key: "workspace", label: "Workspace nhóm", icon: peopleIcon, href: "/workspace", prefix: "/workspace" },
             { key: "my-work", label: "Nhiệm vụ & Báo cáo", icon: taskIcon, href: "/my-work", prefix: "/my-work" },
-            ...(role === "ENGINEER" || personal > 0 ? [personalGroup] : []),
+            ...(role === "ENGINEER" || (personal !== null && personal > 0) ? [personalGroup] : []),
           ],
         },
       ]

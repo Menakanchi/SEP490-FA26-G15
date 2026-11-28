@@ -53,11 +53,11 @@ try {
  await run(2499).getByRole("button",{name:"Phân tích",exact:true}).click();await page.getByRole("region",{name:"Kết quả các lượt chạy",exact:true}).waitFor();await page.getByRole("button",{name:"Xem kết quả 2499",exact:true}).click();
  const report=page.getByRole("article",{name:"Kết quả phân tích",exact:true}),record=Object.values(f.cases.run.reports)[0];await report.waitFor();
  assert.equal(new URL(page.url()).searchParams.get("fa_execution"),f.cases.run.execution.id);assert.equal(new URL(page.url()).searchParams.get("q"),"preserved");
- assert.match(await report.innerText(),/Chưa có nguyên nhân được xác nhận/);assert.equal(await report.locator("pre").count(),0);assert.equal(await report.getByRole("region",{name:"Ba objective"}).locator("dt").count(),3);
+ assert.match(await report.innerText(),/Chưa có nguyên nhân được xác nhận/);assert.equal(await report.locator("pre").count(),0);assert.equal(await report.getByRole("region",{name:"Ba chỉ số chính"}).locator("dt").count(),3);
  const impact=record.report.objectives.impact_speed_mps;if(impact.canonical_applicability==="APPLICABLE"&&typeof impact.canonical_value.value==="number")assert.match(await report.innerText(),/Tốc độ va chạm tương đối/);
  const writes=requests.filter(r=>r.method==="POST").length,deep=page.url();await page.reload();await report.waitFor();assert.equal(page.url(),deep);assert.equal(requests.filter(r=>r.method==="POST").length,writes);await shot("analysis-result-desktop");
  checks.push("explorer inspects DB source then analyzes run without upload; report deep link survives reload without a new POST");
- await home();await run(2511).getByRole("button",{name:"Phân tích",exact:true}).click();await page.getByRole("alert").filter({hasText:"Chưa có result.json hợp lệ"}).waitFor();assert.equal(new URL(page.url()).searchParams.get("fa_execution"),null);
+ await home();await run(2511).getByRole("button",{name:"Phân tích",exact:true}).click();await page.getByRole("alert").filter({hasText:"Chưa có kết quả hợp lệ được lưu"}).waitFor();assert.equal(new URL(page.url()).searchParams.get("fa_execution"),null);
  inspectError=true;await home();await run(2499).getByRole("button",{name:"Phân tích",exact:true}).click();await page.getByRole("region",{name:"Khám phá họ kịch bản"}).getByRole("alert").waitFor();assert.equal(new URL(page.url()).searchParams.get("fa_execution"),null);inspectError=false;
  checks.push("missing source or inspection error blocks analysis and remains visible");
  await home();let seen;const requested=new Promise(r=>{seen=r}),promise=new Promise(r=>{release=r});hold={seen,promise};await run(2499).getByRole("button",{name:"Phân tích",exact:true}).click();await requested;assert(await run(2499).getByRole("button",{name:"Đang phân tích…",exact:true}).isDisabled());await page.getByLabel("Project đang xem",{exact:true}).selectOption("2");await page.waitForURL(u=>u.pathname==="/");release();await page.waitForTimeout(300);assert.equal(new URL(page.url()).searchParams.get("fa_execution"),null);
@@ -75,7 +75,7 @@ try {
  const report=page.getByRole("article",{name:"Kết quả phân tích",exact:true}),record=Object.values(f.cases.run.reports)[0];
  await shot("analysis-result-desktop");await page.setViewportSize({width:375,height:900});await shot("analysis-result-mobile");assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.setViewportSize({width:1440,height:1000});
  assert.match(await report.innerText(),/Chưa có nguyên nhân được xác nhận/);assert.equal(await report.locator("pre").count(),0);
- assert.equal(await report.getByRole("region",{name:"Ba objective"}).locator("dt").count(),3);
+ assert.equal(await report.getByRole("region",{name:"Ba chỉ số chính"}).locator("dt").count(),3);
  const impact=record.report.objectives.impact_speed_mps;if(impact.canonical_applicability==="APPLICABLE"&&typeof impact.canonical_value.value==="number")assert.match(await report.innerText(),/Tốc độ va chạm tương đối/);
  checks.push("02 unknown cause and three canonical objectives remain visible without raw JSON");
  const writes=requests.filter(r=>r.method==="POST").length,deep=page.url();await page.reload();await report.waitFor();assert.equal(page.url(),deep);assert.equal(requests.filter(r=>r.method==="POST").length,writes);checks.push("03 refresh/deep-link reads persisted report with no re-analysis POST");

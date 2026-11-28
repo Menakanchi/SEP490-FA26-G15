@@ -174,7 +174,15 @@ try {
     await page.setViewportSize({width:375,height:812});
     assert(await page.getByRole("region",{name:"Cảnh playback đã ghi",exact:true}).locator("svg").isVisible());
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"Recorded scene overflow 375");
+    const assertSceneLabels=async()=>{
+      const scene=page.getByRole("region",{name:"Cảnh playback đã ghi",exact:true});
+      const vehicle=await scene.getByText(/^Xe Fixture car ·/).boundingBox();
+      const perception=await scene.getByText(/^Nhận thức · tin cậy/).boundingBox();
+      assert(vehicle && perception && (vehicle.y+vehicle.height<=perception.y || perception.y+perception.height<=vehicle.y || vehicle.x+vehicle.width<=perception.x || perception.x+perception.width<=vehicle.x),"Vehicle and perception labels must not overlap");
+    };
+    await assertSceneLabels();
     await shot("recorded-scene-375");await page.setViewportSize({width:1440,height:900});
+    await assertSceneLabels();
     assert.match(await page.locator("[data-playback-state]").innerText(),/Cuối dữ liệu/);
     await play().click();
     await page.waitForFunction(()=>{const t=Number(document.querySelector('[aria-label="Thời gian playback"]').value);return t>=1&&t<2;});
@@ -183,14 +191,14 @@ try {
     await page.getByRole("button",{name:"Về khung đầu",exact:true}).click();assert.equal(await time(),1);
     await seek(2.5);
     assert.match(await controls.innerText(),/cách 1\.300 s/);
-    assert.match(await page.getByRole("region",{name:"Số đo khung playback",exact:true}).innerText(),/Khung 1.20 s · cursor 2.50 s/);
+    assert.match(await page.getByRole("region",{name:"Số đo khung playback",exact:true}).innerText(),/Khung 1.20 s · Thời gian đang xem 2.50 s/);
     await shot("irregular-gap");
     await page.getByRole("button",{name:"Về khung đầu",exact:true}).click();
     const log=page.getByRole("region",{name:"Nhật ký sự kiện",exact:true});
     await log.getByRole("button",{name:/Quyết định AEB · 1\.200 s/}).click();
     await controls.getByRole("button",{name:"Sự kiện sau ›",exact:true}).click();
     await page.waitForURL(u=>u.searchParams.get("t")==="1.201");
-    assert.match(await log.locator('[aria-current="step"]').getAttribute("title"),/events\[kind=brake_onset\]\.t = 1.201 s/);
+    assert.match(await log.locator('[aria-current="step"]').getAttribute("title"),/Thời điểm sự kiện đã ghi: 1.201 s/);
     assert.equal(await page.getByText("VA CHẠM",{exact:true}).count(),0);
     // Stable playback clock: speed, seek during play, rapid toggle and natural end.
     await seek(1);

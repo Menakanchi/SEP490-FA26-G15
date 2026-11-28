@@ -520,6 +520,8 @@ export interface MotionTelemetryPoint {
 }
 
 export interface FailureDetail extends RunHeader {
+  /** Mô tả nguyên nhân đã lưu theo luật, chưa xác nhận quan hệ nhân quả. */
+  recorded_cause?: string;
   motion_telemetry: MotionTelemetryPoint[];
   stage_evidence?: {stage: string; values: Record<string,number | null>}[];
   evaluation_version?: string;

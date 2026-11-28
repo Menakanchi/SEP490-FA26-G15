@@ -43,7 +43,7 @@ function writeAvatar(userId: number | string, dataUrl: string | undefined): void
     if (dataUrl) localStorage.setItem(avatarKey(userId), dataUrl);
     else localStorage.removeItem(avatarKey(userId));
   } catch {
-    // Ảnh lớn có thể vượt quota localStorage — bỏ qua, không làm hỏng phiên.
+    throw new Error("Thông tin đã được lưu, nhưng không lưu được ảnh trên trình duyệt. Hãy thử ảnh nhỏ hơn.");
   }
 }
 

@@ -10,3 +10,10 @@ export function hasCompleteTrialEvidence(trial: OptimizationTrial): boolean {
 export function isFeasibleTrial(trial: OptimizationTrial): boolean {
   return hasCompleteTrialEvidence(trial) && trial.constraint_violated === false;
 }
+export const RUN_STATUS_LABEL: Record<string, string> = {
+  PENDING: "Đang chờ",
+  RUNNING: "Đang chạy",
+  COMPLETED: "Hoàn tất",
+  FAILED: "Thất bại",
+  CANCELLED: "Đã hủy",
+};
