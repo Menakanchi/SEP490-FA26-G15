@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Loader2, Search } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
@@ -126,7 +127,7 @@ export default function ListProjectPage() {
               <div key={p.id} className="flex flex-col gap-3 rounded-xl border border-vehicsim-line bg-vehicsim-surface p-5">
                 <strong>{p.name}</strong>
                 <span className="text-sm text-vehicsim-muted">{p.vehicle_name ?? "Chưa chọn xe"} · {p.status === "ACTIVE" ? "Đang hoạt động" : "Lưu trữ"}</span>
-                <div><PillButton onClick={() => go(p.id, "/")}>Mở project</PillButton></div>
+                <div className="flex flex-wrap gap-2"><PillButton onClick={() => go(p.id, "/")}>Mở project</PillButton>{p.workspace_status === "ACTIVE" && String(p.created_by_user_id) === user?.id && <Link className="analysis-button" href={`/projects/${p.id}/settings`}>Quản lý project</Link>}</div>
               </div>
             ) : (
               <ProjectCard

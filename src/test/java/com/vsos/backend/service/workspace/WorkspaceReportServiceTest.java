@@ -51,6 +51,7 @@ class WorkspaceReportServiceTest {
         notifications = mock(NotificationService.class);
         service = new WorkspaceReportService(new WorkspaceService(workspaceRepo, notifications, mock(WorkspaceChatHub.class)), reports, notifications);
         when(workspaceRepo.find(WS)).thenReturn(workspace("ACTIVE"));
+        when(workspaceRepo.lockActiveWorkspace(WS)).thenReturn(true);
         when(reports.find(WS, REPORT)).thenReturn(report("SUBMITTED"));
         when(reports.decide(anyLong(), anyString(), anyLong(), any(), any())).thenReturn(true);
     }

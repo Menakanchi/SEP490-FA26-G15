@@ -21,6 +21,19 @@ public class Queries {
         this.db = db;
     }
 
+    /** Called in the job-creation transaction; shares a lock with workspace/project archive. */
+    public void lockWritableProjectForJob(long projectId) {
+        Row row = db.first("""
+                SELECT p.status, p.workspace_id, w.status AS workspace_status
+                  FROM projects p LEFT JOIN workspaces w ON w.id=p.workspace_id
+                 WHERE p.id=? FOR SHARE
+                """, projectId);
+        if (row == null) throw new NotFoundException("project");
+        if (!"ACTIVE".equals(row.str("status")) || (!row.isNull("workspace_id") && !"ACTIVE".equals(row.str("workspace_status"))))
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                    "Project hoặc workspace đang lưu trữ, chỉ có thể xem");
+    }
+
     public List<Row> versions(long projectId, boolean newestFirst) {
         return db.list("SELECT * FROM aeb_versions WHERE project_id = ? ORDER BY version_no " + (newestFirst ? "DESC" : "ASC"), projectId);
     }

@@ -88,6 +88,8 @@ public final class ProjectDtos {
             @JsonProperty("created_date") LocalDateTime createdDate,
             @JsonProperty("updated_at") LocalDateTime updatedAt,
             @JsonProperty("workspace_id") Long workspaceId,
+            @JsonProperty("workspace_status") String workspaceStatus,
+            @JsonProperty("created_by_user_id") Long createdByUserId,
             ProjectJourney journey) {
     }
 

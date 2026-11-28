@@ -45,7 +45,7 @@ class ProjectServiceEngineerCreateTest {
         service = new ProjectService(projects, runs, mock(RegressionRepository.class));
         when(runs.configuredSimulator()).thenReturn("vehicsim-kinematic-1.4");
         when(projects.supportedVehicle(isNull())).thenReturn(VEHICLE);
-        when(projects.isActiveWorkspaceMember(ENGINEER, WORKSPACE)).thenReturn(true);
+        when(projects.lockActiveWorkspaceMember(ENGINEER, WORKSPACE)).thenReturn(true);
         when(projects.insertInWorkspace(eq(WORKSPACE), anyString(), any(), eq(ENGINEER), anyLong(), any())).thenReturn(PROJECT);
         when(projects.find(PROJECT)).thenReturn(savedProject());
         when(projects.journeySummary(PROJECT)).thenReturn(emptyJourney());
@@ -71,13 +71,13 @@ class ProjectServiceEngineerCreateTest {
     @Test
     void anEngineerMustNameTheWorkspace() {
         assertRejected(new ProjectRequest("Dự án", null, null, null), ProjectError.WORKSPACE_REQUIRED);
-        verify(projects, never()).isActiveWorkspaceMember(anyLong(), anyLong());
+        verify(projects, never()).lockActiveWorkspaceMember(anyLong(), anyLong());
     }
 
     @Test
     void anEngineerCannotCreateInAWorkspaceItDoesNotBelongToOrThatIsArchived() {
         assertRejected(new ProjectRequest("Dự án", null, null, 99L), ProjectError.WORKSPACE_NOT_MEMBER);
-        verify(projects).isActiveWorkspaceMember(ENGINEER, 99L);
+        verify(projects).lockActiveWorkspaceMember(ENGINEER, 99L);
     }
 
     @Test
@@ -107,6 +107,36 @@ class ProjectServiceEngineerCreateTest {
         }
         verify(projects, never()).insertInWorkspace(any(), anyString(), any(), anyLong(), anyLong(), any());
         verify(projects, never()).insert(anyString(), any(), anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void workspaceProjectManagementRequiresCreatorAndActiveMembership() {
+        when(projects.lockActiveWorkspaceMember(ENGINEER, WORKSPACE)).thenReturn(true);
+        Row workspaceProject = workspaceProject(ENGINEER);
+        when(projects.find(PROJECT)).thenReturn(workspaceProject);
+        service.update(ENGINEER, "ENGINEER", PROJECT, new ProjectRequest("Tên mới", null, null, null));
+        verify(projects).existingNameInWorkspace(WORKSPACE, "Tên mới", PROJECT);
+        verify(projects).update(eq(PROJECT), eq("Tên mới"), any(), eq(VEHICLE), any());
+
+        when(projects.find(PROJECT)).thenReturn(workspaceProject(99L));
+        assertThatThrownBy(() -> service.delete(ENGINEER, "ENGINEER", PROJECT, "Thử AEB đêm"))
+                .isInstanceOf(ProjectException.class);
+        when(projects.find(PROJECT)).thenReturn(workspaceProject);
+        when(projects.lockActiveWorkspaceMember(ENGINEER, WORKSPACE)).thenReturn(false);
+        assertThatThrownBy(() -> service.archive(ENGINEER, "ENGINEER", PROJECT))
+                .isInstanceOf(ProjectException.class);
+        verify(projects, never()).delete(PROJECT);
+        verify(projects, never()).setStatus(eq(PROJECT), anyString(), any());
+    }
+
+    private static Row workspaceProject(long owner) {
+        Map<String, Object> values = new HashMap<>(Map.of("id", PROJECT, "name", "Thử AEB đêm", "status", "ACTIVE",
+                "created_by_user_id", owner, "workspace_id", WORKSPACE, "carla_vehicle_model_id", VEHICLE,
+                "vehicle_name", "Audi e-tron", "family_count", 0, "run_count", 0, "regression_count", 0));
+        values.put("running_work", 0);
+        values.put("created_date", LocalDateTime.of(2026, 11, 24, 9, 0));
+        values.put("updated_at", LocalDateTime.of(2026, 11, 24, 9, 0));
+        return new Row(values);
     }
 
     private void assertRejected(ProjectRequest request, ProjectError error) {

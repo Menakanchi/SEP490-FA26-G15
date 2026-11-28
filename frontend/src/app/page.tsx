@@ -309,7 +309,7 @@ function StepCard({ view, state }: { view: StepView; state: State }) {
         >
           {state === "done" ? "✓" : step.n}
         </span>
-        {state === "current" ? <Tag tone="dark">Bước tiếp theo</Tag> : <Tag>{step.feature}</Tag>}
+        {state === "current" && <Tag tone="dark">Bước tiếp theo</Tag>}
       </div>
       <div className="flex flex-col gap-1">
         <h2 className="text-[17px] font-bold text-vehicsim-ink">

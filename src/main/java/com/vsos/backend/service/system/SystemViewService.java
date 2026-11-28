@@ -50,6 +50,7 @@ public class SystemViewService {
                 "project", Json.obj("id", project.lng("id"), "name", project.str("name")),
                 "reviewer_projects", reviewerProjects(),
                 "reviewer_can_decide", "ACTIVE".equals(project.str("status")) && workspace != null && "ACTIVE".equals(workspace.str("status")),
+                "project_writable", "ACTIVE".equals(project.str("status")) && (workspace == null || "ACTIVE".equals(workspace.str("status"))),
                 "workspace", workspace == null ? null : Json.obj("id", workspace.lng("id"), "name", workspace.str("name")),
                 "vehicle", vehicle == null ? null : Json.obj("id", vehicle.lng("id"), "name", vehicleName),
                 // Bộ mô phỏng mà run MỚI sẽ dùng (màn chạy baseline hiện ra trước khi bấm chạy).
