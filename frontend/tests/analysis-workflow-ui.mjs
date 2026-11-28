@@ -231,7 +231,12 @@ try {
   await page.getByRole("button", { name: "Tải lại kết quả", exact: true }).click(); await oldProject.requested;
   await page.getByLabel("Project đang xem", { exact: true }).selectOption(String(secondProject)); await page.waitForURL(u => u.pathname === "/");
   const resultsLink = page.getByRole("link", { name: "Kết quả & phân tích", exact: true });
-  if (!(await resultsLink.isVisible())) await page.getByRole("button", { name: "Mở rộng Xem kết quả", exact: true }).click();
+  if (!(await resultsLink.isVisible())) {
+    const resultsGroup = page.getByRole("navigation", { name: "Điều hướng VehicSim", exact: true }).getByRole("button", { name: /Xem kết quả/ });
+    assert.equal(await resultsGroup.getAttribute("aria-expanded"), "false");
+    await resultsGroup.click();
+    assert.equal(await resultsGroup.getAttribute("aria-expanded"), "true");
+  }
   await resultsLink.click(); await page.waitForURL(u => u.pathname === "/analysis/failures"); await page.getByRole("heading", { name: "Họ kịch bản", exact: true }).waitFor();
   await page.evaluate(() => history.pushState(null, "", "/analysis/failures?view=dataset&page_size=50")); await ready();
   await dataset.getByRole("heading", { name: "Bản nháp đang chọn", exact: true }).waitFor(); assert.equal(await dataset.locator("tr[data-draft-run]").count(), 0); assert.equal(await rows.first().getAttribute("data-run-id"), String(runs.at(-1).run_id + 5000));

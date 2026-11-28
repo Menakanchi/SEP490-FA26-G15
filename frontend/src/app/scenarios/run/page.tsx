@@ -40,6 +40,7 @@ export default function ScenarioRunPage() {
   const [families, setFamilies] = useState<FamilyItem[] | null>(null);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [withAebOff, setWithAebOff] = useState(true);
@@ -52,8 +53,8 @@ export default function ScenarioRunPage() {
   const load = useCallback(() => {
     vehicsimApi
       .families()
-      .then(setFamilies)
-      .catch((err) => setError(err instanceof Error ? err.message : "Không tải được họ kịch bản"));
+      .then((items) => { setFamilies(items); setLoadError(null); })
+      .catch((err) => setLoadError(err instanceof Error ? err.message : "Không tải được họ kịch bản"));
   }, []);
 
   useEffect(load, [load]);
@@ -137,6 +138,8 @@ export default function ScenarioRunPage() {
       }
     >
       <ErrorNote message={error} />
+      <ErrorNote message={loadError} />
+      {loadError && families && <p role="status" className="text-[13px] text-vehicsim-muted">Dữ liệu đang hiển thị có thể chưa được cập nhật. Hãy làm mới để thử lại.</p>}
       {notice && (
         <div role="status" className="flex items-center gap-3 rounded-xl bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok">
           <CheckCircle2 className="size-4 shrink-0 text-vehicsim-ok" />
@@ -162,7 +165,8 @@ export default function ScenarioRunPage() {
                 label: `${f.code} · ${f.name}`,
                 sublabel: `v${f.version} — ${f.variants} biến thể`,
               }))}
-              className="w-auto min-w-[300px]"
+              className="w-full min-w-0 sm:w-auto sm:min-w-[300px]"
+              menuClassName="!min-w-0"
             />
           )}
         </div>
@@ -197,7 +201,12 @@ export default function ScenarioRunPage() {
             </details>
           </div>
         ) : families === null ? (
-          <p className="text-[13px] text-vehicsim-muted">{error ? "Không thể tải danh sách họ kịch bản." : "Đang tải họ kịch bản…"}</p>
+          loadError ? (
+            <div className="flex flex-wrap items-center gap-3 text-[13px] text-vehicsim-muted">
+              <span>Không thể tải danh sách họ kịch bản.</span>
+              <PillButton onClick={() => { setLoadError(null); load(); }}>Thử tải lại</PillButton>
+            </div>
+          ) : <p role="status" className="text-[13px] text-vehicsim-muted">Đang tải họ kịch bản…</p>
         ) : (
           <EmptyState title="Chưa có họ kịch bản nào">
             Vui lòng vào mục <Link href="/scenarios/new" className="text-vehicsim-primary font-bold underline">Thiết kế kịch bản</Link> để tạo kịch bản trước.
@@ -255,8 +264,8 @@ export default function ScenarioRunPage() {
                   : pending > 0
                   ? "Hệ thống đang thực thi mô phỏng trong hàng đợi nền..."
                   : completed > 0
-                  ? "Đã có kết quả baseline. Bạn có thể xem phân tích hoặc chạy lại nếu cần."
-                  : "Chưa có lượt chạy nào. Bấm nút bên dưới để bắt đầu."}
+                  ? canOperate ? "Đã có kết quả baseline. Bạn có thể xem phân tích hoặc chạy lại nếu cần." : "Đã có kết quả baseline. Bạn có thể xem phân tích."
+                  : canOperate ? "Chưa có lượt chạy nào. Bấm nút bên dưới để bắt đầu." : "Chưa có lượt chạy nào cho cấu hình hiện tại."}
               </p>
             </div>
             <div className="flex items-center gap-2">

@@ -65,12 +65,12 @@ const STAGES = [
 /** Màn đầu tiên của EXPERIENCER chưa có project đang hoạt động (M0). */
 export function Welcome() {
   return (
-    <div className="flex min-w-0 flex-1 justify-center px-9 py-12">
+    <div className="flex min-w-0 flex-1 justify-center px-4 py-8 sm:px-9 sm:py-12">
       <div className="flex w-full max-w-[960px] flex-col gap-8">
-        <section className="flex flex-col gap-6 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-8">
+        <section className="flex flex-col gap-6 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 sm:p-8">
           <RoadScene className="w-full" />
           <div className="flex flex-col gap-3">
-            <h1 className="text-[36px] font-extrabold leading-[1.15] tracking-[-1px] text-vehicsim-ink">Thử phanh khẩn cấp AEB trong mô phỏng</h1>
+            <h1 className="text-[30px] font-extrabold leading-[1.15] tracking-[-1px] text-vehicsim-ink sm:text-[36px]">Thử phanh khẩn cấp AEB trong mô phỏng</h1>
             <p className="max-w-[640px] text-[16px] leading-[1.6] text-vehicsim-muted">
               Dựng tình huống nguy hiểm, xem xe phanh có kịp không, rồi tìm cấu hình AEB tốt hơn — ngay trên trình duyệt, không cần xe thật.
             </p>
@@ -85,7 +85,7 @@ export function Welcome() {
           </div>
         </section>
 
-        <ol className="grid grid-cols-4 gap-4">
+        <ol className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {STAGES.map((s) => (
             <li key={s.title} className="flex flex-col gap-2 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
               <span className="text-[13px] font-bold text-vehicsim-decision">{s.n || "Bắt đầu"}</span>

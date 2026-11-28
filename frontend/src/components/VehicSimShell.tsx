@@ -84,7 +84,7 @@ function WorkspaceFrame({ children }: { children: React.ReactNode }) {
           <Image src="/vehicsim/logo.svg" alt="" width={26} height={26} />
           <span className="text-[18px] font-black tracking-tight text-white">VehicSim</span>
         </Link>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
           <NotificationBell />
           <Link href="/profile" aria-label="Hồ sơ cá nhân" title={name} className="flex min-h-10 min-w-10 items-center justify-center gap-2 rounded-lg px-2 text-white hover:bg-white/10 transition-colors sm:px-2.5">
             {user?.avatar_url ? (

@@ -112,7 +112,7 @@ export default function StartScenarioPage() {
 
       <ErrorNote message={error ?? loadError} />
 
-      <div className="flex w-full items-stretch gap-5">
+      <div className="flex w-full flex-col items-stretch gap-5 xl:flex-row">
         <WayCard
           icon={<Sparkles className="size-5" />}
           title="Dùng kịch bản mẫu"

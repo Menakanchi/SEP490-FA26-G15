@@ -109,8 +109,8 @@ export function FailureAnalysisScenarioExplorer({ project, canWrite, families, o
   ];
   return <section aria-label="Khám phá họ kịch bản" className="grid min-w-0 gap-4">
     {scenario && <nav aria-label="Điều hướng phân tích" className="text-sm"><button className="analysis-button" onClick={() => navigate({ fa_scenario: null, fa_offset: null }, true)}>← Các họ kịch bản</button><span className="ml-3">{family?.name ?? `Họ kịch bản ${scenario}`}</span></nav>}
-    <div className="flex flex-wrap items-end gap-3"><div className="min-w-0 flex-1"><h2>{scenario ? "Biến thể và lượt chạy" : "Họ kịch bản"}</h2><p className="analysis-caption">{scenario ? "Mở biến thể để xem từng lượt chạy và kết quả phân tích." : "Tìm theo tên, mã họ, mã biến thể hoặc mã lượt chạy trong dự án."}</p></div>
-      <label className="grid min-w-[220px] gap-1 text-sm">Tìm kiếm<input className={selectStyle} type="search" value={draft} onChange={e => setDraft(e.target.value)} placeholder="Tên, mã hoặc ID…" /></label>
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end"><div className="min-w-0 flex-1"><h2>{scenario ? "Biến thể và lượt chạy" : "Họ kịch bản"}</h2><p className="analysis-caption">{scenario ? "Mở biến thể để xem từng lượt chạy và kết quả phân tích." : "Tìm theo tên, mã họ, mã biến thể hoặc mã lượt chạy trong dự án."}</p></div>
+      <label className="grid min-w-0 gap-1 text-sm sm:w-[220px] sm:shrink-0">Tìm kiếm<input className={selectStyle} type="search" value={draft} onChange={e => setDraft(e.target.value)} placeholder="Tên, mã hoặc ID…" /></label>
     </div>
     {scenario && <details className="analysis-disclosure"><summary>Tìm kiếm nâng cao</summary><div className="mt-3 flex flex-wrap gap-3">
       {filters.map(filter => <label key={filter.key} className="grid gap-1 text-sm">{filter.label}<select className={selectStyle} value={params.get(filter.key) ?? ""} onChange={e => navigate({ [filter.key]: e.target.value, fa_offset: null })}><option value="">Tất cả</option>{filter.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>)}

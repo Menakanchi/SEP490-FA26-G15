@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Search } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
@@ -29,24 +29,31 @@ export default function ListProjectPage() {
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [list, setList] = useState<ProjectList | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{ key: string; list: ProjectList | null; error: string | null } | null>(null);
+  const key = JSON.stringify([tab, search, page]);
+  const list = result?.key === key ? result.list : null;
+  const error = result?.key === key ? result.error : null;
+  const requestId = useRef(0);
 
-  const reload = useCallback(
-    () =>
-      vehicsimApi
+  const reload = useCallback(() => {
+    const current = ++requestId.current;
+    return vehicsimApi
         .projects({ status: tab, q: search, page, pageSize: PAGE_SIZE })
         .then((loaded) => {
+          if (current !== requestId.current) return;
           if (loaded.items.length === 0 && page > 1) setPage(page - 1);
-          else setList(loaded);
+          else setResult({ key, list: loaded, error: null });
         })
-        .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách project")),
-    [tab, search, page],
-  );
+        .catch((err) => {
+          if (current === requestId.current) setResult({ key, list: null, error: err instanceof Error ? err.message : "Không tải được danh sách project" });
+        });
+  }, [tab, search, page, key]);
   const actions = useProjectActions(reload);
 
   useEffect(() => {
+    const requests = requestId;
     void reload();
+    return () => { requests.current++; };
   }, [reload]);
 
   if (list && isExperiencer && !search && list.active_count + list.archived_count === 0) return <>{actions.view}<Welcome /></>;
@@ -54,12 +61,17 @@ export default function ListProjectPage() {
   const pages = list ? Math.max(1, Math.ceil(list.total / PAGE_SIZE)) : 1;
   const go = (id: number, href: string) => (ctx?.project.id === id ? router.push(href) : openProject(id, href));
   const changeTab = (status: ProjectStatus) => {
+    if (status === tab && page === 1) return;
+    setResult(null);
     setTab(status);
     setPage(1);
   };
   const submitSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    setSearch(query.trim());
+    const nextSearch = query.trim();
+    if (nextSearch === search && page === 1) return;
+    setResult(null);
+    setSearch(nextSearch);
     setPage(1);
   };
 
@@ -112,7 +124,9 @@ export default function ListProjectPage() {
       </div>
 
       {!list ? (
-        !error && (
+        error ? (
+          <div><PillButton onClick={() => { setResult(null); void reload(); }}>Thử tải lại</PillButton></div>
+        ) : (
           <div className="flex justify-center py-16">
             <Loader2 aria-label="Đang tải" className="size-6 animate-spin text-vehicsim-muted" />
           </div>
@@ -143,7 +157,7 @@ export default function ListProjectPage() {
             <span className="text-[13px] text-vehicsim-muted">
               {(list.page - 1) * list.page_size + 1}–{(list.page - 1) * list.page_size + list.items.length} / {list.total} project
             </span>
-            {pages > 1 && <Pagination page={list.page} pages={pages} onPage={setPage} />}
+            {pages > 1 && <Pagination page={list.page} pages={pages} onPage={(nextPage) => { if (nextPage !== page) { setResult(null); setPage(nextPage); } }} />}
           </div>
         </>
       )}

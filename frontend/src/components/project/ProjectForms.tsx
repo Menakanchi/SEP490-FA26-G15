@@ -72,7 +72,7 @@ function generalError(error: unknown): string | null {
 function Field({ id, label, hint, error, children }: { id: string; label: string; hint?: string; error?: string | null; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <label htmlFor={id} className="text-[14px] font-semibold text-vehicsim-ink">
           {label}
         </label>
@@ -252,13 +252,13 @@ function VehicleCards({
 
 function Stepper({ step }: { step: WizardStep }) {
   return (
-    <ol aria-label="Các bước tạo project" className="flex items-center gap-3">
+    <ol aria-label="Các bước tạo project" className="flex flex-wrap items-center gap-3">
       {WIZARD_STEPS.map((label, i) => (
         <li key={label} aria-current={i === step ? "step" : undefined} className="flex items-center gap-3">
-          {i > 0 && <span aria-hidden className={cx("h-[2px] w-10 rounded-full", i <= step ? "bg-vehicsim-primary" : "bg-vehicsim-line-strong")} />}
+          {i > 0 && <span aria-hidden className={cx("hidden h-[2px] w-10 rounded-full sm:block", i <= step ? "bg-vehicsim-primary" : "bg-vehicsim-line-strong")} />}
           <span
             className={cx(
-              "flex size-8 items-center justify-center rounded-full text-[13px] font-bold",
+              "flex size-8 shrink-0 items-center justify-center rounded-full text-[13px] font-bold",
               i < step ? "bg-vehicsim-ok text-white" : i === step ? "bg-vehicsim-primary text-white" : "border border-solid border-vehicsim-line-strong text-vehicsim-muted",
             )}
           >
@@ -327,8 +327,8 @@ export function ProjectWizard({
   return (
     <form onSubmit={submit} className="flex w-full flex-col gap-6">
       <Stepper step={step} />
-      <div className="flex w-full items-start gap-6">
-        <Card className="flex min-w-0 flex-1 flex-col gap-6 p-7">
+      <div className="flex w-full flex-col items-stretch gap-6 lg:flex-row lg:items-start">
+        <Card className="flex min-w-0 flex-1 flex-col gap-6 p-5 sm:p-7">
           <ErrorNote message={generalError(error)} />
 
           {step === 0 && (
@@ -383,7 +383,7 @@ export function ProjectWizard({
           </div>
         </Card>
 
-        <Card className="flex w-[320px] shrink-0 flex-col gap-4 p-6">
+        <Card className="flex w-full min-w-0 flex-col gap-4 p-6 lg:w-[320px] lg:shrink-0">
           <span className="text-[12px] font-bold uppercase tracking-[0.6px] text-vehicsim-muted">Xem trước</span>
           <div className="flex items-center gap-3">
             <ProjectAvatar name={values.name.trim() || "?"} />

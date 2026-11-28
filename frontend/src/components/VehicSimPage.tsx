@@ -33,8 +33,8 @@ export function VehicSimPage({ crumbs, title, badges, actions, showContext = tru
 
   return (
     <div className="mx-auto flex w-full min-w-0 max-w-[1680px] flex-1 flex-col gap-5 px-4 pb-10 pt-5 sm:px-6 xl:px-8">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-vehicsim-line pb-3 print:hidden">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
+      <div className="flex flex-col items-start justify-between gap-3 border-b border-vehicsim-line pb-3 sm:flex-row sm:flex-wrap sm:items-center print:hidden">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 sm:w-auto sm:flex-1">
           <nav aria-label="Đường dẫn" className="flex min-w-0 flex-wrap items-center gap-2 break-words text-[13px]">
           {crumbs.map((c, i) => {
             const last = i === crumbs.length - 1;
@@ -84,15 +84,15 @@ export function VehicSimPage({ crumbs, title, badges, actions, showContext = tru
             </div>
           )}
           {ctx?.vehicle && (
-            <div className="flex items-center gap-2 border-l border-solid border-vehicsim-line pl-4">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <span className="font-medium text-vehicsim-muted">Phương tiện:</span>
-              <span className="font-bold text-vehicsim-ink">{ctx.vehicle.name}</span>
+              <span className="min-w-0 break-words font-bold text-vehicsim-ink">{ctx.vehicle.name}</span>
             </div>
           )}
           {baseline && (
-            <div className="flex items-center gap-2 border-l border-solid border-vehicsim-line pl-4">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <span className="font-medium text-vehicsim-muted">Bản cơ sở:</span>
-              <span className="font-bold text-vehicsim-primary">{ctx?.system.name ?? "AEB"} {baseline.label}</span>
+              <span className="min-w-0 break-words font-bold text-vehicsim-primary">{ctx?.system.name ?? "AEB"} {baseline.label}</span>
             </div>
           )}
         </div>

@@ -84,9 +84,9 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
     return () => { current = false; if (url) URL.revokeObjectURL(url); };
   }, [data, cameraFrame]);
   const ready = connection?.connected && connection.compatible && connection.scenario_runner;
-  // Backend chỉ cấu hình profile .xosc hiện hành cho run mới (hiện -xosc15); không gắn số phiên bản ở đây để đổi profile không khoá nút.
+  // Không gắn cứng số phiên bản profile .xosc để đổi profile không khoá nút.
   const xoscProfile = /-xosc\d+$/.test(connection?.simulator ?? "");
-  const familyId = family || String(ctx?.families[0]?.id ?? "");
+  const familyId = ctx?.families.some(f => String(f.id) === family) ? family : String(ctx?.families[0]?.id ?? "");
   const familyName = ctx?.families.find(f => f.id === Number(familyId))?.name ?? `#${familyId}`;
 
   const start = async () => {
@@ -111,14 +111,16 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
     try {
       const result = await vehicsimApi.cancelFamily(Number(familyId), "CARLA");
       setNotice(`Đã hủy ${result.stopped} lượt đang chờ; ${result.stopping} lượt đang chạy đã nhận yêu cầu dừng.`);
-      await loadRuns();
+      try { await loadRuns(); }
+      catch { setError("Đã gửi yêu cầu hủy nhưng không tải lại được danh sách. Vui lòng tải lại trang để xem trạng thái mới nhất."); }
     } catch (e) { setError(e instanceof Error ? vi(e.message) : "Không hủy được lượt chạy"); }
     finally { setBusy(false); }
   };
 
   // Chỉ kết quả baseline lỗi / đã hủy, do chính mình tạo (ADMIN: của mọi người) mới xoá được; lượt hoàn thành là số liệu thật nên luôn giữ.
   // Backend kiểm lại toàn bộ; mốc của regression bị từ chối ở đó.
-  const deletable = (run: CarlaRun) => canEditRuns && run.purpose === "BASELINE" && !run.regression_test_id && !run.optimization_trial_id
+  const inCurrentProject = (run: CarlaRun) => !isAdmin || run.project_id === ctx?.project.id;
+  const deletable = (run: CarlaRun) => canEditRuns && inCurrentProject(run) && run.purpose === "BASELINE" && !run.regression_test_id && !run.optimization_trial_id
     && (run.status === "FAILED" || run.status === "STOPPED")
     && (isAdmin || (user != null && String(run.created_by_user_id) === user.id));
 
@@ -228,6 +230,11 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
             </select>
           </label>
         )}
+        {isAdmin && ctx && (
+          <p className="mt-3 text-[12px] leading-relaxed text-vehicsim-muted">
+            Bộ lọc trên chỉ thay đổi danh sách. Các thao tác quản lý họ và hủy/xóa lượt chỉ áp dụng cho project đang mở: <b className="text-vehicsim-ink">{ctx.project.name}</b>.
+          </p>
+        )}
         <label className="mt-4 flex max-w-lg flex-col gap-1.5 text-[13px] font-semibold text-vehicsim-ink">
           Họ kịch bản để quản lý
           <select aria-label="Họ kịch bản để quản lý" value={familyId} onChange={e => setFamily(e.target.value)}
@@ -239,9 +246,9 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
         {(familyId && canEditRuns || familyRuns.length > 0) && (
           <details className="mt-4 rounded-lg bg-vehicsim-soft px-4 py-3 text-[13px]">
             <summary className="cursor-pointer font-semibold text-vehicsim-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vehicsim-primary">Quản lý họ kịch bản</summary>
-            <p className="mt-2 max-w-[75ch] text-[12px] leading-relaxed text-vehicsim-muted">Hủy hoặc xóa áp dụng cho mọi lượt phù hợp của họ {familyName}, kể cả lượt không hiển thị trong danh sách. Danh sách bên dưới có thể gồm nhiều họ kịch bản; lượt tối ưu và hồi quy không thuộc phạm vi xóa.</p>
+            <p className="mt-2 max-w-[75ch] text-[12px] leading-relaxed text-vehicsim-muted">Hủy áp dụng cho lượt CARLA độc lập đang chờ hoặc chạy; xóa chỉ áp dụng cho lượt baseline CARLA lỗi hoặc đã hủy của họ {familyName}, kể cả lượt không hiển thị bên dưới. Lượt hoàn thành, hồi quy và tối ưu được giữ lại. Danh sách bên dưới có thể gồm nhiều họ kịch bản.</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {familyRuns.length > 0 && <PillButton onClick={() => { setError(null); void vehicsimApi.downloadFamilyXosc(Number(familyId)).catch(e => setError(vi(e.message))); }} title="Tải .zip chứa một .xosc cho mỗi lượt chạy của họ này">Tải tất cả .xosc</PillButton>}
+              {familyRuns.length > 0 && <PillButton onClick={() => { setError(null); void vehicsimApi.downloadFamilyXosc(Number(familyId)).catch(e => setError(vi(e.message))); }} title="Tải .zip cho các lượt độc lập của họ này, gồm cả động học và CARLA">Tải .xosc lượt độc lập</PillButton>}
               {familyId && canEditRuns && <>
                 <PillButton className="text-vehicsim-danger" disabled={busy} onClick={() => void cancelFamily()} title="Hủy các lượt CARLA độc lập đang chờ hoặc đang chạy của họ này">Hủy lượt đang chạy</PillButton>
                 <PillButton className="text-vehicsim-danger" disabled={busy} onClick={() => void removeFamilyResults()} title="Xóa các lượt baseline CARLA bị lỗi hoặc đã hủy của họ này, kể cả các lượt không hiển thị; lượt hoàn thành được giữ">Xóa lượt baseline lỗi / đã hủy</PillButton>
@@ -276,7 +283,8 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
                   onClick={() => void removeRun(run)}>Xóa</button>
               )}
               {(run.status === "PENDING" || run.status === "RUNNING") && run.regression_test_id == null && run.optimization_trial_id == null && (
-                <button className="font-semibold text-vehicsim-danger" disabled={!canEditRuns || cancelling.has(run.id)}
+                <button className="font-semibold text-vehicsim-danger" disabled={!canEditRuns || !inCurrentProject(run) || cancelling.has(run.id)}
+                  title={!inCurrentProject(run) ? "Chỉ hủy được lượt thuộc project đang mở" : undefined}
                   aria-label={`Hủy lượt chạy ${runCode(run.id)}`} onClick={() => void cancel(run.id)}>
                   {cancelling.has(run.id) ? "Đang hủy…" : "Hủy"}
                 </button>

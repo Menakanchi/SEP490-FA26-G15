@@ -343,6 +343,9 @@ export default function ScenarioFamiliesPage() {
           <EmptyState title="Chưa có họ kịch bản nào">Tạo họ đầu tiên (ví dụ người đi bộ băng ngang) rồi chạy cơ sở để có ca lỗi.</EmptyState>
         )}
         {!!pagedItems?.length && (
+          <p className="px-5 pb-3 text-[12px] text-vehicsim-muted xl:hidden">Vuốt ngang để xem thêm thông tin và thao tác →</p>
+        )}
+        {!!pagedItems?.length && (
           <TableScroll label="Bảng họ kịch bản" minWidth={985}>
             <div className="flex h-11 items-center border-y border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
               <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>

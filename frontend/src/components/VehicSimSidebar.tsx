@@ -320,22 +320,13 @@ function NavGroups({ groups, sections }: NavGroupsProps) {
                   )}
 
                   {hasChildren && (
-                    <button
-                      type="button"
-                      aria-label={`${isExpanded ? "Thu gọn" : "Mở rộng"} ${g.label}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setExpandedKeys((prev) => ({ ...prev, [g.key]: !isExpanded }));
-                      }}
-                      className="grid size-6 place-items-center rounded-md hover:bg-white/15 text-slate-300 hover:text-white"
-                    >
+                    <span aria-hidden className="grid size-6 place-items-center text-slate-300">
                       {isExpanded ? (
                         <ChevronDown aria-hidden className={`size-4 shrink-0 ${isHighlighted ? "text-emerald-400 stroke-[2.5]" : "text-slate-300"}`} />
                       ) : (
                         <ChevronRight aria-hidden className="size-4 shrink-0 text-slate-400" />
                       )}
-                    </button>
+                    </span>
                   )}
                 </div>
               );
@@ -353,20 +344,14 @@ function NavGroups({ groups, sections }: NavGroupsProps) {
                       {header}
                     </Link>
                   ) : hasChildren ? (
-                    <div
-                      role="button"
-                      tabIndex={0}
+                    <button
+                      type="button"
+                      aria-expanded={isExpanded}
                       onClick={() => setExpandedKeys((prev) => ({ ...prev, [g.key]: !isExpanded }))}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setExpandedKeys((prev) => ({ ...prev, [g.key]: !isExpanded }));
-                        }
-                      }}
-                      className="cursor-pointer select-none"
+                      className="w-full cursor-pointer select-none text-left focus-visible:outline-emerald-300"
                     >
                       {header}
-                    </div>
+                    </button>
                   ) : (
                     <span className="cursor-not-allowed">{header}</span>
                   )}

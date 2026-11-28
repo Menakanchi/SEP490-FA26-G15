@@ -127,12 +127,13 @@ export default function DescribeScenarioPage() {
 
       <section className="flex flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-[17px] font-bold text-vehicsim-ink">1 · Mô tả tình huống</h2>
+          <h2 id="scenario-description-label" className="text-[17px] font-bold text-vehicsim-ink">1 · Mô tả tình huống</h2>
           <span className="text-[12px] text-vehicsim-faint">
             {text.length} / {MAX_TEXT} ký tự
           </span>
         </div>
         <textarea
+          aria-labelledby="scenario-description-label"
           value={text}
           onChange={(e) => setText(e.target.value.slice(0, MAX_TEXT))}
           rows={4}
@@ -146,7 +147,7 @@ export default function DescribeScenarioPage() {
               key={ex}
               type="button"
               onClick={() => setText(ex)}
-              className="max-w-full truncate rounded-lg border border-solid border-vehicsim-line bg-vehicsim-soft px-3 py-[6px] text-left text-[12px] text-vehicsim-muted hover:bg-vehicsim-line sm:max-w-[420px]"
+              className="min-h-11 max-w-full rounded-lg border border-solid border-vehicsim-line bg-vehicsim-soft px-3 py-2 text-left text-[12px] text-vehicsim-muted hover:bg-vehicsim-line sm:max-w-[420px]"
               title={ex}
             >
               {ex}
